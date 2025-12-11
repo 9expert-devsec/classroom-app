@@ -76,11 +76,15 @@ const NAV = [
 
 function SectionItem({ item }) {
   const pathname = usePathname();
-  const isActiveSection = pathname.startsWith(item.href);
+    const hasChildren = item.children && item.children.length > 0;
+
+   const isActiveSection = hasChildren
+    ? pathname.startsWith(item.href)
+    : pathname === item.href;
   const [open, setOpen] = useState(isActiveSection);
 
   const Icon = item.icon;
-  const hasChildren = item.children && item.children.length > 0;
+
 
   // --------- ไม่มี children -> ลิงก์ธรรมดา ---------
   if (!hasChildren) {
@@ -91,7 +95,7 @@ function SectionItem({ item }) {
           className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
           ${
             isActiveSection
-              ? "bg-white text-admin-text shadow-sm"
+              ? "bg-[#66ccff] text-admin-text shadow-sm"
               : "text-admin-sidebarText hover:bg-white/10"
           }`}
         >
@@ -123,7 +127,7 @@ function SectionItem({ item }) {
         className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
         ${
           isActiveSection
-            ? "bg-white text-admin-text shadow-sm"
+            ? "bg-[#66ccff] text-admin-text shadow-sm"
             : "text-admin-sidebarText hover:bg-white/10"
         }`}
       >
@@ -155,16 +159,16 @@ function SectionItem({ item }) {
             <div className="absolute left-[10px] top-0 bottom-0 w-px bg-white/15" />
             <div className="space-y-1 pl-4">
               {item.children.map((child) => {
-                const childActive = pathname.startsWith(child.href);
+                const childActive = pathname === child.href;
                 const ChildIcon = child.icon;
                 return (
                   <Link
                     key={child.href}
                     href={child.href}
-                    className={`flex items-center gap-2 rounded-2xl px-3 py-1.5 text-xs transition
+                    className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs transition
                     ${
                       childActive
-                        ? "bg-white text-admin-text shadow-sm"
+                        ? "bg-white/70 text-admin-text shadow-sm"
                         : "text-admin-sidebarText/80 hover:bg-white/10"
                     }`}
                   >
