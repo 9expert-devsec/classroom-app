@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { MoreVertical } from "lucide-react";
 
 function formatThaiDate(d) {
   const date = new Date(d);
@@ -16,8 +17,7 @@ function formatThaiDate(d) {
 
 function formatDateRange(cls) {
   const startStr = cls.date || cls.startDate || cls.start_date;
-  const dayCount =
-    cls.duration?.dayCount || cls.dayCount || cls.days || 1;
+  const dayCount = cls.duration?.dayCount || cls.dayCount || cls.days || 1;
 
   if (!startStr) return "-";
 
@@ -43,6 +43,29 @@ export default function ClassesListClient({ initialClasses, total }) {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  // ปิดเมนูเมื่อคลิกนอกเมนู
+  useEffect(() => {
+    if (openMenuId === null) return;
+
+    function handleClickOutside(e) {
+      const target = e.target;
+      // ถ้าคลิกไม่ได้อยู่ใน element ที่มี data-class-actions-menu -> ปิดเมนู
+      if (
+        target instanceof HTMLElement &&
+        !target.closest("[data-class-actions-menu]")
+      ) {
+        setOpenMenuId(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [openMenuId]);
 
   // 🔹 state สำหรับ Edit popup
   const [editingClass, setEditingClass] = useState(null); // object Class ที่กำลังแก้ไข
@@ -243,8 +266,8 @@ export default function ClassesListClient({ initialClasses, total }) {
     <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
       {/* Filter bar */}
       <div className="mb-4 space-y-3">
-        <div className="grid gap-2 sm:grid-cols-4">
-          <div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {/* <div>
             <label className="block text-[11px] text-admin-textMuted">
               รหัสคอร์ส
             </label>
@@ -266,6 +289,20 @@ export default function ClassesListClient({ initialClasses, total }) {
               value={title}
               onChange={(e) => {
                 setTitle(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div> */}
+          <div>
+            <label className="block text-[11px] text-admin-textMuted">
+              ค้นหา
+            </label>
+            <input
+              className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              placeholder="ค้นหา (ชื่อ Class / รหัสคอร์ส / ห้อง / อาจารย์)"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
                 setPage(1);
               }}
             />
@@ -302,9 +339,10 @@ export default function ClassesListClient({ initialClasses, total }) {
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs text-admin-textMuted">
-            ทั้งหมด {classes.length} class — หลัง filter เหลือ {filtered.length} class
+            ทั้งหมด {classes.length} class — หลัง filter เหลือ {filtered.length}{" "}
+            class
           </div>
-          <input
+          {/* <input
             className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary sm:w-80"
             placeholder="ค้นหา (ชื่อ Class / รหัสคอร์ส / ห้อง / อาจารย์)"
             value={search}
@@ -312,19 +350,19 @@ export default function ClassesListClient({ initialClasses, total }) {
               setSearch(e.target.value);
               setPage(1);
             }}
-          />
+          /> */}
         </div>
       </div>
 
       {/* Table */}
-      <table className="min-w-full text-xs sm:text-sm">
-        <thead className="bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
+      <table className="min-w-full text-base sm:text-sm">
+        <thead className="bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
           <tr>
-            <th className="px-3 py-2 text-left">วันที่เริ่ม - วันที่จบ</th>
+            <th className="px-3 py-2 text-left">วันที่อบรม</th>
             <th className="px-3 py-2 text-left">ชื่อ CLASS</th>
-            <th className="px-3 py-2 text-left">ห้องอบรม</th>
+            <th className="px-3 py-2 text-center">ห้องอบรม</th>
             <th className="px-3 py-2 text-left">ผู้สอน</th>
-            <th className="px-3 py-2 text-right">จำนวนนักเรียน</th>
+            <th className="px-3 py-2 text-center">จำนวนนักเรียน</th>
             <th className="px-3 py-2 text-right">จัดการ</th>
           </tr>
         </thead>
@@ -360,10 +398,10 @@ export default function ClassesListClient({ initialClasses, total }) {
                     {cls.courseCode || cls.course_id || ""}
                   </div>
                 </td>
-                <td className="px-3 py-2 text-admin-textMuted">{room}</td>
+                <td className="px-3 py-2 text-admin-textMuted text-center">{room}</td>
                 <td className="px-3 py-2 text-admin-textMuted">{instructor}</td>
-                <td className="px-3 py-2 text-right">{studentCount}</td>
-                <td className="px-3 py-2 text-right">
+                <td className="px-3 py-2 text-center">{studentCount}</td>
+                {/* <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
                     <Link
                       href={`/admin/classroom/classes/${id}`}
@@ -386,6 +424,64 @@ export default function ClassesListClient({ initialClasses, total }) {
                     >
                       {deletingId === id ? "กำลังลบ..." : "ลบ"}
                     </button>
+                  </div>
+                </td> */}
+                <td className="px-3 py-2 text-right">
+                  <div className="relative inline-block text-left" data-class-actions-menu>
+                    {/* ปุ่ม kebab */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenMenuId((prev) => (prev === id ? null : id))
+                      }
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full
+                 border border-admin-border bg-white text-admin-text
+                 hover:bg-admin-surfaceMuted focus:outline-none"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+
+                    {/* เมนูที่เด้งออกมา */}
+                    {openMenuId === id && (
+                      <div
+                        className="absolute right-0 z-10 mt-1 w-32 origin-top-right
+                   rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5 overflow-hidden"
+                      >
+                        <Link
+                          href={`/admin/classroom/classes/${id}`}
+                          className="block w-full px-3 py-1.5 text-left text-admin-text
+                     hover:bg-admin-surfaceMuted"
+                          onClick={() => setOpenMenuId(null)}
+                        >
+                          เปิดดู
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            openEditModal(cls);
+                          }}
+                          className="block w-full px-3 py-1.5 text-left text-admin-text
+                     hover:bg-admin-surfaceMuted"
+                        >
+                          แก้ไข
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            handleDelete(cls);
+                          }}
+                          disabled={deletingId === id}
+                          className="block w-full px-3 py-1.5 text-left text-red-600
+                     hover:bg-red-50 disabled:opacity-60"
+                        >
+                          {deletingId === id ? "กำลังลบ..." : "ลบ"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>
