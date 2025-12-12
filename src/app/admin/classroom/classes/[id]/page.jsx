@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
+import { ChevronLeft } from "lucide-react";
 
 /* ===== helpers เล็กน้อยไว้ format ข้อมูล ===== */
 
@@ -62,10 +63,9 @@ export default function ClassDetailPage() {
       try {
         setLoading(true);
 
-        const res = await fetch(
-          `/api/admin/classes?id=${id}&withStudents=1`,
-          { cache: "no-store" }
-        );
+        const res = await fetch(`/api/admin/classes?id=${id}&withStudents=1`, {
+          cache: "no-store",
+        });
         const data = await res.json();
 
         let found = null;
@@ -126,11 +126,7 @@ export default function ClassDetailPage() {
   }
 
   if (!classData) {
-    return (
-      <div className="p-6 text-sm text-red-500">
-        ไม่พบข้อมูลห้องอบรม
-      </div>
-    );
+    return <div className="p-6 text-sm text-red-500">ไม่พบข้อมูลห้องอบรม</div>;
   }
 
   /* ===== ดึงค่า/คำนวณต่าง ๆ จาก classData ===== */
@@ -201,7 +197,9 @@ export default function ClassDetailPage() {
       room: roomName || "",
       channel: channel || "",
       trainerName: trainerName || "",
-      startDate: startDate ? new Date(startDate).toISOString().slice(0, 10) : "",
+      startDate: startDate
+        ? new Date(startDate).toISOString().slice(0, 10)
+        : "",
       dayCount: dc || 1,
     });
     setEditOpen(true);
@@ -260,7 +258,9 @@ export default function ClassDetailPage() {
               trainingChannel: payload.channel,
               trainerName: payload.trainerName,
               trainer: payload.trainerName,
-              date: payload.date ? new Date(payload.date).toISOString() : prev.date,
+              date: payload.date
+                ? new Date(payload.date).toISOString()
+                : prev.date,
               startDate: payload.date
                 ? new Date(payload.date).toISOString()
                 : prev.startDate,
@@ -319,8 +319,52 @@ export default function ClassDetailPage() {
 
   return (
     <div className="space-y-4 p-6">
+      <div className="flex justify-between">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full
+               border border-admin-border bg-white text-admin-text
+               hover:bg-admin-surfaceMuted"
+          aria-label="ย้อนกลับ"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 🔵 ปุ่ม Report Preview + Export + Print (Popup) */}
+          <ReportPreviewButton
+            students={students}
+            dayCount={dayCount}
+            classInfo={classData}
+          />
+
+          {/* ปุ่มดึงรายชื่อจากระบบลงทะเบียน */}
+          <SyncStudentsButton classId={id} />
+
+          {/* ปุ่มแก้ไข Class */}
+          <button
+            type="button"
+            onClick={openEditModal}
+            className="rounded-lg border border-admin-border px-3 py-1.5 text-xs text-admin-text hover:bg-admin-surfaceMuted"
+          >
+            แก้ไขข้อมูล Class
+          </button>
+
+          {/* ปุ่มลบ Class */}
+          <button
+            type="button"
+            onClick={handleDeleteClass}
+            disabled={deleting}
+            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+          >
+            {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
+          </button>
+        </div>
+      </div>
+
       {/* ===== Header บนสุด: ชื่อ Course + ปุ่มต่าง ๆ ===== */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-4 rounded-2xl border border-admin-border">
         <div>
           <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
             CLASS DETAIL
@@ -374,18 +418,35 @@ export default function ClassDetailPage() {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 🔵 ปุ่ม Report Preview + Export + Print (Popup) */}
+        {(createdAt || updatedAt) && (
+            <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
+              {createdAt && (
+                <div>
+                  สร้างเมื่อ: {formatDateTH(createdAt)}{" "}
+                  {formatTimeTH(createdAt) &&
+                    `เวลา ${formatTimeTH(createdAt)} น.`}
+                </div>
+              )}
+              {updatedAt && (
+                <div>
+                  แก้ไขล่าสุด: {formatDateTH(updatedAt)}{" "}
+                  {formatTimeTH(updatedAt) &&
+                    `เวลา ${formatTimeTH(updatedAt)} น.`}
+                </div>
+              )}
+            </div>
+          )}
+
+        {/* <div className="flex flex-wrap items-center gap-2">
+        
           <ReportPreviewButton
             students={students}
             dayCount={dayCount}
             classInfo={classData}
           />
 
-          {/* ปุ่มดึงรายชื่อจากระบบลงทะเบียน */}
           <SyncStudentsButton classId={id} />
 
-          {/* ปุ่มแก้ไข Class */}
           <button
             type="button"
             onClick={openEditModal}
@@ -394,7 +455,7 @@ export default function ClassDetailPage() {
             แก้ไขข้อมูล Class
           </button>
 
-          {/* ปุ่มลบ Class */}
+      
           <button
             type="button"
             onClick={handleDeleteClass}
@@ -403,7 +464,7 @@ export default function ClassDetailPage() {
           >
             {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
           </button>
-        </div>
+        </div> */}
       </div>
 
       {/* ===== แถบสรุปสั้น ๆ ของ Class / สถิตินักเรียน ===== */}
@@ -422,9 +483,7 @@ export default function ClassDetailPage() {
           <div className="text-[11px] text-admin-textMuted">
             เช็กอินอย่างน้อย 1 วัน
           </div>
-          <div className="mt-1 text-base font-semibold">
-            {presentCount} คน
-          </div>
+          <div className="mt-1 text-base font-semibold">{presentCount} คน</div>
         </div>
         <div>
           <div className="text-[11px] text-admin-textMuted">
@@ -437,7 +496,7 @@ export default function ClassDetailPage() {
       </div>
 
       {/* ===== Card รายละเอียดอื่น ๆ ของ Class (ถ้ามี) ===== */}
-      {(createdAt || updatedAt) && (
+      {/* {(createdAt || updatedAt) && (
         <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
           {createdAt && (
             <div>
@@ -452,15 +511,15 @@ export default function ClassDetailPage() {
             </div>
           )}
         </div>
-      )}
+      )} */}
 
       {/* ===== Card รายชื่อนักเรียน + ตาราง Check-in ===== */}
       <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-2">
+        {/* <div className="mb-3 flex items-center justify-between gap-2">
           <div className="text-sm font-medium text-admin-text">
             รายชื่อนักเรียน ({students.length} คน)
           </div>
-        </div>
+        </div> */}
 
         <StudentsTable students={students} dayCount={dayCount} />
       </div>

@@ -52,9 +52,7 @@ export default function StudentsTable({ students, dayCount }) {
         s.receiveType,
         formatDateTH(s.receiveDate),
       ];
-      return pieces.some((p) =>
-        (p || "").toString().toLowerCase().includes(q)
-      );
+      return pieces.some((p) => (p || "").toString().toLowerCase().includes(q));
     });
   }, [students, search]);
 
@@ -94,7 +92,7 @@ export default function StudentsTable({ students, dayCount }) {
       {/* search + summary */}
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs text-admin-textMuted">
-          พบผู้เรียน {filtered.length} คน
+          รายชื่อนักเรียน {filtered.length} คน
           {filtered.length !== students.length && (
             <span> (ทั้งหมด {students.length} คน)</span>
           )}
@@ -113,7 +111,8 @@ export default function StudentsTable({ students, dayCount }) {
         </div>
       </div>
 
-      <table className="min-w-full text-xs sm:text-sm">
+      <div className="overflow-auto max-h-[calc(100vh-500px)]">
+<table className="min-w-full text-xs sm:text-sm">
         <thead className="bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
           <tr>
             <th className="px-3 py-2 text-left">ชื่อ - สกุล</th>
@@ -169,7 +168,10 @@ export default function StudentsTable({ students, dayCount }) {
 
                 if (!checked) {
                   return (
-                    <td key={d} className="px-3 py-2 text-center text-admin-textMuted">
+                    <td
+                      key={d}
+                      className="px-3 py-2 text-center text-admin-textMuted"
+                    >
                       -
                     </td>
                   );
@@ -236,6 +238,8 @@ export default function StudentsTable({ students, dayCount }) {
           )}
         </tbody>
       </table>
+      </div>
+      
 
       {/* pagination */}
       {filtered.length > pageSize && (
