@@ -340,77 +340,85 @@ export default function FromSchedulePage() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
-        {loading ? (
-          <p className="text-sm text-admin-textMuted">กำลังโหลด schedule...</p>
-        ) : (
-          <div className="overflow-auto max-h-[calc(100vh-260px)]">
-            <table className="min-w-full text-xs sm:text-sm">
-              <thead className="bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
-                <tr>
-                  <th className="px-3 py-2 text-left">Course</th>
-                  <th className="px-3 py-2 text-left">วัน/เวลาเริ่ม</th>
-                  <th className="px-3 py-2 text-left">ห้อง</th>
-                  <th className="px-3 py-2 text-right">สร้าง Class</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map((s, idx) => {
-                  const key = s._id || s.id || s.schedule_id || idx;
+      <div className="rounded-2xl bg-admin-surface p-4 shadow-card relative">
+        {/* scroll container อยู่ตลอด */}
+        <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[240px]">
+          <table className="min-w-full text-xs sm:text-sm">
+            <thead className="bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
+              <tr>
+                <th className="px-3 py-2 text-left">Course</th>
+                <th className="px-3 py-2 text-left">วัน/เวลาเริ่ม</th>
+                <th className="px-3 py-2 text-right">สร้าง Class</th>
+              </tr>
+            </thead>
 
-                  const courseName =
-                    s.course?.course_name ||
-                    s.course_name ||
-                    s.title ||
-                    "ไม่ทราบชื่อคอร์ส";
+            <tbody>
+              {filteredItems.map((s, idx) => {
+                const key = s._id || s.id || s.schedule_id || idx;
 
-                  const courseCode =
-                    s.course?.course_id || s.course_id || s.courseCode || "";
+                const courseName =
+                  s.course?.course_name ||
+                  s.course_name ||
+                  s.title ||
+                  "ไม่ทราบชื่อคอร์ส";
 
-                  const firstDate = getFirstDateRaw(s);
+                const courseCode =
+                  s.course?.course_id || s.course_id || s.courseCode || "";
 
-                  return (
-                    <tr
-                      key={key}
-                      className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-                    >
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{courseName}</div>
-                        <div className="text-[11px] text-admin-textMuted">
-                          {courseCode}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-admin-textMuted">
-                        {formatDateTime(firstDate)}
-                      </td>
-                      <td className="px-3 py-2 text-admin-textMuted">
-                        {s.room || "-"}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <PrimaryButton
-                          type="button"
-                          className="px-3 py-1 text-xs"
-                          onClick={() => handleOpenModal(s, idx)}
-                        >
-                          สร้าง Class
-                        </PrimaryButton>
-                      </td>
-                    </tr>
-                  );
-                })}
+                const firstDate = getFirstDateRaw(s);
 
-                {filteredItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-3 py-4 text-center text-admin-textMuted"
-                    >
-                      ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
+                return (
+                  <tr
+                    key={key}
+                    className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                  >
+                    <td className="px-3 py-2">
+                      <div className="font-medium">{courseName}</div>
+                      <div className="text-[11px] text-admin-textMuted">
+                        {courseCode}
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2 text-admin-textMuted">
+                      {formatDateTime(firstDate)}
+                    </td>
+
+                    <td className="px-3 py-2 text-right">
+                      <PrimaryButton
+                        type="button"
+                        className="px-3 py-1 text-xs"
+                        onClick={() => handleOpenModal(s, idx)}
+                        disabled={loading}
+                      >
+                        สร้าง Class
+                      </PrimaryButton>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                );
+              })}
+
+              {/* แก้ colSpan ให้ตรงกับจำนวนคอลัมน์ = 3 */}
+              {!loading && filteredItems.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="px-3 py-4 text-center text-admin-textMuted"
+                  >
+                    ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* overlay อยู่ใน container นี้เท่านั้น */}
+        {loading && (
+          <div className="absolute inset-0 rounded-2xl bg-admin-surface/70 backdrop-blur-sm flex items-center justify-center">
+            <div className="flex items-center gap-2 text-sm text-admin-textMuted">
+              <span className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+              กำลังโหลด schedule...
+            </div>
           </div>
         )}
       </div>
