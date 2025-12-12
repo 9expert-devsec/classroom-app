@@ -276,7 +276,7 @@ export default function FromSchedulePage() {
   /* ---------- Render ---------- */
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       <div>
         <h1 className="text-xl font-semibold">
           สร้าง Class จากรอบอบรม (schedule API)
@@ -344,7 +344,7 @@ export default function FromSchedulePage() {
         {loading ? (
           <p className="text-sm text-admin-textMuted">กำลังโหลด schedule...</p>
         ) : (
-          <div className="max-h-[520px] overflow-auto">
+          <div className="overflow-auto max-h-[calc(100vh-260px)]">
             <table className="min-w-full text-xs sm:text-sm">
               <thead className="bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
                 <tr>
