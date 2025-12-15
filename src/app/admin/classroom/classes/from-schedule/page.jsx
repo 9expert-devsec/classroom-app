@@ -344,11 +344,11 @@ export default function FromSchedulePage() {
         {/* scroll container อยู่ตลอด */}
         <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[240px]">
           <table className="min-w-full text-xs sm:text-sm">
-            <thead className="bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
+            <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
               <tr>
-                <th className="px-3 py-2 text-left">Course</th>
-                <th className="px-3 py-2 text-left">วัน/เวลาเริ่ม</th>
-                <th className="px-3 py-2 text-right">สร้าง Class</th>
+                <th className="px-3 py-2 text-left text-sm">Course</th>
+                <th className="px-3 py-2 text-left text-sm">วัน/เวลาเริ่ม</th>
+                <th className="px-3 py-2 text-center text-sm">สร้าง Class</th>
               </tr>
             </thead>
 
@@ -383,7 +383,7 @@ export default function FromSchedulePage() {
                       {formatDateTime(firstDate)}
                     </td>
 
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2 text-center">
                       <PrimaryButton
                         type="button"
                         className="px-3 py-1 text-xs"
