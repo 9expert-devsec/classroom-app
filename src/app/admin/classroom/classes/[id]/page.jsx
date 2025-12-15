@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, MoreVertical } from "lucide-react";
 
 /* ===== helpers เล็กน้อยไว้ format ข้อมูล ===== */
 
@@ -49,11 +49,27 @@ export default function ClassDetailPage() {
     title: "",
     courseCode: "",
     room: "",
-    channel: "",
+    //channel: "",
     trainerName: "",
     startDate: "",
     dayCount: 1,
   });
+
+  const [actionsOpen, setActionsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+
+    const handleClickOutside = (e) => {
+      // ถ้าคลิกไม่ได้อยู่ในกล่องเมนู -> ปิด
+      if (!e.target.closest("[data-classdetail-actions]")) {
+        setActionsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [actionsOpen]);
 
   // ===== โหลดข้อมูล Class (ใช้ list + filter เพราะยังไม่มี /api/admin/classes/[id]) =====
   useEffect(() => {
@@ -159,8 +175,8 @@ export default function ClassDetailPage() {
 
   const timeRangeText = classData.time_range_text || classData.timeText || "";
 
-  const channel =
-    classData.channel || classData.trainingChannel || classData.mode || "";
+  // const channel =
+  //   classData.channel || classData.trainingChannel || classData.mode || "";
 
   const trainerRaw =
     classData.trainers ||
@@ -195,7 +211,7 @@ export default function ClassDetailPage() {
       title: courseTitle || "",
       courseCode: courseCode || "",
       room: roomName || "",
-      channel: channel || "",
+      //channel: channel || "",
       trainerName: trainerName || "",
       startDate: startDate
         ? new Date(startDate).toISOString().slice(0, 10)
@@ -225,7 +241,7 @@ export default function ClassDetailPage() {
         title: editForm.title,
         courseCode: editForm.courseCode,
         room: editForm.room,
-        channel: editForm.channel,
+        //channel: editForm.channel,
         trainerName: editForm.trainerName,
         date: editForm.startDate || null,
         dayCount: Number(editForm.dayCount) || 1,
@@ -254,7 +270,7 @@ export default function ClassDetailPage() {
               courseCode: payload.courseCode,
               room: payload.room,
               roomName: payload.room,
-              channel: payload.channel,
+              //channel: payload.channel,
               trainingChannel: payload.channel,
               trainerName: payload.trainerName,
               trainer: payload.trainerName,
@@ -318,11 +334,11 @@ export default function ClassDetailPage() {
   /* ===== render ===== */
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 ">
       <div className="flex justify-between">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => router.replace("/admin/classroom/classes")}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full
                border border-admin-border bg-white text-admin-text
                hover:bg-admin-surfaceMuted"
@@ -332,34 +348,61 @@ export default function ClassDetailPage() {
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 🔵 ปุ่ม Report Preview + Export + Print (Popup) */}
+          {/* 🔵 ปุ่มหลัก: ดึงรายชื่อจากระบบลงทะเบียน (Primary) */}
+          <SyncStudentsButton classId={id} />
+
+          {/* ⚪ ปุ่มรอง: ดูตัวอย่างรายงาน / Export */}
           <ReportPreviewButton
             students={students}
             dayCount={dayCount}
             classInfo={classData}
           />
 
-          {/* ปุ่มดึงรายชื่อจากระบบลงทะเบียน */}
-          <SyncStudentsButton classId={id} />
+          {/* ⋮ Kebab menu: แก้ไข + ลบ */}
+          <div className="relative" data-classdetail-actions>
+            <button
+              type="button"
+              onClick={() => setActionsOpen((o) => !o)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full
+                 border border-admin-border bg-white text-admin-text
+                 hover:bg-admin-surfaceMuted"
+              aria-label="เมนูการจัดการ Class"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
 
-          {/* ปุ่มแก้ไข Class */}
-          <button
-            type="button"
-            onClick={openEditModal}
-            className="rounded-lg border border-admin-border px-3 py-1.5 text-xs text-admin-text hover:bg-admin-surfaceMuted"
-          >
-            แก้ไขข้อมูล Class
-          </button>
+            {actionsOpen && (
+              <div
+                className="absolute right-0 mt-1 w-40 rounded-xl bg-white py-1 text-xs
+                   shadow-lg ring-1 ring-black/5 overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    openEditModal();
+                  }}
+                  className="block w-full px-3 py-1.5 text-left text-admin-text
+                     hover:bg-admin-surfaceMuted"
+                >
+                  แก้ไขข้อมูล Class
+                </button>
 
-          {/* ปุ่มลบ Class */}
-          <button
-            type="button"
-            onClick={handleDeleteClass}
-            disabled={deleting}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
-          >
-            {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
-          </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    handleDeleteClass();
+                  }}
+                  disabled={deleting}
+                  className="block w-full px-3 py-1.5 text-left text-red-600
+                     hover:bg-red-50 disabled:opacity-60"
+                >
+                  {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -405,11 +448,11 @@ export default function ClassDetailPage() {
             </div>
           )}
 
-          {channel && (
+          {/* {channel && (
             <div className="mt-0.5 text-xs text-admin-textMuted">
               ช่องทางอบรม: {channel}
             </div>
-          )}
+          )} */}
 
           {trainerName && (
             <div className="mt-0.5 text-xs text-admin-textMuted">
@@ -419,23 +462,23 @@ export default function ClassDetailPage() {
         </div>
 
         {(createdAt || updatedAt) && (
-            <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
-              {createdAt && (
-                <div>
-                  สร้างเมื่อ: {formatDateTH(createdAt)}{" "}
-                  {formatTimeTH(createdAt) &&
-                    `เวลา ${formatTimeTH(createdAt)} น.`}
-                </div>
-              )}
-              {updatedAt && (
-                <div>
-                  แก้ไขล่าสุด: {formatDateTH(updatedAt)}{" "}
-                  {formatTimeTH(updatedAt) &&
-                    `เวลา ${formatTimeTH(updatedAt)} น.`}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
+            {createdAt && (
+              <div>
+                สร้างเมื่อ: {formatDateTH(createdAt)}{" "}
+                {formatTimeTH(createdAt) &&
+                  `เวลา ${formatTimeTH(createdAt)} น.`}
+              </div>
+            )}
+            {updatedAt && (
+              <div>
+                แก้ไขล่าสุด: {formatDateTH(updatedAt)}{" "}
+                {formatTimeTH(updatedAt) &&
+                  `เวลา ${formatTimeTH(updatedAt)} น.`}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* <div className="flex flex-wrap items-center gap-2">
         
@@ -582,7 +625,7 @@ export default function ClassDetailPage() {
                 </div>
               </div>
 
-              <div>
+              {/* <div>
                 <label className="block text-[11px] text-admin-textMuted">
                   ช่องทางอบรม (on_class / online / hybrid ...)
                 </label>
@@ -593,7 +636,7 @@ export default function ClassDetailPage() {
                     setEditForm((f) => ({ ...f, channel: e.target.value }))
                   }
                 />
-              </div>
+              </div> */}
 
               <div>
                 <label className="block text-[11px] text-admin-textMuted">

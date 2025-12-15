@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import SecondaryButton from "@/components/ui/SecondaryButton";
 
 /* ===== helpers ===== */
 
@@ -281,13 +282,21 @@ export default function ReportPreviewButton({
 
   return (
     <>
-      <button
+      {/* <button
         type="button"
         onClick={() => setOpen(true)}
         className="rounded-lg border border-admin-border px-3 py-1.5 text-xs text-admin-text hover:bg-admin-surfaceMuted"
       >
         ดูตัวอย่างรายงาน / Export
-      </button>
+      </button> */}
+
+      <SecondaryButton
+        type="button"
+        className="px-3 py-1.5"
+        onClick={() => setOpen(true)}
+      >
+        ดูตัวอย่างรายงาน / Export
+      </SecondaryButton>
 
       {open && (
         <div

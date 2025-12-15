@@ -111,135 +111,194 @@ export default function StudentsTable({ students, dayCount }) {
         </div>
       </div>
 
-      <div className="overflow-auto max-h-[calc(100vh-500px)]">
-<table className="min-w-full text-xs sm:text-sm">
-        <thead className="bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
-          <tr>
-            <th className="px-3 py-2 text-left">ชื่อ - สกุล</th>
-            <th className="px-3 py-2 text-left">บริษัท</th>
-            <th className="px-3 py-2 text-left">เลขใบเสร็จ</th>
-            <th className="px-3 py-2 text-left">ช่องทางรับเอกสาร</th>
-            <th className="px-3 py-2 text-left">วันที่รับเอกสาร</th>
-            {days.map((d) => (
-              <th key={d} className="px-3 py-2 text-center">
-                DAY {d}
-              </th>
-            ))}
-            <th className="px-3 py-2 text-center">สถานะสาย</th>
-          </tr>
-        </thead>
+      <div className="overflow-auto max-h-[calc(100vh-470px)]">
+        <table className="min-w-full text-xs sm:text-sm">
+          <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
+            <tr>
+              <th className="px-3 py-2 text-left">ชื่อ - สกุล</th>
+              <th className="px-3 py-2 text-left">บริษัท</th>
+              <th className="px-3 py-2 text-left">เลขใบเสร็จ</th>
+              <th className="px-3 py-2 text-left">ช่องทางรับเอกสาร</th>
+              <th className="px-3 py-2 text-left ">วันที่รับเอกสาร</th>
+              {days.map((d) => (
+                <th key={d} className="px-3 py-2 text-center w-[150px]">
+                  DAY {d}
+                </th>
+              ))}
+              {/* <th className="px-3 py-2 text-center">สถานะสาย</th> */}
+            </tr>
+          </thead>
 
-        <tbody>
-          {visible.map((stu, i) => (
-            <tr
-              key={stu._id || i}
-              className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-            >
-              <td className="px-3 py-2">
-                {stu.nameTH || stu.name || "-"}
-                <div className="text-[11px] text-admin-textMuted">
-                  {stu.nameEN || ""}
-                </div>
-              </td>
+          <tbody>
+            {visible.map((stu, i) => (
+              <tr
+                key={stu._id || i}
+                className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+              >
+                <td className="px-3 py-2">
+                  {stu.nameTH || stu.name || "-"}
+                  <div className="text-[11px] text-admin-textMuted">
+                    {stu.nameEN || ""}
+                  </div>
+                </td>
 
-              <td className="px-3 py-2 text-admin-textMuted">
-                {stu.company || "-"}
-              </td>
+                <td className="px-3 py-2 text-admin-textMuted">
+                  {stu.company || "-"}
+                </td>
 
-              <td className="px-3 py-2 text-admin-textMuted">
-                {stu.paymentRef || "-"}
-              </td>
+                <td className="px-3 py-2 text-admin-textMuted">
+                  {stu.paymentRef || "-"}
+                </td>
 
-              <td className="px-3 py-2 text-admin-textMuted">
-                {stu.receiveType || "-"}
-              </td>
+                <td className="px-3 py-2 text-admin-textMuted">
+                  {stu.receiveType || "-"}
+                </td>
 
-              <td className="px-3 py-2 text-admin-textMuted">
-                {stu.receiveDate ? formatDateTH(stu.receiveDate) : "-"}
-              </td>
+                <td className="px-3 py-2 text-admin-textMuted">
+                  {stu.receiveDate ? formatDateTH(stu.receiveDate) : "-"}
+                </td>
 
-              {days.map((d) => {
-                const checked = stu.checkin?.[`day${d}`];
-                const timeRaw =
-                  stu.checkinTimes?.[`day${d}`] ||
-                  stu.checkins?.[d]?.time ||
-                  null;
-                const timeLabel = formatTimeTH(timeRaw);
+                {days.map((d) => {
+                  const checked = stu.checkin?.[`day${d}`];
+                  const timeRaw =
+                    stu.checkinTimes?.[`day${d}`] ||
+                    stu.checkins?.[d]?.time ||
+                    null;
+                  const timeLabel = formatTimeTH(timeRaw);
 
-                if (!checked) {
+                  if (!checked) {
+                    return (
+                      <td
+                        key={d}
+                        className="px-3 py-2 text-center text-admin-textMuted"
+                      >
+                        -
+                      </td>
+                    );
+                  }
+
+                  const hasSignature = !!stu.checkins?.[d]?.signatureUrl;
+
                   return (
-                    <td
-                      key={d}
-                      className="px-3 py-2 text-center text-admin-textMuted"
-                    >
-                      -
+                    <td key={d} className="px-3 py-2 text-center">
+                      {/* <button
+                        type="button"
+                        onClick={() => hasSignature && openPreview(stu, d)}
+                        className={`inline-flex flex-col items-center justify-center rounded-xl px-7 py-1 text-[11px] ${
+                          hasSignature
+                            ? "border border-brand-primary/60 bg-white hover:bg-brand-primary/5"
+                            : "border border-admin-border bg-admin-surfaceMuted cursor-default"
+                        }`}
+                      >
+                        <span className="text-base leading-none">
+                          {hasSignature ? "✔" : "✔"}
+                        </span>
+                        {timeLabel && (
+                          <span className="mt-0.5 text-[10px] text-admin-textMuted">
+                            {timeLabel} น.
+                          </span>
+                        )}
+                        {hasSignature && (
+                          <span className="mt-0.5 text-[10px] text-brand-primary">
+                            ดูลายเซ็น
+                          </span>
+                        )}
+                        {stu.statusLabel && stu.statusLabel !== "-" ? (
+                          <span
+                            className={
+                              stu.late
+                                ? "text-red-500 font-semibold"
+                                : "text-emerald-600 font-semibold"
+                            }
+                          >
+                            {stu.statusLabel}
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </button> */}
+                      <button
+                        type="button"
+                        onClick={() => hasSignature && openPreview(stu, d)}
+                        className={`group relative inline-flex flex-col items-center justify-center rounded-xl px-7 py-1 text-[11px]
+    ${
+      hasSignature
+        ? "border border-brand-primary/60 bg-white cursor-pointer"
+        : "border border-admin-border bg-admin-surfaceMuted cursor-default"
+    }
+  `}
+                      >
+                        {/* เนื้อหาปกติของปุ่ม */}
+                        <div
+                          className={`
+      flex flex-col items-center justify-center
+      transition-opacity duration-150
+      ${hasSignature ? "group-hover:opacity-0" : ""}
+    `}
+                        >
+                          <span className="text-base leading-none">✔</span>
+
+                          {timeLabel && (
+                            <span className="mt-0.5 text-[10px] text-admin-textMuted">
+                              {timeLabel} น.
+                            </span>
+                          )}
+
+                          {stu.statusLabel && stu.statusLabel !== "-" && (
+                            <span
+                              className={
+                                stu.late
+                                  ? "mt-0.5 text-[10px] font-semibold text-red-500"
+                                  : "mt-0.5 text-[10px] font-semibold text-emerald-600"
+                              }
+                            >
+                              {stu.statusLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* overlay "ดูลายเซ็น" ทับด้านบนเวลา hover */}
+                        {hasSignature && (
+                          <div className=" pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-brand-primary/90 text-[14px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                            ดูลายเซ็น
+                          </div>
+                        )}
+                      </button>
                     </td>
                   );
-                }
+                })}
 
-                const hasSignature = !!stu.checkins?.[d]?.signatureUrl;
-
-                return (
-                  <td key={d} className="px-3 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => hasSignature && openPreview(stu, d)}
-                      className={`inline-flex flex-col items-center justify-center rounded-full px-2 py-1 text-[11px] ${
-                        hasSignature
-                          ? "border border-brand-primary/60 bg-white hover:bg-brand-primary/5"
-                          : "border border-admin-border bg-admin-surfaceMuted cursor-default"
-                      }`}
+                {/* <td className="px-3 py-2 text-center">
+                  {stu.statusLabel && stu.statusLabel !== "-" ? (
+                    <span
+                      className={
+                        stu.late
+                          ? "text-red-500 font-semibold"
+                          : "text-emerald-600 font-semibold"
+                      }
                     >
-                      <span className="text-base leading-none">
-                        {hasSignature ? "✔" : "✔"}
-                      </span>
-                      {timeLabel && (
-                        <span className="mt-0.5 text-[10px] text-admin-textMuted">
-                          {timeLabel} น.
-                        </span>
-                      )}
-                      {hasSignature && (
-                        <span className="mt-0.5 text-[10px] text-brand-primary">
-                          ดูลายเซ็น
-                        </span>
-                      )}
-                    </button>
-                  </td>
-                );
-              })}
+                      {stu.statusLabel}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </td> */}
+              </tr>
+            ))}
 
-              <td className="px-3 py-2 text-center">
-                {stu.statusLabel && stu.statusLabel !== "-" ? (
-                  <span
-                    className={
-                      stu.late
-                        ? "text-red-500 font-semibold"
-                        : "text-emerald-600 font-semibold"
-                    }
-                  >
-                    {stu.statusLabel}
-                  </span>
-                ) : (
-                  "-"
-                )}
-              </td>
-            </tr>
-          ))}
-
-          {visible.length === 0 && (
-            <tr>
-              <td
-                className="px-3 py-4 text-center text-admin-textMuted"
-                colSpan={5 + days.length + 1}
-              >
-                ยังไม่มีรายชื่อนักเรียน
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            {visible.length === 0 && (
+              <tr>
+                <td
+                  className="px-3 py-4 text-center text-admin-textMuted"
+                  colSpan={5 + days.length + 1}
+                >
+                  ยังไม่มีรายชื่อนักเรียน
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-      
 
       {/* pagination */}
       {filtered.length > pageSize && (

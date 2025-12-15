@@ -17,7 +17,7 @@ export default function SyncStudentsButton({ classId }) {
   return (
     <PrimaryButton
       type="button"
-      className="px-3 py-1.5 text-xs"
+      className="px-3 py-1.5"
       onClick={handleGoImport}
     >
       ดึงรายชื่อจากระบบลงทะเบียน
