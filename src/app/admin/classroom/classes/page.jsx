@@ -51,7 +51,7 @@ export default async function ClassesPage() {
           {/* ปุ่ม Import จาก schedule */}
           <Link
             href="/admin/classroom/classes/from-schedule"
-            className="rounded-lg bg-brand-primary px-3 py-1.5 text-xs font-medium text-[#0A1F33] hover:bg-brand-primary/90"
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2  focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Import Class จาก Schedule
           </Link>
