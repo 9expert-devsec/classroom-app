@@ -1,7 +1,7 @@
 // src/app/admin/classroom/classes/[id]/StudentsTable.jsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 function formatDateTH(input) {
   if (!input) return "-";
@@ -27,12 +27,73 @@ function formatTimeTH(input) {
   });
 }
 
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function useAutoPageSize({
+  viewportRef,
+  tableRef,
+  min = 5,
+  max = 10,
+  padding = 8,
+  fallbackRowHeight = 64,
+}) {
+  const [pageSize, setPageSize] = useState(max);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const table = tableRef.current;
+    if (!viewport || !table) return;
+
+    const compute = () => {
+      const viewportH = viewport.clientHeight || 0;
+
+      const thead = table.querySelector("thead");
+      const theadH = thead ? thead.offsetHeight : 0;
+
+      const firstRow = table.querySelector("tbody tr");
+      const rowH = firstRow ? firstRow.offsetHeight : fallbackRowHeight;
+
+      const usable = viewportH - theadH - padding;
+      const rows = Math.floor(usable / rowH);
+
+      const next = clamp(rows, min, max);
+      setPageSize((prev) => (prev === next ? prev : next));
+    };
+
+    const raf = requestAnimationFrame(compute);
+
+    const ro = new ResizeObserver(() => compute());
+    ro.observe(viewport);
+    ro.observe(table);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [viewportRef, tableRef, min, max, padding, fallbackRowHeight]);
+
+  return pageSize;
+}
+
 export default function StudentsTable({ students, dayCount }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [preview, setPreview] = useState(null); // { url, studentName, day, time }
 
-  const pageSize = 10;
+  //const pageSize = 10;
+
+  const viewportRef = useRef(null);
+  const tableRef = useRef(null);
+  const pageSize = useAutoPageSize({
+    viewportRef,
+    tableRef,
+    min: 2,
+    max: 10, // อยากให้ “สูงสุด 10” เหมือนเดิม
+    fallbackRowHeight: 64,
+    padding: 8,
+  });
 
   const days = useMemo(
     () => Array.from({ length: dayCount || 1 }, (_, i) => i + 1),
@@ -60,6 +121,10 @@ export default function StudentsTable({ students, dayCount }) {
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
   const visible = filtered.slice(start, start + pageSize);
+
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
 
   function goPrev() {
     setPage((p) => Math.max(1, p - 1));
@@ -111,17 +176,17 @@ export default function StudentsTable({ students, dayCount }) {
         </div>
       </div>
 
-      <div className="overflow-auto max-h-[calc(100vh-470px)]">
-        <table className="min-w-full text-xs sm:text-sm">
+      <div ref={viewportRef} className="overflow-auto h-[calc(100vh-470px)]">
+        <table ref={tableRef} className="min-w-full text-xs sm:text-sm">
           <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
             <tr>
-              <th className="px-3 py-2 text-left">ชื่อ - สกุล</th>
-              <th className="px-3 py-2 text-left">บริษัท</th>
-              <th className="px-3 py-2 text-left">เลขใบเสร็จ</th>
-              <th className="px-3 py-2 text-left">ช่องทางรับเอกสาร</th>
-              <th className="px-3 py-2 text-left ">วันที่รับเอกสาร</th>
+              <th className="px-3 py-2 text-left w-[200px]">ชื่อ - สกุล</th>
+              <th className="px-3 py-2 text-left w-[160px]">บริษัท</th>
+              <th className="px-3 py-2 text-left w-[130px]">เลขใบเสร็จ</th>
+              <th className="px-3 py-2 text-center w-[130px]">ช่องทางรับเอกสาร</th>
+              <th className="px-3 py-2 text-center w-[120px]">วันที่รับเอกสาร</th>
               {days.map((d) => (
-                <th key={d} className="px-3 py-2 text-center w-[150px]">
+                <th key={d} className="px-3 py-2 text-center min-w-[150px]">
                   DAY {d}
                 </th>
               ))}
@@ -133,7 +198,7 @@ export default function StudentsTable({ students, dayCount }) {
             {visible.map((stu, i) => (
               <tr
                 key={stu._id || i}
-                className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                className="h-16 border-t border-admin-border hover:bg-admin-surfaceMuted/60 "
               >
                 <td className="px-3 py-2">
                   {stu.nameTH || stu.name || "-"}
@@ -150,11 +215,11 @@ export default function StudentsTable({ students, dayCount }) {
                   {stu.paymentRef || "-"}
                 </td>
 
-                <td className="px-3 py-2 text-admin-textMuted">
+                <td className="px-3 py-2 text-admin-textMuted text-center">
                   {stu.receiveType || "-"}
                 </td>
 
-                <td className="px-3 py-2 text-admin-textMuted">
+                <td className="px-3 py-2 text-center text-admin-textMuted">
                   {stu.receiveDate ? formatDateTH(stu.receiveDate) : "-"}
                 </td>
 
@@ -170,7 +235,7 @@ export default function StudentsTable({ students, dayCount }) {
                     return (
                       <td
                         key={d}
-                        className="px-3 py-2 text-center text-admin-textMuted"
+                        className="px-3 py-2 h-[90px] text-center text-admin-textMuted "
                       >
                         -
                       </td>
@@ -180,7 +245,7 @@ export default function StudentsTable({ students, dayCount }) {
                   const hasSignature = !!stu.checkins?.[d]?.signatureUrl;
 
                   return (
-                    <td key={d} className="px-3 py-2 text-center">
+                    <td key={d} className="px-3 py-2 h-[90px] text-center">
                       {/* <button
                         type="button"
                         onClick={() => hasSignature && openPreview(stu, d)}
