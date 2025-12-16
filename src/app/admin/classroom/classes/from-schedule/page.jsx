@@ -238,7 +238,7 @@ export default function FromSchedulePage() {
                 selectedInst.name ||
                 selectedInst.display_name ||
                 selectedInst.fullname ||
-                selectedInst.instructor_name ||
+                selectedInst.name_th ||
                 "",
               email: selectedInst.email || selectedInst.instructor_email || "",
             },
@@ -487,7 +487,7 @@ export default function FromSchedulePage() {
                       t.name ||
                       t.display_name ||
                       t.fullname ||
-                      t.instructor_name ||
+                      t.name_th ||
                       id;
                     return (
                       <option key={id} value={id}>
