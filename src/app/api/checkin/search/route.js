@@ -139,6 +139,7 @@ export async function POST(req) {
       classInfo: {
         _id: classDoc._id,
         title: classDoc.title || classDoc.courseName || "",
+        courseName: classDoc.courseName || classDoc.title || "",
         room: classDoc.room || "",
         date: classDoc.date || null,
         dayCount,

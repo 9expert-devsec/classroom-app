@@ -3,7 +3,7 @@
 export default function SearchResultCard({ student, onClick }) {
   const { thaiName, engName, company, classInfo } = student || {};
 
-  const classTitle = classInfo?.title || "";
+  const classTitle = classInfo?.courseName || "";
   const room = classInfo?.room || "";
   const startDate = classInfo?.date ? new Date(classInfo.date) : null;
 
