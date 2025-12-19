@@ -55,6 +55,8 @@ export default function ClassDetailPage() {
     dayCount: 1,
   });
 
+  const [instructors, setInstructors] = useState([]);
+
   const [actionsOpen, setActionsOpen] = useState(false);
 
   useEffect(() => {
@@ -107,6 +109,26 @@ export default function ClassDetailPage() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    async function loadInstructors() {
+      try {
+        const res = await fetch("/api/admin/ai/instructors");
+        const data = await res.json();
+        const rows =
+          data.items ||
+          data.data ||
+          data.instructors ||
+          (Array.isArray(data) ? data : []);
+        setInstructors(rows || []);
+      } catch (err) {
+        console.error(err);
+        setInstructors([]);
+      }
+    }
+
+    loadInstructors();
+  }, []);
 
   // ===== ค่าอนุพันธ์จาก classData =====
   const students = useMemo(() => {
@@ -184,12 +206,15 @@ export default function ClassDetailPage() {
     classData.teacherList ||
     null;
 
-  const trainerName = Array.isArray(trainerRaw)
-    ? trainerRaw
-        .map((t) => (typeof t === "string" ? t : t.name || t.fullname || ""))
-        .filter(Boolean)
-        .join(", ")
-    : classData.trainerName || classData.trainer || "";
+  const trainerName =
+    classData.trainerName ||
+    classData.trainer ||
+    (Array.isArray(trainerRaw)
+      ? trainerRaw
+          .map((t) => (typeof t === "string" ? t : t.name || t.fullname || ""))
+          .filter(Boolean)
+          .at(0) || ""
+      : "");
 
   const studentsCount = students.length;
   const lateCount = students.filter((s) => s.late).length;
@@ -274,6 +299,16 @@ export default function ClassDetailPage() {
               trainingChannel: payload.channel,
               trainerName: payload.trainerName,
               trainer: payload.trainerName,
+              // ✅ ทำให้ trainerRaw ไม่ค้างของเดิม
+              instructors: payload.trainerName
+                ? [{ name: payload.trainerName }]
+                : prev.instructors,
+              trainers: payload.trainerName
+                ? [payload.trainerName]
+                : prev.trainers,
+              teacherList: payload.trainerName
+                ? [payload.trainerName]
+                : prev.teacherList,
               date: payload.date
                 ? new Date(payload.date).toISOString()
                 : prev.date,
@@ -642,6 +677,66 @@ export default function ClassDetailPage() {
                 <label className="block text-[11px] text-admin-textMuted">
                   วิทยากร
                 </label>
+
+                <select
+                  className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={editForm.trainerName || ""}
+                  onChange={(e) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      trainerName: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">-- เลือกวิทยากร --</option>
+
+                  {instructors.map((t, idx) => {
+                    const name =
+                      t?.name ||
+                      t?.display_name ||
+                      t?.fullname ||
+                      t?.name_th ||
+                      (typeof t === "string" ? t : "") ||
+                      "";
+
+                    if (!name) return null;
+
+                    return (
+                      <option key={`${name}-${idx}`} value={name}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+                {/* <label className="block">
+                <span className="text-admin-text">อาจารย์ผู้สอน</span>
+                <select
+                  className="mt-1 w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={instructorId}
+                  onChange={(e) => setInstructorId(e.target.value)}
+                >
+                  <option value="">-- เลือกอาจารย์ --</option>
+                  {instructors.map((t) => {
+                    const id =
+                      t._id || t.instructor_id || t.code || t.email || "";
+                    const name =
+                      t.name ||
+                      t.display_name ||
+                      t.fullname ||
+                      t.name_th ||
+                      id;
+                    return (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+
+                <label className="block text-[11px] text-admin-textMuted">
+                  วิทยากร
+                </label>
                 <input
                   className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
                   value={editForm.trainerName}
@@ -651,7 +746,7 @@ export default function ClassDetailPage() {
                       trainerName: e.target.value,
                     }))
                   }
-                />
+                /> */}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
