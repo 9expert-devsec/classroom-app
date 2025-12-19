@@ -353,17 +353,17 @@ export default function ClassesListClient({ initialClasses, total }) {
           /> */}
         </div>
       </div>
-
-      {/* Table */}
-      <table className="min-w-full text-base sm:text-sm">
-        <thead className="bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
+<div className="w-full overflow-auto max-h-[calc(100vh-240px)]">
+{/* Table */}
+      <table className="w-full table-fixed text-base sm:text-sm">
+        <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
           <tr>
-            <th className="px-3 py-2 text-left">วันที่อบรม</th>
-            <th className="px-3 py-2 text-left">ชื่อ CLASS</th>
-            <th className="px-3 py-2 text-center">ห้องอบรม</th>
-            <th className="px-3 py-2 text-left">ผู้สอน</th>
-            <th className="px-3 py-2 text-center">จำนวนนักเรียน</th>
-            <th className="px-3 py-2 text-right">จัดการ</th>
+            <th className="w-[200px] px-3 py-2 text-left">วันที่อบรม</th>
+            <th className=" px-3 py-2 text-left">ชื่อ CLASS</th>
+            <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
+            <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
+            <th className="w-[150px] px-3 py-2 text-center">จำนวนนักเรียน</th>
+            <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
           </tr>
         </thead>
         <tbody>
@@ -500,6 +500,8 @@ export default function ClassesListClient({ initialClasses, total }) {
           )}
         </tbody>
       </table>
+</div>
+      
 
       {/* Pagination */}
       {filtered.length > pageSize && (
