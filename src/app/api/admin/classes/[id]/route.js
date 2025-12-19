@@ -47,6 +47,8 @@ export async function PATCH(req, { params }) {
   if (body.trainerName !== undefined) {
     update.trainerName = body.trainerName;
     update.trainer = body.trainerName;
+
+    update.instructors = body.trainerName ? [{ name: body.trainerName, email: "" }] : [];
   }
 
   if (body.date !== undefined) {
