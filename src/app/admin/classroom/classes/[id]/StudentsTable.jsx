@@ -183,8 +183,12 @@ export default function StudentsTable({ students, dayCount }) {
               <th className="px-3 py-2 text-left w-[200px]">ชื่อ - สกุล</th>
               <th className="px-3 py-2 text-left w-[160px]">บริษัท</th>
               <th className="px-3 py-2 text-left w-[130px]">เลขใบเสร็จ</th>
-              <th className="px-3 py-2 text-center w-[130px]">ช่องทางรับเอกสาร</th>
-              <th className="px-3 py-2 text-center w-[120px]">วันที่รับเอกสาร</th>
+              <th className="px-3 py-2 text-center w-[130px]">
+                ช่องทางรับเอกสาร
+              </th>
+              <th className="px-3 py-2 text-center w-[120px]">
+                วันที่รับเอกสาร
+              </th>
               {days.map((d) => (
                 <th key={d} className="px-3 py-2 text-center min-w-[150px]">
                   DAY {d}
