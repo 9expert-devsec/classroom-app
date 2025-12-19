@@ -20,7 +20,7 @@ export default function SyncStudentsButton({ classId }) {
       className="px-3 py-1.5"
       onClick={handleGoImport}
     >
-      ดึงรายชื่อจากระบบลงทะเบียน
+      นำเข้ารายชื่อ
     </PrimaryButton>
   );
 }
