@@ -7,6 +7,12 @@ import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
 import { ChevronLeft, MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 /* ===== helpers เล็กน้อยไว้ format ข้อมูล ===== */
 
@@ -296,7 +302,7 @@ export default function ClassDetailPage() {
               room: payload.room,
               roomName: payload.room,
               //channel: payload.channel,
-              trainingChannel: payload.channel,
+              // trainingChannel: payload.channel,
               trainerName: payload.trainerName,
               trainer: payload.trainerName,
               // ✅ ทำให้ trainerRaw ไม่ค้างของเดิม
@@ -394,50 +400,39 @@ export default function ClassDetailPage() {
           />
 
           {/* ⋮ Kebab menu: แก้ไข + ลบ */}
-          <div className="relative" data-classdetail-actions>
-            <button
-              type="button"
-              onClick={() => setActionsOpen((o) => !o)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full
                  border border-admin-border bg-white text-admin-text
                  hover:bg-admin-surfaceMuted"
-              aria-label="เมนูการจัดการ Class"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-
-            {actionsOpen && (
-              <div
-                className="absolute right-0 mt-1 w-40 rounded-xl bg-white py-1 text-xs
-                   shadow-lg ring-1 ring-black/5 overflow-hidden"
+                aria-label="เมนูการจัดการ Class"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    openEditModal();
-                  }}
-                  className="block w-full px-3 py-1.5 text-left text-admin-text
-                     hover:bg-admin-surfaceMuted"
-                >
-                  แก้ไขข้อมูล Class
-                </button>
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    handleDeleteClass();
-                  }}
-                  disabled={deleting}
-                  className="block w-full px-3 py-1.5 text-left text-red-600
-                     hover:bg-red-50 disabled:opacity-60"
-                >
-                  {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
-                </button>
-              </div>
-            )}
-          </div>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+            >
+              <DropdownMenuItem onSelect={openEditModal}>
+                แก้ไขข้อมูล Class
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onSelect={handleDeleteClass}
+                disabled={deleting}
+              >
+                {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          
         </div>
       </div>
 

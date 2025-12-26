@@ -3,6 +3,12 @@
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 function formatThaiDate(d) {
   const date = new Date(d);
@@ -353,55 +359,61 @@ export default function ClassesListClient({ initialClasses, total }) {
           /> */}
         </div>
       </div>
-<div className="w-full overflow-auto max-h-[calc(100vh-240px)]">
-{/* Table */}
-      <table className="w-full table-fixed text-base sm:text-sm">
-        <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
-          <tr>
-            <th className="w-[200px] px-3 py-2 text-left">วันที่อบรม</th>
-            <th className=" px-3 py-2 text-left">ชื่อ CLASS</th>
-            <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
-            <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
-            <th className="w-[150px] px-3 py-2 text-center">จำนวนนักเรียน</th>
-            <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map((cls) => {
-            const id = cls._id || cls.id;
-            const studentCount =
-              cls.studentsCount ??
-              cls.studentCount ??
-              cls.students_count ??
-              (Array.isArray(cls.students) ? cls.students.length : 0);
+      <div className="w-full overflow-auto max-h-[calc(100vh-240px)]">
+        {/* Table */}
+        <table className="w-full table-fixed text-base sm:text-sm">
+          <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
+            <tr>
+              <th className="w-[200px] px-3 py-2 text-left">วันที่อบรม</th>
+              <th className=" px-3 py-2 text-left">ชื่อ CLASS</th>
+              <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
+              <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
+              <th className="w-[150px] px-3 py-2 text-center">จำนวนนักเรียน</th>
+              <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((cls) => {
+              const id = cls._id || cls.id;
+              const studentCount =
+                cls.studentsCount ??
+                cls.studentCount ??
+                cls.students_count ??
+                (Array.isArray(cls.students) ? cls.students.length : 0);
 
-            const room = cls.room || cls.roomName || "-";
+              const room = cls.room || cls.roomName || "-";
 
-            const instructor =
-              cls.instructors && cls.instructors.length > 0
-                ? cls.instructors[0].name || cls.instructors[0].fullname || "-"
-                : "-";
+              const instructor =
+                cls.instructors && cls.instructors.length > 0
+                  ? cls.instructors[0].name ||
+                    cls.instructors[0].fullname ||
+                    "-"
+                  : "-";
 
-            return (
-              <tr
-                key={id}
-                className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-              >
-                <td className="px-3 py-2 text-admin-textMuted">
-                  {formatDateRange(cls)}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="font-medium">
-                    {cls.title || "ไม่ตั้งชื่อ"}
-                  </div>
-                  <div className="text-[11px] text-admin-textMuted">
-                    {cls.courseCode || cls.course_id || ""}
-                  </div>
-                </td>
-                <td className="px-3 py-2 text-admin-textMuted text-center">{room}</td>
-                <td className="px-3 py-2 text-admin-textMuted">{instructor}</td>
-                <td className="px-3 py-2 text-center">{studentCount}</td>
-                {/* <td className="px-3 py-2 text-right">
+              return (
+                <tr
+                  key={id}
+                  className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                >
+                  <td className="px-3 py-2 text-admin-textMuted">
+                    {formatDateRange(cls)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">
+                      {cls.title || "ไม่ตั้งชื่อ"}
+                    </div>
+                    <div className="text-[11px] text-admin-textMuted">
+                      {cls.courseCode || cls.course_id || ""}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-admin-textMuted text-center">
+                    {room}
+                  </td>
+                  <td className="px-3 py-2 text-admin-textMuted">
+                    {instructor}
+                  </td>
+                  <td className="px-3 py-2 text-center">{studentCount}</td>
+                  {/* <td className="px-3 py-2 text-right">
                   <div className="flex justify-end gap-2">
                     <Link
                       href={`/admin/classroom/classes/${id}`}
@@ -426,82 +438,62 @@ export default function ClassesListClient({ initialClasses, total }) {
                     </button>
                   </div>
                 </td> */}
-                <td className="px-3 py-2 text-right">
-                  <div className="relative inline-block text-left" data-class-actions-menu>
-                    {/* ปุ่ม kebab */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setOpenMenuId((prev) => (prev === id ? null : id))
-                      }
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full
-                 border border-admin-border bg-white text-admin-text
-                 hover:bg-admin-surfaceMuted focus:outline-none"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
-
-                    {/* เมนูที่เด้งออกมา */}
-                    {openMenuId === id && (
-                      <div
-                        className="absolute right-0 z-10 mt-1 w-32 origin-top-right
-                   rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5 overflow-hidden"
-                      >
-                        <Link
-                          href={`/admin/classroom/classes/${id}`}
-                          className="block w-full px-3 py-1.5 text-left text-admin-text
-                     hover:bg-admin-surfaceMuted"
-                          onClick={() => setOpenMenuId(null)}
-                        >
-                          เปิดดู
-                        </Link>
-
+                  <td className="px-3 py-2 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
                         <button
                           type="button"
-                          onClick={() => {
-                            setOpenMenuId(null);
-                            openEditModal(cls);
-                          }}
-                          className="block w-full px-3 py-1.5 text-left text-admin-text
-                     hover:bg-admin-surfaceMuted"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full
+                   border border-admin-border bg-white text-admin-text
+                   hover:bg-admin-surfaceMuted focus:outline-none"
+                          aria-label="เมนูการจัดการ"
                         >
-                          แก้ไข
+                          <MoreVertical className="h-4 w-4" />
                         </button>
+                      </DropdownMenuTrigger>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpenMenuId(null);
-                            handleDelete(cls);
-                          }}
+                      <DropdownMenuContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+                      >
+                        <DropdownMenuItem asChild>
+                          <Link href={`/admin/classroom/classes/${id}`}>
+                            เปิดดู
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onSelect={() => openEditModal(cls)}>
+                          แก้ไข
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600"
+                          onSelect={() => handleDelete(cls)}
                           disabled={deletingId === id}
-                          className="block w-full px-3 py-1.5 text-left text-red-600
-                     hover:bg-red-50 disabled:opacity-60"
                         >
                           {deletingId === id ? "กำลังลบ..." : "ลบ"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {visible.length === 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-3 py-4 text-center text-admin-textMuted"
+                >
+                  ยังไม่มี Class ตรงตามเงื่อนไข
                 </td>
               </tr>
-            );
-          })}
-
-          {visible.length === 0 && (
-            <tr>
-              <td
-                colSpan={6}
-                className="px-3 py-4 text-center text-admin-textMuted"
-              >
-                ยังไม่มี Class ตรงตามเงื่อนไข
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-</div>
-      
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* Pagination */}
       {filtered.length > pageSize && (
