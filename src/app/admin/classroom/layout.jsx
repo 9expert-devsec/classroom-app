@@ -57,7 +57,7 @@ const NAV = [
     children: [
       {
         label: "Food Menu",
-        href: "/admin/classroom/food",
+        href: "/admin/classroom/food/restaurants",
         icon: UtensilsCrossed,
       },
       {

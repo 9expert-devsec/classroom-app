@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import { redirect } from "next/navigation";
 
 /** แปลงข้อความหลายบรรทัด -> array ของ string */
 function parseLines(text) {
@@ -16,6 +17,7 @@ function parseLines(text) {
 }
 
 export default function FoodAdminPage() {
+  redirect("/admin/classroom/food/restaurants");
   // ร้านอาหาร
   const [restaurants, setRestaurants] = useState([]);
   const [restName, setRestName] = useState("");
