@@ -426,7 +426,7 @@ export default function FromSchedulePage() {
       {/* ---------- Modal ---------- */}
       {openModal && (
         <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-lg rounded-2xl bg-admin-surface p-5 shadow-card">
+          <div className="w-full max-w-lg rounded-2xl bg-admin-surface p-5 shadow-slate-950/20">
             <h2 className="text-lg font-semibold">ยืนยันการสร้าง Class</h2>
 
             {currentSchedule && (
