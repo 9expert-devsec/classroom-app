@@ -10,8 +10,8 @@ export default function CheckinLayout({ children }) {
         </header>
 
         {/* ✅ เลื่อนเฉพาะ main */}
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="rounded-3xl bg-front-surface shadow-card">
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <div className="h-full min-h-0 rounded-3xl bg-front-surface shadow-card">
             {children}
           </div>
         </main>

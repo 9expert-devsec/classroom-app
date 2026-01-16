@@ -128,13 +128,13 @@ export default function Page() {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <StepHeader currentStep={1} />
 
-      <div className="px-6 py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
         <h2 className="text-lg font-semibold">Step 1: ค้นหาชื่อ</h2>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4 shrink-0">
           <TextInput
             placeholder="ค้นหาชื่อหรืออีเมล (เช่น Pir, Sungsuwan, gmail)"
             value={keyword}
@@ -146,7 +146,7 @@ export default function Page() {
           </PrimaryButton>
         </form>
 
-        <div className="mt-6 space-y-2">
+        <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 pb-2">
           {keyword && !loading && results.length === 0 && (
             <p className="text-front-textMuted">
               ไม่พบชื่อในรอบอบรมของวันนี้ (ตรวจสอบการสะกดชื่อหรืออีเมลอีกครั้ง)
