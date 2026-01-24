@@ -1,21 +1,25 @@
-// src/app/classroom/checkin/sign/page.jsx
+// src/app/classroom/checkin/sign/CheckinSignClient.jsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import SignaturePad from "../../../../components/shared/SignaturePad";
 
-export default function SignPage() {
-  const searchParams = useSearchParams();
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? v[0] || "" : v || "";
+}
+
+export default function SignPage({ searchParams = {} }) {
   const router = useRouter();
 
   const studentId =
-    searchParams.get("studentId") || searchParams.get("sid");
+    pick(searchParams, "studentId") || pick(searchParams, "sid");
   const classId =
-    searchParams.get("classId") || searchParams.get("classid");
-  const day = Number(searchParams.get("day") || 1);
+    pick(searchParams, "classId") || pick(searchParams, "classid");
+  const day = Number(pick(searchParams, "day") || 1);
 
   const [signature, setSignature] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -152,9 +156,7 @@ export default function SignPage() {
               </div>
               <div>
                 องค์กร:{" "}
-                <span className="font-medium">
-                  {user?.company || "-"}
-                </span>
+                <span className="font-medium">{user?.company || "-"}</span>
               </div>
             </div>
           </div>
@@ -176,16 +178,12 @@ export default function SignPage() {
                   วันนี้คือ:{" "}
                   <span className="font-medium">
                     {classInfo.dayLabel || ""}{" "}
-                    {classInfo.dayDate
-                      ? `(${classInfo.dayDate})`
-                      : ""}
+                    {classInfo.dayDate ? `(${classInfo.dayDate})` : ""}
                   </span>
                 </div>
                 <div>
                   ห้องอบรม:{" "}
-                  <span className="font-medium">
-                    {classInfo.room || "-"}
-                  </span>
+                  <span className="font-medium">{classInfo.room || "-"}</span>
                 </div>
               </div>
             ) : (
@@ -210,9 +208,7 @@ export default function SignPage() {
                 </div>
                 <div>
                   เมนู:{" "}
-                  <span className="font-medium">
-                    {food.menuName || "-"}
-                  </span>
+                  <span className="font-medium">{food.menuName || "-"}</span>
                 </div>
                 {food.addons?.length > 0 && (
                   <div>
@@ -225,15 +221,12 @@ export default function SignPage() {
                 {food.drink && (
                   <div>
                     เครื่องดื่ม:{" "}
-                    <span className="font-medium">
-                      {food.drink}
-                    </span>
+                    <span className="font-medium">{food.drink}</span>
                   </div>
                 )}
                 {food.note && (
                   <div>
-                    หมายเหตุ:{" "}
-                    <span className="font-medium">{food.note}</span>
+                    หมายเหตุ: <span className="font-medium">{food.note}</span>
                   </div>
                 )}
               </div>
@@ -256,7 +249,7 @@ export default function SignPage() {
             type="button"
             onClick={() =>
               router.push(
-                `/classroom/checkin/food?studentId=${studentId}&classId=${classId}&day=${day}`
+                `/classroom/checkin/food?studentId=${studentId}&classId=${classId}&day=${day}`,
               )
             }
             className="flex-1 rounded-2xl border border-brand-border bg-white px-4 py-2 text-sm font-medium text-front-text hover:bg-front-bgSoft"

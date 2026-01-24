@@ -1,13 +1,12 @@
-// src/app/classroom/checkin/food/page.jsx
 import { Suspense } from "react";
 import CheckinFoodClient from "./CheckinFoodClient";
 
-export const dynamic = "force-dynamic"; // กัน prerender ง่ายๆ ด้วย
+export const dynamic = "force-dynamic";
 
-export default function Page() {
+export default function Page({ searchParams }) {
   return (
     <Suspense fallback={null}>
-      <CheckinFoodClient />
+      <CheckinFoodClient searchParams={searchParams || {}} />
     </Suspense>
   );
 }

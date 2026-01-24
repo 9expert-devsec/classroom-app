@@ -1,12 +1,17 @@
 // src/app/classroom/checkin/CheckinClient.jsx
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import StepHeader from "./StepHeader";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import SearchResultCard from "./SearchResultCard";
+
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? (v[0] || "") : (v || "");
+}
 
 function toYMD(d) {
   const date = new Date(d);
@@ -36,12 +41,16 @@ function resolveTodayDay(classInfo) {
   return diff;
 }
 
-export default function Page() {
-  const searchParams = useSearchParams();
+export default function CheckinClient({ searchParams = {} }) {
   const router = useRouter();
 
-  const classIdQS =
-    searchParams.get("classId") || searchParams.get("classid") || "";
+  const classIdQS = useMemo(() => {
+    return (
+      pick(searchParams, "classId") ||
+      pick(searchParams, "classid") ||
+      ""
+    );
+  }, [searchParams]);
 
   const [keyword, setKeyword] = useState("");
   const [results, setResults] = useState([]);

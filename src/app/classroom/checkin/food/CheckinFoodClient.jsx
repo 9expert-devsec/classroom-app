@@ -4,11 +4,16 @@
 import { useEffect, useMemo, useState } from "react";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import RestaurantCard from "./RestaurantCard";
 import MenuCard from "./MenuCard";
+
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? (v[0] || "") : (v || "");
+}
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -162,13 +167,12 @@ function DrinkCard2({ item, active, onClick }) {
   );
 }
 
-export default function FoodPage() {
-  const searchParams = useSearchParams();
+export default function FoodPage({ searchParams = {} }) {
   const router = useRouter();
 
-  const studentId = searchParams.get("studentId") || searchParams.get("sid");
-  const classId = searchParams.get("classId") || searchParams.get("classid");
-  const day = Number(searchParams.get("day") || 1);
+  const studentId = pick(searchParams, "studentId") || pick(searchParams, "sid");
+  const classId = pick(searchParams, "classId") || pick(searchParams, "classid");
+  const day = Number(pick(searchParams, "day") || 1);
 
   const [restaurants, setRestaurants] = useState([]);
   const [restaurant, setRestaurant] = useState(null);

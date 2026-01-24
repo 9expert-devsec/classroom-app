@@ -1,15 +1,19 @@
-// src/app/classroom/checkin/success/page.jsx
+// src/app/classroom/checkin/success/CheckinSuccessClient.jsx
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
-export default function CheckinSuccessPage() {
-  const searchParams = useSearchParams();
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? (v[0] || "") : (v || "");
+}
+
+export default function CheckinSuccessPage({ searchParams = {} }) {
   const router = useRouter();
-  const sid = searchParams.get("sid");
+  const sid = pick(searchParams, "sid");
 
   const [countdown, setCountdown] = useState(5); // ⬅️ เริ่ม 5 วินาที
 

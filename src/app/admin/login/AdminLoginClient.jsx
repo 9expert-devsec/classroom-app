@@ -2,12 +2,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-export default function AdminLoginPage() {
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? (v[0] || "") : (v || "");
+}
+
+export default function AdminLoginPage({ searchParams = {} }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/admin/classroom";
+  const redirect = pick(searchParams, "redirect") || "/admin/classroom";
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

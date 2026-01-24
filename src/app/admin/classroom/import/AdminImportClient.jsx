@@ -1,13 +1,17 @@
-// src/app/admin/classroom/import/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import UploadBox from "./UploadBox";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 function clean(s) {
   return String(s ?? "").trim();
+}
+
+function pick(sp, key) {
+  const v = sp?.[key];
+  return Array.isArray(v) ? v[0] || "" : v || "";
 }
 
 function pickName(row) {
@@ -32,16 +36,26 @@ function normalizePreviewRows(rows) {
   return mapped.filter((r) => Object.values(r).some((v) => clean(v) !== ""));
 }
 
-export default function ImportPage() {
+export default function ImportPage({ searchParams = {} }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialClassId = searchParams.get("classId") || "";
+
+  const initialClassId = useMemo(
+    () => pick(searchParams, "classId") || "",
+    [searchParams],
+  );
 
   const [csvData, setCsvData] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState(initialClassId);
+
+  // ถ้า query classId เปลี่ยน (เช่น user เปิดลิงก์ใหม่) ให้ sync เข้าสเตท
+  useEffect(() => {
+    if (initialClassId && initialClassId !== classId)
+      setClassId(initialClassId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialClassId]);
 
   // โหลดรายการ Class
   useEffect(() => {
@@ -63,7 +77,7 @@ export default function ImportPage() {
     const total = previewRows.length;
     const missingName = previewRows.reduce(
       (acc, r) => (r.name ? acc : acc + 1),
-      0
+      0,
     );
     return { total, missingName };
   }, [previewRows]);
@@ -71,7 +85,7 @@ export default function ImportPage() {
   const previewLimit = 20;
   const previewVisible = useMemo(
     () => previewRows.slice(0, previewLimit),
-    [previewRows]
+    [previewRows],
   );
 
   async function handleImport() {

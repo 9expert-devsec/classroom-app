@@ -1,13 +1,12 @@
-// src/app/classroom/checkin/page.jsx
 import { Suspense } from "react";
 import CheckinClient from "./CheckinClient";
 
-export const dynamic = "force-dynamic"; // กัน prerender ง่ายๆ ด้วย
+export const dynamic = "force-dynamic";
 
-export default function Page() {
+export default function Page({ searchParams }) {
   return (
     <Suspense fallback={null}>
-      <CheckinClient />
+      <CheckinClient searchParams={searchParams || {}} />
     </Suspense>
   );
 }

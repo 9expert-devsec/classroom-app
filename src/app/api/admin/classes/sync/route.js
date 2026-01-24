@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Class from "@/models/Class";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /* ---------- helpers ---------- */
 
 function getDateObj(x) {
@@ -56,17 +60,15 @@ function pickChannelPrefix(sc) {
 }
 
 function buildTitlePrefix(sc) {
-  const type = pickTypePrefix(sc); // CR/H
-  const channel = pickChannelPrefix(sc); // PUB
+  const type = pickTypePrefix(sc);
+  const channel = pickChannelPrefix(sc);
 
   const courseCode =
     sc?.course?.course_id || sc?.course_id || sc?.courseCode || sc?.code || "";
   const safeCode = normalizeCourseCode(courseCode);
 
-  // ในไฟล์นี้ schedule ใช้ sc.date (จากโค้ดเดิม)
   const dt = toDDMMYY_BE(sc?.date);
 
-  // CR-PUB-MSE-L6-23-02-69
   return `${type}-${channel}-${safeCode}-${dt}`;
 }
 
@@ -78,8 +80,11 @@ function parseRunFromTitle(title) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function nextRunNumber(titlePrefix) {
-  // ดึง class ที่ขึ้นต้นด้วย prefix- แล้วหา run max+1
   const rows = await Class.find(
     { title: { $regex: `^${escapeRegExp(titlePrefix)}-` } },
     { title: 1 },
@@ -93,10 +98,6 @@ async function nextRunNumber(titlePrefix) {
     if (run && run > maxRun) maxRun = run;
   }
   return maxRun + 1 || 1;
-}
-
-function escapeRegExp(s) {
-  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /* ---------- Route ---------- */
@@ -120,7 +121,9 @@ export async function GET() {
   try {
     const res = await fetch(API_URL, {
       headers: { "x-api-key": API_KEY },
-      cache: "no-store",
+      // ✅ ห้ามใช้ cache:"no-store" ที่นี่
+      // ✅ ใช้ revalidate 0 แทน
+      next: { revalidate: 0 },
     });
 
     const data = await res.json().catch(() => ({}));
@@ -133,7 +136,6 @@ export async function GET() {
 
     const items = Array.isArray(data.items) ? data.items : [];
 
-    // (เดิม) filter เฉพาะ "พรุ่งนี้"
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
@@ -141,7 +143,6 @@ export async function GET() {
 
     const tomorrowSchedules = items
       .filter((item) => String(item?.date || "").split("T")[0] === tomorrowDate)
-      // ✅ sort ใกล้ -> ไกล
       .sort((a, b) => {
         const da = getDateObj(a?.date)?.getTime() || 0;
         const db = getDateObj(b?.date)?.getTime() || 0;
@@ -151,11 +152,9 @@ export async function GET() {
     const created = [];
 
     for (const sc of tomorrowSchedules) {
-      // กันซ้ำ
       const exists = await Class.findOne({ scheduleId: sc._id }).lean();
       if (exists) continue;
 
-      // ✅ สร้าง title ตามแพทเทิร์นใหม่ + run
       const prefix = buildTitlePrefix(sc);
       const run = await nextRunNumber(prefix);
       const title = `${prefix}-${run}`;
