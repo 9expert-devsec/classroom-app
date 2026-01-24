@@ -1,6 +1,11 @@
+// src/app/admin/classroom/classes/page.jsx
 import { headers } from "next/headers";
 import Link from "next/link";
 import ClassesListClient from "./ClassesListClient";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 /* --------- helper หา origin ปัจจุบัน --------- */
 async function getOrigin() {
@@ -27,9 +32,8 @@ async function fetchClasses() {
     return { items: [], total: 0 };
   }
 
-  const data = await res.json();
-  const items =
-    data.items || data.data || (Array.isArray(data) ? data : []);
+  const data = await res.json().catch(() => ({}));
+  const items = data.items || data.data || (Array.isArray(data) ? data : []);
   return { items, total: data.total || items.length };
 }
 
@@ -51,7 +55,7 @@ export default async function ClassesPage() {
           {/* ปุ่ม Import จาก schedule */}
           <Link
             href="/admin/classroom/classes/from-schedule"
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2  focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Import Class จาก Schedule
           </Link>

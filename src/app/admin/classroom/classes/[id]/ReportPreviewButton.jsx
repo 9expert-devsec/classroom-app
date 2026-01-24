@@ -4,7 +4,38 @@
 import { useMemo, useState } from "react";
 import SecondaryButton from "@/components/ui/SecondaryButton";
 
-/* ===== helpers ===== */
+/* ================= helpers ================= */
+
+function clean(s) {
+  return String(s ?? "").trim();
+}
+
+function norm(s) {
+  return clean(s).toLowerCase();
+}
+
+function getStudentName(stu) {
+  return (
+    clean(stu?.name) ||
+    clean(stu?.thaiName) ||
+    clean(stu?.engName) ||
+    clean(stu?.nameTH) ||
+    clean(stu?.nameEN) ||
+    "-"
+  );
+}
+
+function getStudentNameEN(stu) {
+  return clean(stu?.nameEN) || clean(stu?.engName) || "";
+}
+
+function shouldShowENLine(stu) {
+  const main = getStudentName(stu);
+  const en = getStudentNameEN(stu);
+  if (!en) return false;
+  if (norm(en) === norm(main)) return false;
+  return true;
+}
 
 function formatDateTH(input) {
   if (!input) return "";
@@ -14,6 +45,20 @@ function formatDateTH(input) {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+function formatDateTimeTH(input) {
+  if (!input) return "";
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: "Asia/Bangkok",
   });
 }
@@ -30,21 +75,212 @@ function formatTimeTH(input) {
   });
 }
 
-function getDayLabel(stu, day) {
-  const checked = stu.checkin?.[`day${day}`];
-  if (!checked) return "";
-  const timeRaw =
-    stu.checkinTimes?.[`day${day}`] || stu.checkins?.[day]?.time || null;
-  const timeLabel = formatTimeTH(timeRaw);
-  return timeLabel ? `✔ ${timeLabel}` : "✔";
+function downloadCsv(csvText, filename) {
+  // ✅ ใส่ BOM กันภาษาไทยเพี้ยนใน Excel
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + csvText], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
-function getStatusLabel(stu) {
-  if (!stu.statusLabel || stu.statusLabel === "-") return "";
-  return stu.statusLabel;
+/* ================= receive (3.1) helpers ================= */
+
+function getReceiveTypeRaw(stu) {
+  return clean(stu?.documentReceiveType) || clean(stu?.receiveType) || "";
 }
 
-/* ========================================= */
+function receiveTypeLabel(raw) {
+  const x = String(raw || "").trim();
+  if (!x) return "-";
+  if (x === "on_class" || x === "on_site") return "มารับ ณ วันอบรม";
+  if (x === "ems") return "ส่งทางไปรษณีย์";
+  return x;
+}
+
+function getReceivedAt(stu) {
+  return stu?.documentReceivedAt || stu?.receiveDate || null;
+}
+
+function getReceiveSignatureUrl(stu) {
+  return (
+    clean(stu?.documentReceiptSigUrl) ||
+    clean(stu?.documentReceiveSigUrl) ||
+    clean(stu?.documentSignatureUrl) ||
+    clean(stu?.documentSigUrl) ||
+    clean(stu?.receiveSignatureUrl) ||
+    clean(stu?.receiveSigUrl) ||
+    clean(stu?.documentReceiptSig?.url) ||
+    clean(stu?.documentReceiveSig?.url) ||
+    clean(stu?.receiveSig?.url) ||
+    ""
+  );
+}
+
+/* ================= staff receive (3.2) helpers ================= */
+
+function getStaffReceiveUpdatedAt(stu) {
+  return (
+    stu?.staffReceiveUpdatedAt ||
+    stu?.staffReceiveStaffSignedAt ||
+    stu?.staffReceiveCustomerSignedAt ||
+    null
+  );
+}
+
+function getStaffReceiveCustomerSigUrl(stu) {
+  return (
+    clean(stu?.staffReceiveCustomerSigUrl) ||
+    clean(stu?.staffReceiveCustomerSig?.url) ||
+    clean(stu?.staffReceiveCustomerSig?.receiptSig?.url) ||
+    ""
+  );
+}
+
+function getStaffReceiveStaffSigUrl(stu) {
+  return (
+    clean(stu?.staffReceiveStaffSigUrl) ||
+    clean(stu?.staffReceiveStaffSig?.url) ||
+    ""
+  );
+}
+
+function getStaffReceiveItems(stu) {
+  const it = stu?.staffReceiveItems || null;
+  if (!it) return null;
+  return {
+    check: !!it.check,
+    withholding: !!it.withholding,
+    other: clean(it.other),
+  };
+}
+
+function staffItemsLabel(items) {
+  if (!items) return "";
+  const parts = [];
+  if (items.check) parts.push("เช็ค");
+  if (items.withholding) parts.push("หัก ณ ที่จ่าย");
+  if (items.other) parts.push(`อื่นๆ: ${items.other}`);
+  return parts.join(" • ");
+}
+
+/* ================= check-in helpers (รองรับหลาย shape) ================= */
+
+function getCheckinInfo(stu, day) {
+  const key = `day${day}`;
+  const byNum = stu?.checkins?.[day];
+  const byStrNum = stu?.checkins?.[String(day)];
+  const byDayKey = stu?.checkins?.[key];
+
+  // ✅ รองรับ API ใหม่ที่ส่ง checkinDaily[]
+  if (Array.isArray(stu?.checkinDaily)) {
+    const found = stu.checkinDaily.find((x) => Number(x.day) === Number(day));
+    if (found && found.checkedIn) {
+      return {
+        signatureUrl: found.signatureUrl,
+        time: found.time,
+        isLate: found.isLate,
+      };
+    }
+  }
+
+  return byNum || byStrNum || byDayKey || null;
+}
+
+function getCheckinChecked(stu, day) {
+  if (Array.isArray(stu?.checkinDaily)) {
+    const found = stu.checkinDaily.find((x) => Number(x.day) === Number(day));
+    return Boolean(found?.checkedIn);
+  }
+  const key = `day${day}`;
+  return Boolean(stu?.checkin?.[key] ?? stu?.checkinStatus?.[key] ?? false);
+}
+
+function getCheckinTimeRaw(stu, day) {
+  const key = `day${day}`;
+  const info = getCheckinInfo(stu, day);
+  return stu?.checkinTimes?.[key] || info?.time || null;
+}
+
+function getCheckinSignatureUrl(stu, day) {
+  const info = getCheckinInfo(stu, day);
+  return clean(info?.signatureUrl) || clean(stu?.signatureUrl) || "";
+}
+
+function getIsLateForDay(stu, day) {
+  const info = getCheckinInfo(stu, day);
+  return Boolean(info?.isLate ?? stu?.isLate ?? stu?.late ?? false);
+}
+
+/* ================= aggregates ================= */
+
+function countCheckedDays(stu, dayCount) {
+  let c = 0;
+  for (let d = 1; d <= (dayCount || 1); d++) {
+    if (getCheckinChecked(stu, d)) c++;
+  }
+  return c;
+}
+
+function countLateDays(stu, dayCount) {
+  let c = 0;
+  for (let d = 1; d <= (dayCount || 1); d++) {
+    if (getCheckinChecked(stu, d) && getIsLateForDay(stu, d)) c++;
+  }
+  return c;
+}
+
+/* ================= print helpers ================= */
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function waitImagesThenPrint(win, timeoutMs = 1500) {
+  try {
+    const doc = win.document;
+    const imgs = Array.from(doc.images || []);
+    if (!imgs.length) {
+      setTimeout(() => win.print(), 50);
+      return;
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setTimeout(() => win.print(), 50);
+    };
+
+    let remaining = imgs.length;
+    const onOne = () => {
+      remaining -= 1;
+      if (remaining <= 0) finish();
+    };
+
+    imgs.forEach((img) => {
+      if (img.complete) return onOne();
+      img.addEventListener("load", onOne, { once: true });
+      img.addEventListener("error", onOne, { once: true });
+    });
+
+    setTimeout(finish, timeoutMs);
+  } catch {
+    setTimeout(() => win.print(), 200);
+  }
+}
+
+/* ================================================= */
 
 export default function ReportPreviewButton({
   students = [],
@@ -52,10 +288,11 @@ export default function ReportPreviewButton({
   classInfo,
 }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("checkin"); // "checkin" | "signature"
 
   const days = useMemo(
     () => Array.from({ length: dayCount || 1 }, (_, i) => i + 1),
-    [dayCount]
+    [dayCount],
   );
 
   const courseTitle =
@@ -79,41 +316,63 @@ export default function ReportPreviewButton({
 
   const studentsCount = students.length;
 
-  /* ========== Export Excel (CSV) ========== */
-  function handleExportExcel() {
+  function openCheckinReport() {
+    setMode("checkin");
+    setOpen(true);
+  }
+
+  function openSignatureReport() {
+    setMode("signature");
+    setOpen(true);
+  }
+
+  /* ================= Export CSV ================= */
+
+  function exportCheckinCsv() {
     if (!students.length) {
       alert("ยังไม่มีรายชื่อนักเรียนสำหรับ Export");
       return;
     }
 
     const headers = [
-      "#",
-      "ชื่อ-สกุล (TH)",
-      "ชื่อ-สกุล (EN)",
+      "ลำดับ",
+      "ชื่อ-สกุล",
       "บริษัท",
-      "เลขใบเสร็จ",
-      "ช่องทางรับเอกสาร",
-      "วันที่รับเอกสาร",
-      ...days.map((d) => `DAY ${d}`),
-      "สถานะสาย",
+      "เลขที่ QT/IV/RP",
+      "เช็กอิน(วัน)",
+      "มาสาย(วัน)",
+      ...days.map((d) => `DAY ${d} เวลา`),
+      ...days.map((d) => `ลายเซ็น DAY ${d} (URL)`),
     ];
 
     const rows = students.map((stu, idx) => {
-      const dayLabels = days.map((d) => getDayLabel(stu, d));
+      const checkedDays = countCheckedDays(stu, dayCount);
+      const lateDays = countLateDays(stu, dayCount);
+      const timeCells = days.map((d) => {
+        if (!getCheckinChecked(stu, d)) return "";
+        const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+        const isLate = getIsLateForDay(stu, d);
+        return `${isLate ? "LATE " : ""}${t || "✓"}`.trim();
+      });
+      const sigCells = days.map((d) => {
+        if (!getCheckinChecked(stu, d)) return "";
+        return getCheckinSignatureUrl(stu, d) || "";
+      });
+
       return [
         idx + 1,
-        stu.nameTH || stu.name || "",
-        stu.nameEN || "",
+        getStudentName(stu),
         stu.company || "",
         stu.paymentRef || "",
-        stu.receiveType || "",
-        stu.receiveDate ? formatDateTH(stu.receiveDate) : "",
-        ...dayLabels,
-        getStatusLabel(stu),
+        checkedDays,
+        lateDays,
+        ...timeCells,
+        ...sigCells,
       ];
     });
 
     const all = [headers, ...rows];
+
     const csv = all
       .map((row) =>
         row
@@ -121,28 +380,148 @@ export default function ReportPreviewButton({
             const text = (cell ?? "").toString().replace(/"/g, '""');
             return `"${text}"`;
           })
-          .join(",")
+          .join(","),
       )
       .join("\r\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-
-    const filename = `class-report_${courseCode || "class"}_${
+    const filename = `รายงานเช็กอิน_${courseCode || "class"}_${
       classCode || ""
     }.csv`;
-
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadCsv(csv, filename);
   }
 
-  /* ========== Print ========== */
-  function handlePrint() {
+  function exportSignatureCsv() {
+    if (!students.length) {
+      alert("ยังไม่มีรายชื่อนักเรียนสำหรับ Export");
+      return;
+    }
+
+    const headers = [
+      "ลำดับ",
+      "ชื่อ-สกุล",
+      "บริษัท",
+      "เลขที่ QT/IV/RP",
+      "ช่องทางรับเอกสาร (3.1)",
+      "วัน-เวลารับเอกสาร (3.1)",
+      "ลายเซ็นรับเอกสาร (3.1) (URL)",
+      "บันทึกเมื่อ (3.2)",
+      "รายการ (3.2)",
+      "ลายเซ็นลูกค้า (3.2) (URL)",
+      "ลายเซ็นจนท. (3.2) (URL)",
+    ];
+
+    const rows = students.map((stu, idx) => {
+      const receiveTypeText = receiveTypeLabel(getReceiveTypeRaw(stu));
+      const receivedAt = getReceivedAt(stu);
+      const receiveSigUrl = getReceiveSignatureUrl(stu);
+
+      const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
+      const staffItemsText = staffItemsLabel(getStaffReceiveItems(stu));
+      const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
+      const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
+
+      return [
+        idx + 1,
+        getStudentName(stu),
+        stu.company || "",
+        stu.paymentRef || "",
+        receiveTypeText || "",
+        receivedAt ? formatDateTimeTH(receivedAt) : "",
+        receiveSigUrl || "",
+        staffUpdatedAt ? formatDateTimeTH(staffUpdatedAt) : "",
+        staffItemsText || "",
+        staffCustomerUrl || "",
+        staffStaffUrl || "",
+      ];
+    });
+
+    const all = [headers, ...rows];
+
+    const csv = all
+      .map((row) =>
+        row
+          .map((cell) => {
+            const text = (cell ?? "").toString().replace(/"/g, '""');
+            return `"${text}"`;
+          })
+          .join(","),
+      )
+      .join("\r\n");
+
+    const filename = `รายงานลายเซ็น_${courseCode || "class"}_${
+      classCode || ""
+    }.csv`;
+    downloadCsv(csv, filename);
+  }
+
+  function handleExportCsv() {
+    if (mode === "signature") exportSignatureCsv();
+    else exportCheckinCsv();
+  }
+
+  /* ================= Print ================= */
+
+  function buildPrintHead({ title, subtitle, generatedAt }) {
+    return `
+      <div class="topline">
+        <div>${escapeHtml(generatedAt)}</div>
+        <div>${escapeHtml(title)}</div>
+      </div>
+      <div class="titleblock">
+        <div class="h1">${escapeHtml(title)}</div>
+        ${subtitle ? `<div class="sub">${escapeHtml(subtitle)}</div>` : ""}
+      </div>
+    `;
+  }
+
+  function basePrintCss() {
+    return `
+      <style>
+        @page { size: A4 portrait; margin: 14mm; }
+        body {
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-size: 12px;
+          color: #111827;
+        }
+        .topline{
+          display:flex;
+          justify-content:space-between;
+          font-size:11px;
+          color:#6b7280;
+          margin-bottom:8px;
+        }
+        .titleblock{ margin-bottom:10px; }
+        .h1{ font-size:18px; font-weight:800; margin:0; }
+        .sub{ margin-top:4px; font-size:12px; color:#374151; }
+        table{ border-collapse:collapse; width:100%; }
+        th, td{ border:1px solid #e5e7eb; padding:5px 6px; vertical-align:top; }
+        th{ background:#f3f4f6; font-size:11px; text-align:center; }
+        td{ font-size:11px; }
+        .right{ text-align:right; }
+        .center{ text-align:center; }
+        .muted{ color:#6b7280; }
+        .badgeLate{ color:#b91c1c; font-weight:800; }
+        .badgeOk{ color:#047857; font-weight:800; }
+        .sigImg{
+          display:block;
+          height:38px;
+          width:120px;
+          object-fit:contain;
+          margin:0 auto;
+        }
+        .sigImgSm{
+          display:block;
+          height:30px;
+          width:100px;
+          object-fit:contain;
+          margin:0 auto;
+        }
+        .nowrap{ white-space:nowrap; }
+      </style>
+    `;
+  }
+
+  function printCheckinReport() {
     const w = window.open("", "_blank");
     if (!w) return;
 
@@ -153,68 +532,78 @@ export default function ReportPreviewButton({
       timeZone: "Asia/Bangkok",
     });
 
-    const headTitle = courseTitle || courseCode || "Class Report";
-    const roomLine = roomName ? `ห้อง ${roomName}` : "";
-    const studentLine = `ผู้เรียนทั้งหมด ${studentsCount} คน`;
+    const title = courseTitle || courseCode || "รายงานเช็กอิน";
+    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด ${
+      studentsCount || 0
+    } คน`;
 
-    const tableHeader = `
+    const thead = `
       <tr>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">#</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">ชื่อ-สกุล (TH)</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">ชื่อ-สกุล (EN)</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">บริษัท</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">เลขใบเสร็จ</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">ช่องทางรับเอกสาร</th>
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">วันที่รับเอกสาร</th>
-        ${days
-          .map(
-            (d) =>
-              `<th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">DAY ${d}</th>`
-          )
-          .join("")}
-        <th style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">สถานะสาย</th>
+        <th style="width:24px;">ลำดับ</th>
+        <th style="text-align:left;">ชื่อ-สกุล</th>
+        <th style="text-align:left;">บริษัท</th>
+        <th class="nowrap">เลขที่ QT/IV/RP</th>
+        <th class="nowrap">เช็กอิน(วัน)</th>
+        <th class="nowrap">มาสาย(วัน)</th>
+        ${days.map((d) => `<th class="nowrap">DAY ${d}</th>`).join("")}
+        ${days.map((d) => `<th class="nowrap">ลายเซ็น DAY ${d}</th>`).join("")}
       </tr>
     `;
 
-    const tableRows = students
+    const rows = students
       .map((stu, idx) => {
+        const name = getStudentName(stu);
+        const nameEn = shouldShowENLine(stu) ? getStudentNameEN(stu) : "";
+        const checkedDays = countCheckedDays(stu, dayCount);
+        const lateDays = countLateDays(stu, dayCount);
+
         const dayCells = days
-          .map(
-            (d) =>
-              `<td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;text-align:center;">${getDayLabel(
-                stu,
-                d
-              )}</td>`
-          )
+          .map((d) => {
+            if (!getCheckinChecked(stu, d)) {
+              return `<td class="center muted">-</td>`;
+            }
+            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+            const isLate = getIsLateForDay(stu, d);
+            const mark = isLate ? "⏰" : "✓";
+            const cls = isLate ? "badgeLate" : "badgeOk";
+            return `<td class="center"><span class="${cls}">${mark}</span>${
+              t ? ` ${escapeHtml(t)}` : ""
+            }</td>`;
+          })
+          .join("");
+
+        const sigCells = days
+          .map((d) => {
+            if (!getCheckinChecked(stu, d)) {
+              return `<td class="center muted">-</td>`;
+            }
+            const url = getCheckinSignatureUrl(stu, d);
+            if (!url) return `<td class="center muted">-</td>`;
+            return `<td class="center"><img class="sigImgSm" src="${escapeHtml(
+              url,
+            )}" alt="sig"/></td>`;
+          })
           .join("");
 
         return `
           <tr>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;text-align:right;">${
-              idx + 1
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.nameTH || stu.name || ""
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.nameEN || ""
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.company || ""
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.paymentRef || ""
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.receiveType || ""
-            }</td>
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${
-              stu.receiveDate ? formatDateTH(stu.receiveDate) : ""
-            }</td>
+            <td class="right">${idx + 1}</td>
+            <td>
+              <div>${escapeHtml(name)}</div>
+              ${
+                nameEn
+                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(
+                      nameEn,
+                    )}</div>`
+                  : ""
+              }
+            </td>
+            <td>${escapeHtml(stu.company || "")}</td>
+            <td class="center">${escapeHtml(stu.paymentRef || "")}</td>
+            <td class="center">${checkedDays}</td>
+            <td class="center">${lateDays}</td>
             ${dayCells}
-            <td style="border:1px solid #ddd;padding:4px 6px;font-size:11px;">${getStatusLabel(
-              stu
-            )}</td>
+            ${sigCells}
           </tr>
         `;
       })
@@ -225,47 +614,14 @@ export default function ReportPreviewButton({
       <html lang="th">
         <head>
           <meta charSet="utf-8" />
-          <title>Class Report</title>
-          <style>
-            body {
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-              font-size: 12px;
-              color: #111827;
-              margin: 20px;
-            }
-            h1 {
-              font-size: 16px;
-              margin: 0 0 4px 0;
-            }
-            .sub {
-              font-size: 12px;
-              margin: 0;
-            }
-            .meta {
-              font-size: 11px;
-              margin: 4px 0 10px 0;
-              color: #6b7280;
-            }
-            table {
-              border-collapse: collapse;
-              width: 100%;
-            }
-          </style>
+          <title>Check-in Report</title>
+          ${basePrintCss()}
         </head>
         <body>
-          <div style="text-align:center;margin-bottom:8px;font-size:11px;color:#6b7280;">
-            ${generatedAt} – Class Report
-          </div>
-
-          <div style="margin-bottom:12px;">
-            <h1>${headTitle}</h1>
-            ${roomLine ? `<p class="sub">${roomLine}</p>` : ""}
-            <p class="sub">${studentLine}</p>
-          </div>
-
+          ${buildPrintHead({ title, subtitle, generatedAt })}
           <table>
-            <thead>${tableHeader}</thead>
-            <tbody>${tableRows}</tbody>
+            <thead>${thead}</thead>
+            <tbody>${rows}</tbody>
           </table>
         </body>
       </html>
@@ -275,28 +631,179 @@ export default function ReportPreviewButton({
     w.document.write(html);
     w.document.close();
     w.focus();
-    w.print();
+
+    // ✅ รอรูปโหลดก่อนพิมพ์
+    waitImagesThenPrint(w, 1800);
   }
 
-  /* ========== UI Preview Modal ========== */
+  function printSignatureReport() {
+    const w = window.open("", "_blank");
+    if (!w) return;
+
+    const now = new Date();
+    const generatedAt = now.toLocaleString("th-TH", {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "Asia/Bangkok",
+    });
+
+    const title = courseTitle || courseCode || "รายงานลายเซ็น";
+    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด ${
+      studentsCount || 0
+    } คน`;
+
+    const thead = `
+      <tr>
+        <th style="width:24px;">ลำดับ</th>
+        <th style="text-align:left;">ชื่อ-สกุล</th>
+        <th style="text-align:left;">บริษัท</th>
+        <th class="nowrap">เลขที่ QT/IV/RP</th>
+
+        <th class="nowrap">ช่องทางรับเอกสาร (3.1)</th>
+        <th class="nowrap">วัน-เวลา (3.1)</th>
+        <th class="nowrap">ลายเซ็นรับเอกสาร (3.1)</th>
+
+        <th class="nowrap">บันทึกเมื่อ (3.2)</th>
+        <th class="nowrap">รายการ (3.2)</th>
+        <th class="nowrap">ลายเซ็นลูกค้า (3.2)</th>
+        <th class="nowrap">ลายเซ็นจนท. (3.2)</th>
+      </tr>
+    `;
+
+    const rows = students
+      .map((stu, idx) => {
+        const name = getStudentName(stu);
+        const nameEn = shouldShowENLine(stu) ? getStudentNameEN(stu) : "";
+
+        const receiveTypeText = receiveTypeLabel(getReceiveTypeRaw(stu));
+        const receivedAt = getReceivedAt(stu);
+        const receiveSigUrl = getReceiveSignatureUrl(stu);
+
+        const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
+        const staffItemsText = staffItemsLabel(getStaffReceiveItems(stu));
+        const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
+        const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
+
+        return `
+          <tr>
+            <td class="right">${idx + 1}</td>
+            <td>
+              <div>${escapeHtml(name)}</div>
+              ${
+                nameEn
+                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(
+                      nameEn,
+                    )}</div>`
+                  : ""
+              }
+            </td>
+            <td>${escapeHtml(stu.company || "")}</td>
+            <td class="center">${escapeHtml(stu.paymentRef || "")}</td>
+
+            <td class="center">${escapeHtml(receiveTypeText || "-")}</td>
+            <td class="center">${
+              receivedAt ? escapeHtml(formatDateTimeTH(receivedAt)) : "-"
+            }</td>
+            <td class="center">${
+              receiveSigUrl
+                ? `<img class="sigImg" src="${escapeHtml(
+                    receiveSigUrl,
+                  )}" alt="sig"/>`
+                : `<span class="muted">-</span>`
+            }</td>
+
+            <td class="center">${
+              staffUpdatedAt
+                ? escapeHtml(formatDateTimeTH(staffUpdatedAt))
+                : "-"
+            }</td>
+            <td class="center">${escapeHtml(staffItemsText || "-")}</td>
+
+            <td class="center">${
+              staffCustomerUrl
+                ? `<img class="sigImg" src="${escapeHtml(
+                    staffCustomerUrl,
+                  )}" alt="sig"/>`
+                : `<span class="muted">-</span>`
+            }</td>
+
+            <td class="center">${
+              staffStaffUrl
+                ? `<img class="sigImg" src="${escapeHtml(
+                    staffStaffUrl,
+                  )}" alt="sig"/>`
+                : `<span class="muted">-</span>`
+            }</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="th">
+        <head>
+          <meta charSet="utf-8" />
+          <title>Signature Report</title>
+          ${basePrintCss()}
+        </head>
+        <body>
+          ${buildPrintHead({ title, subtitle, generatedAt })}
+          <table>
+            <thead>${thead}</thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+
+    // ✅ รอรูปโหลดก่อนพิมพ์
+    waitImagesThenPrint(w, 2200);
+  }
+
+  function handlePrint() {
+    if (mode === "signature") printSignatureReport();
+    else printCheckinReport();
+  }
+
+  /* ================= UI (preview table in modal) ================= */
+
+  const modalTitle =
+    mode === "signature" ? "รายงานลายเซ็น / รับ-ส่งเอกสาร" : "รายงานเช็กอิน";
+
+  const modalTag =
+    mode === "signature"
+      ? "PREVIEW • รายงานลายเซ็น"
+      : "PREVIEW • รายงานเช็กอิน";
+
+  const colSpanCheckin = 6 + days.length + days.length; // base 6 + time days + sig days
+  const colSpanSignature = 11;
 
   return (
     <>
-      {/* <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="rounded-lg border border-admin-border px-3 py-1.5 text-xs text-admin-text hover:bg-admin-surfaceMuted"
-      >
-        ดูตัวอย่างรายงาน / Export
-      </button> */}
+      {/* ✅ แยกปุ่ม preview เป็น 2 ส่วน */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SecondaryButton
+          type="button"
+          className="px-3 py-1.5"
+          onClick={openCheckinReport}
+        >
+          ดูรายงานเช็กอิน / Export
+        </SecondaryButton>
 
-      <SecondaryButton
-        type="button"
-        className="px-3 py-1.5"
-        onClick={() => setOpen(true)}
-      >
-        ดูตัวอย่างรายงาน / Export
-      </SecondaryButton>
+        <SecondaryButton
+          type="button"
+          className="px-3 py-1.5"
+          onClick={openSignatureReport}
+        >
+          ดูรายงานลายเซ็น / Export
+        </SecondaryButton>
+      </div>
 
       {open && (
         <div
@@ -304,17 +811,17 @@ export default function ReportPreviewButton({
           onClick={() => setOpen(false)}
         >
           <div
-            className="max-h-[90vh] w-[95vw] max-w-5xl overflow-auto rounded-2xl bg-white p-4 shadow-xl"
+            className="max-h-[90vh] w-[95vw] max-w-6xl overflow-auto rounded-2xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* header */}
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-admin-textMuted">
-                  PREVIEW รายงานห้องอบรม
+                  {modalTag}
                 </div>
                 <div className="text-sm font-semibold text-admin-text">
-                  {courseTitle || courseCode || "ไม่ระบุชื่อคอร์ส"}
+                  {courseTitle || courseCode || modalTitle}
                 </div>
                 <div className="text-xs text-admin-textMuted">
                   {roomName && <>ห้อง {roomName}</>} • ผู้เรียนทั้งหมด{" "}
@@ -325,18 +832,20 @@ export default function ReportPreviewButton({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleExportExcel}
+                  onClick={handleExportCsv}
                   className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
                 >
-                  Export เป็น Excel
+                  Export CSV (Excel)
                 </button>
+
                 <button
                   type="button"
                   onClick={handlePrint}
                   className="rounded-full border border-admin-border px-4 py-1.5 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
                 >
-                  สั่ง Print
+                  สั่ง Print (มีรูป)
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
@@ -349,94 +858,340 @@ export default function ReportPreviewButton({
 
             {/* table preview */}
             <div className="overflow-auto rounded-xl border border-admin-border">
-              <table className="min-w-full border-collapse text-xs">
-                <thead className="bg-admin-surfaceMuted text-[11px] text-admin-text">
-                  <tr>
-                    <th className="border border-admin-border px-2 py-1 text-center">
-                      #
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      ชื่อ-สกุล (TH)
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      ชื่อ-สกุล (EN)
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      บริษัท
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      เลขใบเสร็จ
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      ช่องทางรับเอกสาร
-                    </th>
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      วันที่รับเอกสาร
-                    </th>
-                    {days.map((d) => (
-                      <th
-                        key={d}
-                        className="border border-admin-border px-2 py-1 text-center"
-                      >
-                        DAY {d}
+              {mode === "checkin" ? (
+                <table className="min-w-full border-collapse text-xs">
+                  <thead className="bg-admin-surfaceMuted text-[11px] text-admin-text">
+                    <tr>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลำดับ
                       </th>
-                    ))}
-                    <th className="border border-admin-border px-2 py-1 text-left">
-                      สถานะสาย
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {students.map((stu, idx) => (
-                    <tr key={stu._id || idx}>
-                      <td className="border border-admin-border px-2 py-1 text-right">
-                        {idx + 1}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.nameTH || stu.name || ""}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.nameEN || ""}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.company || ""}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.paymentRef || ""}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.receiveType || ""}
-                      </td>
-                      <td className="border border-admin-border px-2 py-1">
-                        {stu.receiveDate ? formatDateTH(stu.receiveDate) : "-"}
-                      </td>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        ชื่อ-สกุล
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        บริษัท
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        เลขที่ QT/IV/RP
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        เช็กอิน(วัน)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        มาสาย(วัน)
+                      </th>
+
                       {days.map((d) => (
-                        <td
-                          key={d}
+                        <th
+                          key={`t-${d}`}
                           className="border border-admin-border px-2 py-1 text-center"
                         >
-                          {getDayLabel(stu, d) || "-"}
-                        </td>
+                          DAY {d}
+                        </th>
                       ))}
-                      <td className="border border-admin-border px-2 py-1">
-                        {getStatusLabel(stu) || "-"}
-                      </td>
-                    </tr>
-                  ))}
 
-                  {students.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={7 + days.length + 1}
-                        className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
-                      >
-                        ยังไม่มีรายชื่อนักเรียน
-                      </td>
+                      {/* ✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน */}
+                      {days.map((d) => (
+                        <th
+                          key={`sig-${d}`}
+                          className="border border-admin-border px-2 py-1 text-center"
+                        >
+                          ลายเซ็น DAY {d}
+                        </th>
+                      ))}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+
+                  <tbody>
+                    {students.map((stu, idx) => {
+                      const checkedDays = countCheckedDays(stu, dayCount);
+                      const lateDays = countLateDays(stu, dayCount);
+
+                      return (
+                        <tr key={stu._id || idx}>
+                          <td className="border border-admin-border px-2 py-1 text-right">
+                            {idx + 1}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {getStudentName(stu)}
+                            {shouldShowENLine(stu) && (
+                              <div className="text-[10px] text-admin-textMuted">
+                                {getStudentNameEN(stu)}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {stu.company || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {stu.paymentRef || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {checkedDays}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {lateDays}
+                          </td>
+
+                          {/* DAY time */}
+                          {days.map((d) => {
+                            const checked = getCheckinChecked(stu, d);
+                            if (!checked) {
+                              return (
+                                <td
+                                  key={`t-${d}`}
+                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
+                                >
+                                  -
+                                </td>
+                              );
+                            }
+
+                            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+                            const isLate = getIsLateForDay(stu, d);
+
+                            return (
+                              <td
+                                key={`t-${d}`}
+                                className="border border-admin-border px-2 py-1 text-center"
+                              >
+                                <span
+                                  className={
+                                    isLate
+                                      ? "font-semibold text-red-600"
+                                      : "font-semibold text-emerald-700"
+                                  }
+                                >
+                                  {isLate ? "⏰" : "✓"}
+                                </span>
+                                {t ? ` ${t}` : ""}
+                              </td>
+                            );
+                          })}
+
+                          {/* ✅ DAY signature image */}
+                          {days.map((d) => {
+                            const checked = getCheckinChecked(stu, d);
+                            if (!checked) {
+                              return (
+                                <td
+                                  key={`sig-${d}`}
+                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
+                                >
+                                  -
+                                </td>
+                              );
+                            }
+
+                            const url = getCheckinSignatureUrl(stu, d);
+
+                            return (
+                              <td
+                                key={`sig-${d}`}
+                                className="border border-admin-border px-2 py-1 text-center"
+                              >
+                                {url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={url}
+                                    alt={`signature day ${d}`}
+                                    className="mx-auto h-9 w-[110px] object-contain"
+                                  />
+                                ) : (
+                                  <span className="text-admin-textMuted">
+                                    -
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+
+                    {students.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={colSpanCheckin}
+                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
+                        >
+                          ยังไม่มีรายชื่อนักเรียน
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="min-w-full border-collapse text-xs">
+                  <thead className="bg-admin-surfaceMuted text-[11px] text-admin-text">
+                    <tr>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลำดับ
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        ชื่อ-สกุล
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        บริษัท
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        เลขที่ QT/IV/RP
+                      </th>
+
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ช่องทางรับเอกสาร (3.1)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        วัน-เวลา (3.1)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลายเซ็นรับเอกสาร (3.1)
+                      </th>
+
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        บันทึกเมื่อ (3.2)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        รายการ (3.2)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลายเซ็นลูกค้า (3.2)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลายเซ็นจนท. (3.2)
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {students.map((stu, idx) => {
+                      const receiveTypeText = receiveTypeLabel(
+                        getReceiveTypeRaw(stu),
+                      );
+                      const receivedAt = getReceivedAt(stu);
+                      const receiveSigUrl = getReceiveSignatureUrl(stu);
+
+                      const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
+                      const staffItemsText = staffItemsLabel(
+                        getStaffReceiveItems(stu),
+                      );
+                      const staffCustomerUrl =
+                        getStaffReceiveCustomerSigUrl(stu);
+                      const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
+
+                      return (
+                        <tr key={stu._id || idx}>
+                          <td className="border border-admin-border px-2 py-1 text-right">
+                            {idx + 1}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {getStudentName(stu)}
+                            {shouldShowENLine(stu) && (
+                              <div className="text-[10px] text-admin-textMuted">
+                                {getStudentNameEN(stu)}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {stu.company || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {stu.paymentRef || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {receiveTypeText || "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {receivedAt ? formatDateTimeTH(receivedAt) : "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {receiveSigUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={receiveSigUrl}
+                                alt="receive sig"
+                                className="mx-auto h-10 w-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-admin-textMuted">-</span>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffUpdatedAt
+                              ? formatDateTimeTH(staffUpdatedAt)
+                              : "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffItemsText || "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffCustomerUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={staffCustomerUrl}
+                                alt="customer sig"
+                                className="mx-auto h-10 w-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-admin-textMuted">-</span>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffStaffUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={staffStaffUrl}
+                                alt="staff sig"
+                                className="mx-auto h-10 w-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-admin-textMuted">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {students.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={colSpanSignature}
+                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
+                        >
+                          ยังไม่มีรายชื่อนักเรียน
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
+
+            {mode === "checkin" ? (
+              <div className="mt-2 text-[11px] text-admin-textMuted">
+                หมายเหตุ: ลายเซ็นจะแสดงใน Print
+                (รอโหลดรูปก่อนสั่งพิมพ์อัตโนมัติ)
+              </div>
+            ) : (
+              <div className="mt-2 text-[11px] text-admin-textMuted">
+                หมายเหตุ: รายงานนี้แสดงลายเซ็น (3.1) และ (3.2) พร้อมรูปใน Print
+              </div>
+            )}
           </div>
         </div>
       )}

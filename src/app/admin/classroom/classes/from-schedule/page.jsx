@@ -1,3 +1,4 @@
+// src/app/admin/classroom/classes/from-schedule/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,10 +21,58 @@ function formatDateTime(dateStr) {
   });
 }
 
-// แปลงเป็นชื่อ class pattern POWER-BI-68-12-03-1
-function buildClassTitle(courseCode, firstDate, index = 1) {
-  const safeCode = (courseCode || "CLASS").toUpperCase().replace(/\s+/g, "-");
+// แปลงวันที่เป็น "YYYY-MM-DD" ตามเวลา local (ไม่ผ่าน ISO/UTC)
+function toLocalYMD(dateInput) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
+// ดึง first date จาก object schedule (ยึด dates[0] ก่อน)
+function getFirstDateRaw(s) {
+  return (
+    (Array.isArray(s.dates) && s.dates[0]) ||
+    s.startDate ||
+    s.start_at ||
+    s.start ||
+    s.date ||
+    null
+  );
+}
+
+// ✅ ใช้ schedule.type จาก API จริง: "hybrid" | "classroom"
+function pickTypePrefix(schedule) {
+  const raw = String(schedule?.type || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "hybrid") return "H";
+  if (raw === "classroom") return "CR";
+  return "CR";
+}
+
+// channel code (ตอนนี้ default PUB)
+function pickChannelPrefix(schedule) {
+  const raw = String(
+    schedule?.channel || schedule?.channelCode || schedule?.audience || "",
+  )
+    .trim()
+    .toUpperCase();
+  return raw || "PUB";
+}
+
+// ทำ course code ให้เป็นรูปแบบ MSE-L6, POWER-BI, ...
+function normalizeCourseCode(code) {
+  return String(code || "CLASS")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-");
+}
+
+// date token: DD-MM-YY (YY = พ.ศ. 2 หลัก) เช่น 23-02-69
+function toDDMMYY_BE(firstDate) {
   let yy = "00";
   let mm = "00";
   let dd = "00";
@@ -38,28 +87,29 @@ function buildClassTitle(courseCode, firstDate, index = 1) {
     }
   }
 
-  const run = String(index || 1);
-  return `${safeCode}-${yy}-${mm}-${dd}-${run}`;
+  return `${dd}-${mm}-${yy}`;
 }
 
-// แปลงวันที่เป็น "YYYY-MM-DD" ตามเวลา local (ไม่ผ่าน ISO/UTC)
-function toLocalYMD(dateInput) {
-  const d = new Date(dateInput);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+// prefix ของ title (ยังไม่ใส่ -RUN)
+// CR-PUB-MSE-L6-23-02-69
+function buildTitlePrefix(schedule, courseCode, firstDate) {
+  const type = pickTypePrefix(schedule); // CR/H
+  const channel = pickChannelPrefix(schedule); // PUB
+  const code = normalizeCourseCode(courseCode); // MSE-L6
+  const ddmmyy = toDDMMYY_BE(firstDate); // 23-02-69
+  return `${type}-${channel}-${code}-${ddmmyy}`;
 }
 
-// ดึง first date จาก object schedule
-function getFirstDateRaw(s) {
-  return (
-    (Array.isArray(s.dates) && s.dates[0]) ||
-    s.startDate ||
-    s.start_at ||
-    s.start
-  );
+function parseRunFromTitle(title) {
+  const s = String(title || "").trim();
+  const parts = s.split("-");
+  const last = parts[parts.length - 1];
+  const n = Number(last);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function safeArr(x) {
+  return Array.isArray(x) ? x : [];
 }
 
 /* ---------- Component ---------- */
@@ -91,8 +141,8 @@ export default function FromSchedulePage() {
       try {
         // คำนวณช่วง: เดือนนี้ + เดือนหน้า
         const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1); // 1 ของเดือนนี้
-        const end = new Date(now.getFullYear(), now.getMonth() + 2, 0); // วันสุดท้ายของเดือนหน้า
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
 
         const toYMD = (d) => d.toISOString().slice(0, 10);
 
@@ -110,7 +160,6 @@ export default function FromSchedulePage() {
           data.schedules ||
           (Array.isArray(data) ? data : []);
 
-        // ❌ ไม่ต้อง filter inRange ซ้ำแล้ว
         setItems(rowsAll || []);
       } catch (err) {
         console.error(err);
@@ -138,54 +187,113 @@ export default function FromSchedulePage() {
     loadInstructors();
   }, []);
 
-  // ====== apply search + filter บน items ======
+  // ====== apply search + filter + SORT ใกล้ -> ไกล ======
   const filteredItems = useMemo(() => {
-    return (items || []).filter((s) => {
-      const firstDateRaw = getFirstDateRaw(s);
-      const d = firstDateRaw ? new Date(firstDateRaw) : null;
-      if (!d || Number.isNaN(d.getTime())) return false;
+    const base = safeArr(items)
+      .filter((s) => {
+        const firstDateRaw = getFirstDateRaw(s);
+        const d = firstDateRaw ? new Date(firstDateRaw) : null;
+        if (!d || Number.isNaN(d.getTime())) return false;
 
-      // filter ช่วงวัน
-      if (fromDate) {
-        const df = new Date(fromDate + "T00:00:00");
-        if (d < df) return false;
-      }
-      if (toDate) {
-        const dt = new Date(toDate + "T23:59:59");
-        if (d > dt) return false;
-      }
+        // filter ช่วงวัน
+        if (fromDate) {
+          const df = new Date(fromDate + "T00:00:00");
+          if (d < df) return false;
+        }
+        if (toDate) {
+          const dt = new Date(toDate + "T23:59:59");
+          if (d > dt) return false;
+        }
 
-      // filter ห้อง
-      if (roomFilter !== "ALL") {
-        const r = (s.room || "").toString().trim();
-        if (r !== roomFilter) return false;
-      }
+        // filter ห้อง (schedule ตัวอย่างไม่มี room ก็ปล่อยผ่าน)
+        if (roomFilter !== "ALL") {
+          const r = (s.room || "").toString().trim();
+          if (r !== roomFilter) return false;
+        }
 
-      // filter search ชื่อคอร์ส / code
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        const courseName =
-          s.course?.course_name || s.course_name || s.title || "";
-        const courseCode =
-          s.course?.course_id || s.course_id || s.courseCode || s.code || "";
-        const haystack = (courseName + " " + courseCode).toLowerCase();
+        // filter search ชื่อคอร์ส / code
+        if (search.trim()) {
+          const q = search.trim().toLowerCase();
+          const courseName =
+            s.course?.course_name || s.course_name || s.title || "";
+          const courseCode =
+            s.course?.course_id || s.course_id || s.courseCode || s.code || "";
+          const haystack = (courseName + " " + courseCode).toLowerCase();
+          if (!haystack.includes(q)) return false;
+        }
 
-        if (!haystack.includes(q)) return false;
-      }
+        return true;
+      })
+      .sort((a, b) => {
+        const da = new Date(getFirstDateRaw(a));
+        const db = new Date(getFirstDateRaw(b));
+        const ta = Number.isNaN(da.getTime()) ? 0 : da.getTime();
+        const tb = Number.isNaN(db.getTime()) ? 0 : db.getTime();
+        return ta - tb; // ใกล้ -> ไกล
+      });
 
-      return true;
-    });
+    return base;
   }, [items, search, roomFilter, fromDate, toDate]);
 
+  async function guessNextRunNumber({ dateYMD, titlePrefix }) {
+    // พยายามดึง class ของวันนั้นเพื่อเดา run = max+1
+    // ถ้า endpoint ไม่รองรับ จะ fallback 1
+    try {
+      const qs = new URLSearchParams({
+        date: dateYMD,
+        titlePrefix,
+      }).toString();
+
+      const res = await fetch(`/api/admin/classes?${qs}`, {
+        method: "GET",
+        headers: { "content-type": "application/json" },
+      });
+
+      if (!res.ok) return 1;
+
+      const data = await res.json().catch(() => ({}));
+      const rows =
+        data.items ||
+        data.data ||
+        data.classes ||
+        (Array.isArray(data) ? data : []);
+
+      const list = safeArr(rows);
+
+      let maxRun = 0;
+      for (const c of list) {
+        const t = String(c?.title || c?.classTitle || "").trim();
+        if (!t) continue;
+        if (!t.startsWith(titlePrefix + "-")) continue;
+        const r = parseRunFromTitle(t);
+        if (r && r > maxRun) maxRun = r;
+      }
+
+      return maxRun + 1 || 1;
+    } catch (e) {
+      return 1;
+    }
+  }
+
   // เมื่อกด "สร้าง Class" บน row ใด
-  function handleOpenModal(s, index) {
+  async function handleOpenModal(s, index) {
     setCurrentSchedule({ ...s, index });
 
     const firstDate = getFirstDateRaw(s);
+
+    // ✅ ยึดตาม JSON จริง: course.course_id เป็นหลัก
     const courseCode =
       s.course?.course_id || s.course_id || s.courseCode || s.code || "CLASS";
 
-    setClassTitle(buildClassTitle(courseCode, firstDate, 1)); // run = 1 ให้แก้เองได้
+    const titlePrefix = buildTitlePrefix(s, courseCode, firstDate);
+
+    const dateYMD = firstDate ? toLocalYMD(firstDate) : "";
+    const run = dateYMD
+      ? await guessNextRunNumber({ dateYMD, titlePrefix })
+      : 1;
+
+    setClassTitle(`${titlePrefix}-${String(run)}`);
+
     setRoom(s.room || "");
     setInstructorId("");
     setOpenModal(true);
@@ -210,27 +318,34 @@ export default function FromSchedulePage() {
     const courseName =
       s.course?.course_name || s.course_name || s.courseName || s.title || "";
 
-    // หา instructor ที่เลือก
     const selectedInst =
       instructors.find(
         (i) =>
           String(i._id) === instructorId ||
           i.instructor_id === instructorId ||
-          i.code === instructorId
+          i.code === instructorId,
       ) || null;
 
     const payload = {
+      // ✅ ให้มี title preview ได้ แต่ server จะเป็นผู้ finalize (และกันชน run)
       title: classTitle.trim(),
+
       courseCode,
       courseName,
-      // ใช้ local YMD แทน ISO/UTC ป้องกันเหลื่อมวัน
+
       date: firstDate ? toLocalYMD(firstDate) : undefined,
       dayCount: Array.isArray(s.dates) ? s.dates.length : 1,
       startTime: "09:00",
       endTime: "16:00",
       room: room || "",
+
       source: "api",
       externalScheduleId: String(s._id || s.id || s.schedule_id || ""),
+
+      // ✅ ยึด type จาก API จริง
+      trainingType: String(s.type || ""), // "hybrid" | "classroom"
+      channel: "PUB",
+
       instructors: selectedInst
         ? [
             {
@@ -258,7 +373,7 @@ export default function FromSchedulePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const out = await res.json();
+      const out = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error(out);
         alert(out.error || "สร้าง Class ไม่สำเร็จ");
@@ -296,7 +411,7 @@ export default function FromSchedulePage() {
             </label>
             <input
               className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              placeholder="เช่น Excel, PYTHON-L1 ..."
+              placeholder="เช่น Excel, MSA-L1 ..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -341,7 +456,6 @@ export default function FromSchedulePage() {
       </div>
 
       <div className="rounded-2xl bg-admin-surface p-4 shadow-card relative">
-        {/* scroll container อยู่ตลอด */}
         <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[240px]">
           <table className="min-w-full text-xs sm:text-sm">
             <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
@@ -375,7 +489,12 @@ export default function FromSchedulePage() {
                     <td className="px-3 py-2">
                       <div className="font-medium">{courseName}</div>
                       <div className="text-[11px] text-admin-textMuted">
-                        {courseCode}
+                        {courseCode}{" "}
+                        {s?.type ? (
+                          <span className="ml-1 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px]">
+                            {String(s.type).toUpperCase()}
+                          </span>
+                        ) : null}
                       </div>
                     </td>
 
@@ -397,7 +516,6 @@ export default function FromSchedulePage() {
                 );
               })}
 
-              {/* แก้ colSpan ให้ตรงกับจำนวนคอลัมน์ = 3 */}
               {!loading && filteredItems.length === 0 && (
                 <tr>
                   <td
@@ -412,7 +530,6 @@ export default function FromSchedulePage() {
           </table>
         </div>
 
-        {/* overlay อยู่ใน container นี้เท่านั้น */}
         {loading && (
           <div className="absolute inset-0 rounded-2xl bg-admin-surface/70 backdrop-blur-sm flex items-center justify-center">
             <div className="flex items-center gap-2 text-sm text-admin-textMuted">
@@ -452,7 +569,7 @@ export default function FromSchedulePage() {
                   onChange={(e) => setClassTitle(e.target.value)}
                 />
                 <span className="mt-1 block text-[11px] text-admin-textMuted">
-                  ตัวอย่าง: POWER-BI-68-12-03-1 (แก้เองได้ตามต้องการ)
+                  ตัวอย่าง: CR-PUB-MSE-L6-23-02-69-1 (แก้เองได้ตามต้องการ)
                 </span>
               </label>
 
@@ -484,11 +601,7 @@ export default function FromSchedulePage() {
                     const id =
                       t._id || t.instructor_id || t.code || t.email || "";
                     const name =
-                      t.name ||
-                      t.display_name ||
-                      t.fullname ||
-                      t.name_th ||
-                      id;
+                      t.name || t.display_name || t.fullname || t.name_th || id;
                     return (
                       <option key={id} value={id}>
                         {name}

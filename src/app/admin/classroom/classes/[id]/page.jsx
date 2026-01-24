@@ -1,12 +1,12 @@
 // src/app/admin/classroom/classes/[id]/page.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
-import { ChevronLeft, MoreVertical } from "lucide-react";
+import { ChevronLeft, MoreVertical, FileSignature } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,12 +14,12 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-/* ===== helpers เล็กน้อยไว้ format ข้อมูล ===== */
+/* ===== helpers ===== */
 
 function formatDateTH(value) {
   if (!value) return "";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value; // ถ้าไม่ใช่ date จริง ให้แสดง string เดิม
+  if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleDateString("th-TH", {
     day: "numeric",
     month: "short",
@@ -40,6 +40,92 @@ function formatTimeTH(value) {
   });
 }
 
+function safeJson(res) {
+  return res.json().catch(() => ({}));
+}
+
+function pickPositiveInt(...cands) {
+  for (const x of cands) {
+    const n = Number(x);
+    if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return 1;
+}
+
+function hasAnyCheckin(stu) {
+  // รองรับหลาย shape
+  const cd = stu?.checkinDaily;
+  if (Array.isArray(cd)) {
+    return cd.some((x) => !!x?.checkedIn || !!x?.time);
+  }
+  if (cd && typeof cd === "object") {
+    return Object.values(cd).some((v) => !!v?.checked || !!v?.time);
+  }
+
+  const chk = stu?.checkinStatus || stu?.checkin || {};
+  if (chk && typeof chk === "object") {
+    return Object.values(chk).some((v) => !!v);
+  }
+  return false;
+}
+
+function hasAnyLate(stu) {
+  const cd = stu?.checkinDaily;
+  if (Array.isArray(cd)) return cd.some((x) => !!x?.isLate);
+  if (cd && typeof cd === "object") {
+    return Object.values(cd).some((v) => !!v?.isLate);
+  }
+
+  const chk = stu?.checkins;
+  if (chk && typeof chk === "object") {
+    return Object.values(chk).some((v) => !!v?.isLate);
+  }
+
+  return !!stu?.isLate || !!stu?.late;
+}
+
+function countLateAllDays(students) {
+  let n = 0;
+
+  for (const s of students || []) {
+    const cd = s?.checkinDaily;
+
+    if (Array.isArray(cd)) {
+      for (const v of cd) if (v && v.isLate) n++;
+      continue;
+    }
+
+    if (cd && typeof cd === "object") {
+      for (const v of Object.values(cd)) {
+        if (v && typeof v === "object" && v.isLate) n++;
+      }
+      continue;
+    }
+
+    const chk = s?.checkins;
+    if (chk && typeof chk === "object") {
+      for (const v of Object.values(chk)) {
+        if (v && typeof v === "object" && v.isLate) n++;
+      }
+    }
+
+    if (s?.late) n++;
+  }
+
+  return n;
+}
+
+/* ===== Filter options ===== */
+
+const FILTERS = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "checked", label: "เช็คอินแล้ว" },
+  { key: "not_checked", label: "ยังไม่เช็คอิน" },
+  { key: "late", label: "เช็คอินสาย" },
+  { key: "cancelled", label: "ยกเลิก" },
+  { key: "postponed", label: "ขอเลื่อน" },
+];
+
 export default function ClassDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -47,7 +133,13 @@ export default function ClassDetailPage() {
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ===== state สำหรับ edit/delete =====
+  // ✅ selection (เอาไว้ export/print เฉพาะที่เลือกต่อ)
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // ✅ filter (default: all)
+  const [filterKey, setFilterKey] = useState("all");
+
+  // ===== state สำหรับ edit/delete class =====
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -55,7 +147,6 @@ export default function ClassDetailPage() {
     title: "",
     courseCode: "",
     room: "",
-    //channel: "",
     trainerName: "",
     startDate: "",
     dayCount: 1,
@@ -63,64 +154,75 @@ export default function ClassDetailPage() {
 
   const [instructors, setInstructors] = useState([]);
 
-  const [actionsOpen, setActionsOpen] = useState(false);
+  /* ===== โหลดข้อมูล Class (✅ ใช้ /api/admin/classes/[id] เป็นหลัก) ===== */
 
-  useEffect(() => {
-    if (!actionsOpen) return;
+  const reloadClass = useCallback(async () => {
+    if (!id) return null;
 
-    const handleClickOutside = (e) => {
-      // ถ้าคลิกไม่ได้อยู่ในกล่องเมนู -> ปิด
-      if (!e.target.closest("[data-classdetail-actions]")) {
-        setActionsOpen(false);
+    const r1 = await fetch(`/api/admin/classes/${id}`, {
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (r1 && r1.ok) {
+      const d1 = await safeJson(r1);
+      if (d1 && (d1._id || d1.id)) {
+        setClassData(d1);
+        return d1;
       }
-    };
+      if (d1?.ok && (d1.class || d1.item)) {
+        const found = d1.class || d1.item || null;
+        setClassData(found);
+        return found;
+      }
+    }
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [actionsOpen]);
+    const r2 = await fetch(`/api/admin/classes?id=${id}&withStudents=1`, {
+      cache: "no-store",
+    }).catch(() => null);
 
-  // ===== โหลดข้อมูล Class (ใช้ list + filter เพราะยังไม่มี /api/admin/classes/[id]) =====
+    const d2 = r2 ? await safeJson(r2) : null;
+
+    let found = null;
+    if (d2 && d2._id) found = d2;
+    else if (d2 && d2.ok && d2.class) found = d2.class;
+    else if (d2 && d2.ok && d2.item) found = d2.item;
+    else if (Array.isArray(d2)) found = d2.find((c) => c._id === id);
+    else if (Array.isArray(d2?.items))
+      found = d2.items.find((c) => c._id === id);
+
+    setClassData(found || null);
+    return found || null;
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
+    let alive = true;
 
     (async () => {
       try {
         setLoading(true);
-
-        const res = await fetch(`/api/admin/classes?id=${id}&withStudents=1`, {
-          cache: "no-store",
-        });
-        const data = await res.json();
-
-        let found = null;
-
-        if (data && data._id) {
-          found = data;
-        } else if (data && data.ok && data.class) {
-          found = data.class;
-        } else if (data && data.ok && data.item) {
-          found = data.item;
-        } else if (Array.isArray(data)) {
-          found = data.find((c) => c._id === id);
-        } else if (Array.isArray(data.items)) {
-          found = data.items.find((c) => c._id === id);
-        }
-
-        setClassData(found || null);
+        const x = await reloadClass();
+        if (!alive) return;
+        if (!x) setClassData(null);
       } catch (err) {
         console.error("load class error", err);
+        if (!alive) return;
         setClassData(null);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-  }, [id]);
+
+    return () => {
+      alive = false;
+    };
+  }, [id, reloadClass]);
 
   useEffect(() => {
     async function loadInstructors() {
       try {
         const res = await fetch("/api/admin/ai/instructors");
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         const rows =
           data.items ||
           data.data ||
@@ -132,35 +234,82 @@ export default function ClassDetailPage() {
         setInstructors([]);
       }
     }
-
     loadInstructors();
   }, []);
 
-  // ===== ค่าอนุพันธ์จาก classData =====
+  /* ===== derived ===== */
+
   const students = useMemo(() => {
-    return classData?.students || [];
+    return Array.isArray(classData?.students) ? classData.students : [];
   }, [classData]);
 
   const dayCount = useMemo(() => {
     if (!classData) return 1;
-
-    return (
-      classData.dayCount ??
-      classData.totalDays ??
-      classData.days?.length ??
-      classData.duration?.dayCount ??
-      1
+    return pickPositiveInt(
+      classData?.days?.length,
+      classData?.duration?.dayCount,
+      classData?.totalDays,
+      classData?.dayCount,
     );
   }, [classData]);
 
+  // ✅ filter students
+  const filteredStudents = useMemo(() => {
+    const rows = students || [];
+    switch (filterKey) {
+      case "checked":
+        return rows.filter(
+          (s) => hasAnyCheckin(s) && s?.studentStatus !== "cancelled",
+        );
+      case "not_checked":
+        return rows.filter(
+          (s) => !hasAnyCheckin(s) && s?.studentStatus !== "cancelled",
+        );
+      case "late":
+        return rows.filter(
+          (s) => hasAnyLate(s) && s?.studentStatus !== "cancelled",
+        );
+      case "cancelled":
+        return rows.filter((s) => s?.studentStatus === "cancelled");
+      case "postponed":
+        return rows.filter((s) => s?.studentStatus === "postponed");
+      case "all":
+      default:
+        return rows;
+    }
+  }, [students, filterKey]);
+
+  // ✅ present: เช็กอินอย่างน้อย 1 วัน
   const presentCount = useMemo(() => {
-    return students.filter((s) => {
-      const chk = s.checkin || {};
-      return Object.values(chk).some((v) => !!v);
-    }).length;
+    return students.filter((s) => hasAnyCheckin(s)).length;
   }, [students]);
 
-  // ===== loading / not found =====
+  // ✅ lateCount: รวมทุกวัน
+  const lateCount = useMemo(() => {
+    return countLateAllDays(students);
+  }, [students]);
+
+  const receivedCount = useMemo(() => {
+    return students.filter((s) => !!s.documentReceivedAt).length;
+  }, [students]);
+
+  const notReceivedCount = useMemo(() => {
+    return Math.max(0, students.length - receivedCount);
+  }, [students, receivedCount]);
+
+  // ✅ report sync: ถ้าเลือกไว้ -> รายงานใช้เฉพาะที่เลือก, ถ้าไม่เลือก -> ใช้ตาม filter ปัจจุบัน
+  const selectedStudents = useMemo(() => {
+    const set = new Set((selectedIds || []).map(String));
+    return (students || []).filter((s) => set.has(String(s?._id)));
+  }, [students, selectedIds]);
+
+  const reportStudents = useMemo(() => {
+    if (selectedIds?.length) return selectedStudents;
+    return filteredStudents;
+  }, [selectedIds, selectedStudents, filteredStudents]);
+
+  /* ===== loading / not found ===== */
+
   if (loading) {
     return (
       <div className="p-6 text-sm text-admin-textMuted">
@@ -173,7 +322,7 @@ export default function ClassDetailPage() {
     return <div className="p-6 text-sm text-red-500">ไม่พบข้อมูลห้องอบรม</div>;
   }
 
-  /* ===== ดึงค่า/คำนวณต่าง ๆ จาก classData ===== */
+  /* ===== class fields ===== */
 
   const courseTitle =
     classData.courseTitle || classData.course_name || classData.title || "";
@@ -198,13 +347,8 @@ export default function ClassDetailPage() {
 
   const startDate =
     classData.startDate || classData.date || classData.start || null;
-
   const endDate = classData.endDate || classData.finishDate || classData.end;
-
   const timeRangeText = classData.time_range_text || classData.timeText || "";
-
-  // const channel =
-  //   classData.channel || classData.trainingChannel || classData.mode || "";
 
   const trainerRaw =
     classData.trainers ||
@@ -223,32 +367,31 @@ export default function ClassDetailPage() {
       : "");
 
   const studentsCount = students.length;
-  const lateCount = students.filter((s) => s.late).length;
 
   const createdAt = classData.createdAt;
   const updatedAt = classData.updatedAt;
 
-  /* ===== ฟังก์ชันเปิด / ปิด modal แก้ไข ===== */
+  /* ===== edit modal ===== */
 
   function openEditModal() {
-    const dc =
-      classData.dayCount ??
-      classData.totalDays ??
-      classData.days?.length ??
-      classData.duration?.dayCount ??
-      1;
+    const dc = pickPositiveInt(
+      classData?.days?.length,
+      classData?.duration?.dayCount,
+      classData?.totalDays,
+      classData?.dayCount,
+    );
 
     setEditForm({
       title: courseTitle || "",
       courseCode: courseCode || "",
       room: roomName || "",
-      //channel: channel || "",
       trainerName: trainerName || "",
       startDate: startDate
         ? new Date(startDate).toISOString().slice(0, 10)
         : "",
-      dayCount: dc || 1,
+      dayCount: dc,
     });
+
     setEditOpen(true);
   }
 
@@ -257,12 +400,16 @@ export default function ClassDetailPage() {
     setEditOpen(false);
   }
 
+  function openReceiveHome() {
+    window.open("/classroom/receive", "_blank", "noopener,noreferrer");
+  }
+
   async function handleSaveEdit(e) {
     e?.preventDefault();
     if (!id) return;
 
     const confirmSave = window.confirm(
-      "ยืนยันการบันทึกการแก้ไขข้อมูล Class นี้หรือไม่?"
+      "ยืนยันการบันทึกการแก้ไขข้อมูล Class นี้หรือไม่?",
     );
     if (!confirmSave) return;
 
@@ -272,7 +419,6 @@ export default function ClassDetailPage() {
         title: editForm.title,
         courseCode: editForm.courseCode,
         room: editForm.room,
-        //channel: editForm.channel,
         trainerName: editForm.trainerName,
         date: editForm.startDate || null,
         dayCount: Number(editForm.dayCount) || 1,
@@ -284,52 +430,14 @@ export default function ClassDetailPage() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok || data.ok === false) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
         console.error("update class failed", data);
-        alert(data.error || "บันทึกการแก้ไขไม่สำเร็จ");
+        alert(data?.error || "บันทึกการแก้ไขไม่สำเร็จ");
         return;
       }
 
-      // sync state classData
-      setClassData((prev) =>
-        prev
-          ? {
-              ...prev,
-              title: payload.title,
-              courseTitle: payload.title,
-              courseCode: payload.courseCode,
-              room: payload.room,
-              roomName: payload.room,
-              //channel: payload.channel,
-              // trainingChannel: payload.channel,
-              trainerName: payload.trainerName,
-              trainer: payload.trainerName,
-              // ✅ ทำให้ trainerRaw ไม่ค้างของเดิม
-              instructors: payload.trainerName
-                ? [{ name: payload.trainerName }]
-                : prev.instructors,
-              trainers: payload.trainerName
-                ? [payload.trainerName]
-                : prev.trainers,
-              teacherList: payload.trainerName
-                ? [payload.trainerName]
-                : prev.teacherList,
-              date: payload.date
-                ? new Date(payload.date).toISOString()
-                : prev.date,
-              startDate: payload.date
-                ? new Date(payload.date).toISOString()
-                : prev.startDate,
-              dayCount: payload.dayCount,
-              duration: {
-                ...(prev.duration || {}),
-                dayCount: payload.dayCount,
-              },
-            }
-          : prev
-      );
-
+      await reloadClass();
       alert("บันทึกการแก้ไขเรียบร้อยแล้ว");
       setEditOpen(false);
     } catch (err) {
@@ -343,22 +451,18 @@ export default function ClassDetailPage() {
   async function handleDeleteClass() {
     if (!id) return;
     const ok = window.confirm(
-      `ต้องการลบ Class นี้จริงหรือไม่?\n\n${courseCode || ""} - ${
-        courseTitle || ""
-      }`
+      `ต้องการลบ Class นี้จริงหรือไม่?\n\n${courseCode || ""} - ${courseTitle || ""}`,
     );
     if (!ok) return;
 
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/classes/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/admin/classes/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || data.ok === false) {
+      if (!res.ok || data?.ok === false) {
         console.error("delete class failed", data);
-        alert(data.error || "ลบ Class ไม่สำเร็จ");
+        alert(data?.error || "ลบ Class ไม่สำเร็จ");
         setDeleting(false);
         return;
       }
@@ -389,17 +493,26 @@ export default function ClassDetailPage() {
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 🔵 ปุ่มหลัก: ดึงรายชื่อจากระบบลงทะเบียน (Primary) */}
+          <button
+            type="button"
+            onClick={openReceiveHome}
+            className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-2 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
+            title="เปิดหน้า รับเอกสาร (เลือกโหมด 3.1 / 3.2)"
+          >
+            <FileSignature className="h-4 w-4" />
+            รับเอกสาร
+          </button>
+
           <SyncStudentsButton classId={id} />
 
-          {/* ⚪ ปุ่มรอง: ดูตัวอย่างรายงาน / Export */}
+          {/* ✅ sync selection -> report: ถ้าเลือกไว้ ใช้เฉพาะที่เลือก, ถ้าไม่เลือก ใช้ตาม filter */}
           <ReportPreviewButton
-            students={students}
+            students={reportStudents}
             dayCount={dayCount}
             classInfo={classData}
+            selectedStudentIds={selectedIds}
           />
 
-          {/* ⋮ Kebab menu: แก้ไข + ลบ */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -431,12 +544,10 @@ export default function ClassDetailPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          
         </div>
       </div>
 
-      {/* ===== Header บนสุด: ชื่อ Course + ปุ่มต่าง ๆ ===== */}
+      {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-4 rounded-2xl border border-admin-border">
         <div>
           <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
@@ -478,12 +589,6 @@ export default function ClassDetailPage() {
             </div>
           )}
 
-          {/* {channel && (
-            <div className="mt-0.5 text-xs text-admin-textMuted">
-              ช่องทางอบรม: {channel}
-            </div>
-          )} */}
-
           {trainerName && (
             <div className="mt-0.5 text-xs text-admin-textMuted">
               วิทยากร: {trainerName}
@@ -509,39 +614,10 @@ export default function ClassDetailPage() {
             )}
           </div>
         )}
-
-        {/* <div className="flex flex-wrap items-center gap-2">
-        
-          <ReportPreviewButton
-            students={students}
-            dayCount={dayCount}
-            classInfo={classData}
-          />
-
-          <SyncStudentsButton classId={id} />
-
-          <button
-            type="button"
-            onClick={openEditModal}
-            className="rounded-lg border border-admin-border px-3 py-1.5 text-xs text-admin-text hover:bg-admin-surfaceMuted"
-          >
-            แก้ไขข้อมูล Class
-          </button>
-
-      
-          <button
-            type="button"
-            onClick={handleDeleteClass}
-            disabled={deleting}
-            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
-          >
-            {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
-          </button>
-        </div> */}
       </div>
 
-      {/* ===== แถบสรุปสั้น ๆ ของ Class / สถิตินักเรียน ===== */}
-      <div className="grid gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-admin-text md:grid-cols-4">
+      {/* stats */}
+      <div className="grid gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-admin-text md:grid-cols-6">
         <div>
           <div className="text-[11px] text-admin-textMuted">จำนวนวันอบรม</div>
           <div className="mt-1 text-base font-semibold">{dayCount} วัน</div>
@@ -566,38 +642,66 @@ export default function ClassDetailPage() {
             {lateCount} คน
           </div>
         </div>
-      </div>
 
-      {/* ===== Card รายละเอียดอื่น ๆ ของ Class (ถ้ามี) ===== */}
-      {/* {(createdAt || updatedAt) && (
-        <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
-          {createdAt && (
-            <div>
-              สร้างเมื่อ: {formatDateTH(createdAt)}{" "}
-              {formatTimeTH(createdAt) && `เวลา ${formatTimeTH(createdAt)} น.`}
-            </div>
-          )}
-          {updatedAt && (
-            <div>
-              แก้ไขล่าสุด: {formatDateTH(updatedAt)}{" "}
-              {formatTimeTH(updatedAt) && `เวลา ${formatTimeTH(updatedAt)} น.`}
-            </div>
-          )}
-        </div>
-      )} */}
-
-      {/* ===== Card รายชื่อนักเรียน + ตาราง Check-in ===== */}
-      <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm">
-        {/* <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="text-sm font-medium text-admin-text">
-            รายชื่อนักเรียน ({students.length} คน)
+        <div>
+          <div className="text-[11px] text-admin-textMuted">รับเอกสารแล้ว</div>
+          <div className="mt-1 text-base font-semibold text-emerald-600">
+            {receivedCount} คน
           </div>
-        </div> */}
-
-        <StudentsTable students={students} dayCount={dayCount} />
+        </div>
+        <div>
+          <div className="text-[11px] text-admin-textMuted">
+            ยังไม่รับเอกสาร
+          </div>
+          <div className="mt-1 text-base font-semibold">
+            {notReceivedCount} คน
+          </div>
+        </div>
       </div>
 
-      {/* ===== Modal แก้ไขข้อมูล Class ===== */}
+      {/* ✅ Filter bar */}
+      <div className="rounded-2xl border border-admin-border bg-white p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs text-admin-textMuted mr-2">Filter:</div>
+          {FILTERS.map((f) => {
+            const active = filterKey === f.key;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilterKey(f.key)}
+                className={[
+                  "rounded-full px-3 py-1.5 text-xs border",
+                  active
+                    ? "bg-brand-primary text-white border-brand-primary"
+                    : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted",
+                ].join(" ")}
+              >
+                {f.label}
+              </button>
+            );
+          })}
+
+          <div className="ml-auto text-xs text-admin-textMuted">
+            แสดง {filteredStudents.length} / {students.length} คน
+            {selectedIds.length ? ` • เลือกแล้ว ${selectedIds.length} คน` : ""}
+          </div>
+        </div>
+      </div>
+
+      {/* table */}
+      <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm">
+        <StudentsTable
+          classId={id}
+          students={filteredStudents} // ✅ แสดงตาม filter
+          dayCount={dayCount}
+          selectedIds={selectedIds}
+          onSelectedIdsChange={setSelectedIds}
+          onReloadRequested={reloadClass}
+        />
+      </div>
+
+      {/* edit modal */}
       {editOpen && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40"
@@ -655,19 +759,6 @@ export default function ClassDetailPage() {
                 </div>
               </div>
 
-              {/* <div>
-                <label className="block text-[11px] text-admin-textMuted">
-                  ช่องทางอบรม (on_class / online / hybrid ...)
-                </label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  value={editForm.channel}
-                  onChange={(e) =>
-                    setEditForm((f) => ({ ...f, channel: e.target.value }))
-                  }
-                />
-              </div> */}
-
               <div>
                 <label className="block text-[11px] text-admin-textMuted">
                   วิทยากร
@@ -703,45 +794,6 @@ export default function ClassDetailPage() {
                     );
                   })}
                 </select>
-                {/* <label className="block">
-                <span className="text-admin-text">อาจารย์ผู้สอน</span>
-                <select
-                  className="mt-1 w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  value={instructorId}
-                  onChange={(e) => setInstructorId(e.target.value)}
-                >
-                  <option value="">-- เลือกอาจารย์ --</option>
-                  {instructors.map((t) => {
-                    const id =
-                      t._id || t.instructor_id || t.code || t.email || "";
-                    const name =
-                      t.name ||
-                      t.display_name ||
-                      t.fullname ||
-                      t.name_th ||
-                      id;
-                    return (
-                      <option key={id} value={id}>
-                        {name}
-                      </option>
-                    );
-                  })}
-                </select>
-              </label>
-
-                <label className="block text-[11px] text-admin-textMuted">
-                  วิทยากร
-                </label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  value={editForm.trainerName}
-                  onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      trainerName: e.target.value,
-                    }))
-                  }
-                /> */}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">

@@ -1,14 +1,52 @@
+// src/app/admin/classroom/classes/ClassesListClient.jsx
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { MoreVertical } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  MoreVertical,
+  Calendar as CalendarIcon,
+  RefreshCw,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Button } from "@/components/ui/button";
+
+function cx(...a) {
+  return a.filter(Boolean).join(" ");
+}
+
+/* ---------------- date helpers ---------------- */
+
+function toISODate(d) {
+  // YYYY-MM-DD (local)
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function startOfDay(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function endOfDay(d) {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
 
 function formatThaiDate(d) {
   const date = new Date(d);
@@ -21,9 +59,44 @@ function formatThaiDate(d) {
   });
 }
 
+function normalizeISODate(x) {
+  const s = String(x || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  return s;
+}
+
+function isoToDate(iso) {
+  const s = normalizeISODate(iso);
+  if (!s) return null;
+  // สำคัญ: เติมเวลาเพื่อให้เป็น local (ไม่โดนตีเป็น UTC)
+  const d = new Date(s + "T00:00:00");
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function uniqueSortDates(arr) {
+  const map = new Map();
+  for (const d of arr || []) {
+    if (!d || Number.isNaN(d.getTime())) continue;
+    map.set(toISODate(d), d);
+  }
+  const keys = Array.from(map.keys()).sort();
+  return keys.map((k) => isoToDate(k)).filter(Boolean);
+}
+
 function formatDateRange(cls) {
+  // ✅ ถ้ามี days ใช้ days เป็น source of truth
+  if (Array.isArray(cls.days) && cls.days.length > 0) {
+    const sorted = [...cls.days].map(normalizeISODate).filter(Boolean).sort();
+    if (sorted.length === 0) return "-";
+    if (sorted.length === 1) return formatThaiDate(sorted[0]);
+    return `${formatThaiDate(sorted[0])} - ${formatThaiDate(
+      sorted[sorted.length - 1],
+    )}`;
+  }
+
+  // fallback แบบเดิม: date + dayCount (ต่อเนื่อง)
   const startStr = cls.date || cls.startDate || cls.start_date;
-  const dayCount = cls.duration?.dayCount || cls.dayCount || cls.days || 1;
+  const dayCount = cls.duration?.dayCount || cls.dayCount || 1;
 
   if (!startStr) return "-";
 
@@ -31,22 +104,82 @@ function formatDateRange(cls) {
   if (Number.isNaN(dStart.getTime())) return "-";
 
   const dEnd = new Date(dStart);
-  dEnd.setDate(dEnd.getDate() + (dayCount - 1));
+  dEnd.setDate(dEnd.getDate() + (Number(dayCount) - 1));
 
-  if (dayCount <= 1) return formatThaiDate(dStart);
+  if (Number(dayCount) <= 1) return formatThaiDate(dStart);
   return `${formatThaiDate(dStart)} - ${formatThaiDate(dEnd)}`;
 }
 
+function safeArr(x) {
+  return Array.isArray(x) ? x : [];
+}
+
 export default function ClassesListClient({ initialClasses, total }) {
+  const router = useRouter();
+
   // 🔹 เก็บ list class แบบแก้ไขได้
   const [classes, setClasses] = useState(initialClasses || []);
+
+  // ✅ refresh state
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshClasses = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/admin/classes", {
+        method: "GET",
+        cache: "no-store",
+        headers: { "content-type": "application/json" },
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        console.error("refresh classes failed", data);
+        alert(data.error || "โหลด Class ล่าสุดไม่สำเร็จ");
+        return;
+      }
+
+      const rows =
+        data.items ||
+        data.data ||
+        data.classes ||
+        (Array.isArray(data) ? data : []);
+
+      setClasses(safeArr(rows));
+    } catch (err) {
+      console.error(err);
+      alert("โหลด Class ล่าสุดไม่สำเร็จ");
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // ✅ auto refresh ตอนเข้า page (กันเคส initialClasses เก่า/ติด cache)
+  useEffect(() => {
+    refreshClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ auto refresh เมื่อกลับมาที่ tab นี้
+  useEffect(() => {
+    function onFocus() {
+      refreshClasses();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshClasses]);
 
   // 🔹 state filter + page
   const [search, setSearch] = useState("");
   const [courseCode, setCourseCode] = useState("");
   const [title, setTitle] = useState("");
+
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  // ✅ preset filter
+  const [rangePreset, setRangePreset] = useState("today");
+
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
@@ -58,7 +191,6 @@ export default function ClassesListClient({ initialClasses, total }) {
 
     function handleClickOutside(e) {
       const target = e.target;
-      // ถ้าคลิกไม่ได้อยู่ใน element ที่มี data-class-actions-menu -> ปิดเมนู
       if (
         target instanceof HTMLElement &&
         !target.closest("[data-class-actions-menu]")
@@ -73,22 +205,70 @@ export default function ClassesListClient({ initialClasses, total }) {
     };
   }, [openMenuId]);
 
-  // 🔹 state สำหรับ Edit popup
-  const [editingClass, setEditingClass] = useState(null); // object Class ที่กำลังแก้ไข
+  // ✅ ตั้ง Default = Today ตอน mount (ครั้งแรก)
+  useEffect(() => {
+    const today = new Date();
+    const iso = toISODate(today);
+    setDateFrom(iso);
+    setDateTo(iso);
+    setRangePreset("today");
+  }, []);
+
+  function applyPreset(preset) {
+    const today = new Date();
+    const end = toISODate(today);
+
+    if (preset === "today") {
+      const iso = toISODate(today);
+      setDateFrom(iso);
+      setDateTo(iso);
+      setRangePreset("today");
+      setPage(1);
+      return;
+    }
+
+    if (preset === "week") {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 6);
+      setDateFrom(toISODate(from));
+      setDateTo(end);
+      setRangePreset("week");
+      setPage(1);
+      return;
+    }
+
+    if (preset === "month") {
+      const from = new Date(today);
+      from.setDate(from.getDate() - 29);
+      setDateFrom(toISODate(from));
+      setDateTo(end);
+      setRangePreset("month");
+      setPage(1);
+      return;
+    }
+
+    setRangePreset("custom");
+    setPage(1);
+  }
+
+  /* ================== EDIT / DELETE STATE ================== */
+
+  const [editingClass, setEditingClass] = useState(null);
   const [editForm, setEditForm] = useState({
     title: "",
     courseCode: "",
     room: "",
-    date: "",
+    selectedDays: [],
     dayCount: 1,
   });
+
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   /* ================== FILTER ================== */
 
   const filtered = useMemo(() => {
-    return classes.filter((cls) => {
+    return safeArr(classes).filter((cls) => {
       const q = search.trim().toLowerCase();
       const cc = courseCode.trim().toLowerCase();
       const tt = title.trim().toLowerCase();
@@ -100,15 +280,37 @@ export default function ClassesListClient({ initialClasses, total }) {
         return false;
       }
 
+      // ✅ date range filter: ถ้ามี days -> เช็ค overlap
       if (dateFrom || dateTo) {
-        const d = new Date(cls.date);
-        if (!Number.isNaN(d.getTime())) {
-          if (dateFrom && d < new Date(dateFrom)) return false;
-          if (dateTo) {
-            const end = new Date(dateTo);
-            end.setHours(23, 59, 59, 999);
-            if (d > end) return false;
-          }
+        const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
+        const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
+
+        const within = (iso) => {
+          const s = normalizeISODate(iso);
+          if (!s) return false;
+          const d = new Date(s + "T00:00:00");
+          if (Number.isNaN(d.getTime())) return false;
+          if (from && d < from) return false;
+          if (to && d > to) return false;
+          return true;
+        };
+
+        if (Array.isArray(cls.days) && cls.days.length > 0) {
+          if (!cls.days.some(within)) return false;
+        } else {
+          const dRaw = cls.date || cls.startDate || cls.start_date;
+          const dStart = new Date(dRaw);
+          if (Number.isNaN(dStart.getTime())) return false;
+
+          const dayCount =
+            Number(cls.duration?.dayCount || cls.dayCount || 1) || 1;
+          const dEnd = new Date(dStart);
+          dEnd.setDate(dEnd.getDate() + (dayCount - 1));
+          dEnd.setHours(23, 59, 59, 999);
+
+          // overlap check: [dStart,dEnd] ทับกับ [from,to] ไหม
+          if (from && dEnd < from) return false;
+          if (to && dStart > to) return false;
         }
       }
 
@@ -142,21 +344,45 @@ export default function ClassesListClient({ initialClasses, total }) {
   /* ================== EDIT / DELETE HANDLERS ================== */
 
   function openEditModal(cls) {
-    const id = cls._id || cls.id;
+    let selectedDays = [];
 
-    const dayCount =
-      cls.duration?.dayCount ||
-      cls.dayCount ||
-      (Array.isArray(cls.days) ? cls.days.length : cls.days) ||
-      1;
+    if (Array.isArray(cls.days) && cls.days.length > 0) {
+      selectedDays = cls.days.map(isoToDate).filter(Boolean);
+    } else {
+      const dayCount =
+        cls.duration?.dayCount ||
+        cls.dayCount ||
+        (Array.isArray(cls.days) ? cls.days.length : cls.days) ||
+        1;
+
+      const startStr = normalizeISODate(
+        cls.date || cls.startDate || cls.start_date,
+      );
+
+      if (startStr) {
+        const dStart = isoToDate(startStr);
+        if (dStart) {
+          selectedDays = Array.from(
+            { length: Number(dayCount) || 1 },
+            (_, i) => {
+              const d = new Date(dStart);
+              d.setDate(d.getDate() + i);
+              return d;
+            },
+          );
+        }
+      }
+    }
+
+    selectedDays = uniqueSortDates(selectedDays);
 
     setEditingClass(cls);
     setEditForm({
       title: cls.title || "",
       courseCode: cls.courseCode || "",
       room: cls.room || cls.roomName || "",
-      date: (cls.date || cls.startDate || "").slice(0, 10) || "",
-      dayCount: dayCount || 1,
+      selectedDays,
+      dayCount: Math.max(1, selectedDays.length || 1),
     });
   }
 
@@ -172,9 +398,19 @@ export default function ClassesListClient({ initialClasses, total }) {
     const id = editingClass._id || editingClass.id;
     if (!id) return;
 
-    // ✅ popup ยืนยันก่อนบันทึก
     const ok = window.confirm("ยืนยันการบันทึกการแก้ไข Class นี้หรือไม่?");
     if (!ok) return;
+
+    const selected = uniqueSortDates(editForm.selectedDays || []);
+
+    if (selected.length === 0) {
+      alert("กรุณาเลือกวันอบรมอย่างน้อย 1 วัน");
+      return;
+    }
+
+    const days = selected.map(toISODate);
+    const startIso = days[0];
+    const dayCount = days.length;
 
     setSaving(true);
     try {
@@ -182,8 +418,9 @@ export default function ClassesListClient({ initialClasses, total }) {
         title: editForm.title,
         courseCode: editForm.courseCode,
         room: editForm.room,
-        date: editForm.date || null,
-        dayCount: Number(editForm.dayCount) || 1,
+        days,
+        date: startIso,
+        dayCount,
       };
 
       const res = await fetch(`/api/admin/classes/${id}`, {
@@ -192,16 +429,15 @@ export default function ClassesListClient({ initialClasses, total }) {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) {
         console.error("update class failed", data);
         alert(data.error || "บันทึกการแก้ไขไม่สำเร็จ");
         return;
       }
 
-      // อัปเดต state ฝั่ง client
       setClasses((prev) =>
-        prev.map((c) =>
+        safeArr(prev).map((c) =>
           (c._id || c.id) === id
             ? {
                 ...c,
@@ -209,6 +445,7 @@ export default function ClassesListClient({ initialClasses, total }) {
                 courseCode: payload.courseCode,
                 room: payload.room,
                 roomName: payload.room,
+                days,
                 date: payload.date || c.date,
                 startDate: payload.date || c.startDate,
                 dayCount: payload.dayCount,
@@ -217,8 +454,8 @@ export default function ClassesListClient({ initialClasses, total }) {
                   dayCount: payload.dayCount,
                 },
               }
-            : c
-        )
+            : c,
+        ),
       );
 
       alert("บันทึกการแก้ไขเรียบร้อยแล้ว");
@@ -235,19 +472,14 @@ export default function ClassesListClient({ initialClasses, total }) {
     const id = cls._id || cls.id;
     if (!id) return;
 
-    // ✅ popup ยืนยันก่อนลบ
     const ok = window.confirm(
-      `ต้องการลบ Class นี้จริงหรือไม่?\n\n${cls.courseCode || ""} - ${
-        cls.title || ""
-      }`
+      `ต้องการลบ Class นี้จริงหรือไม่?\n\n${cls.courseCode || ""} - ${cls.title || ""}`,
     );
     if (!ok) return;
 
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/admin/classes/${id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/admin/classes/${id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || data.ok === false) {
@@ -256,7 +488,7 @@ export default function ClassesListClient({ initialClasses, total }) {
         return;
       }
 
-      setClasses((prev) => prev.filter((c) => (c._id || c.id) !== id));
+      setClasses((prev) => safeArr(prev).filter((c) => (c._id || c.id) !== id));
       alert("ลบ Class เรียบร้อยแล้ว");
     } catch (err) {
       console.error("delete class error", err);
@@ -272,33 +504,88 @@ export default function ClassesListClient({ initialClasses, total }) {
     <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
       {/* Filter bar */}
       <div className="mb-4 space-y-3">
-        <div className="grid gap-2 sm:grid-cols-3">
-          {/* <div>
-            <label className="block text-[11px] text-admin-textMuted">
-              รหัสคอร์ส
-            </label>
-            <input
-              className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={courseCode}
-              onChange={(e) => {
-                setCourseCode(e.target.value);
-                setPage(1);
-              }}
-            />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs text-admin-textMuted">ช่วงเวลา:</div>
+
+          <button
+            type="button"
+            onClick={() => applyPreset("today")}
+            className={cx(
+              "h-8 rounded-xl px-3 text-xs ring-1 transition",
+              rangePreset === "today"
+                ? "bg-brand-primary text-white ring-brand-primary"
+                : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+            )}
+          >
+            Today
+          </button>
+
+          <button
+            type="button"
+            onClick={() => applyPreset("week")}
+            className={cx(
+              "h-8 rounded-xl px-3 text-xs ring-1 transition",
+              rangePreset === "week"
+                ? "bg-brand-primary text-white ring-brand-primary"
+                : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+            )}
+          >
+            Week
+          </button>
+
+          <button
+            type="button"
+            onClick={() => applyPreset("month")}
+            className={cx(
+              "h-8 rounded-xl px-3 text-xs ring-1 transition",
+              rangePreset === "month"
+                ? "bg-brand-primary text-white ring-brand-primary"
+                : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+            )}
+          >
+            Month
+          </button>
+
+          <button
+            type="button"
+            onClick={() => applyPreset("custom")}
+            className={cx(
+              "h-8 rounded-xl px-3 text-xs ring-1 transition",
+              rangePreset === "custom"
+                ? "bg-brand-primary text-white ring-brand-primary"
+                : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+            )}
+          >
+            Custom
+          </button>
+
+          <div className="ml-auto flex items-center gap-2">
+            <div className="text-xs text-admin-textMuted">
+              ทั้งหมด {classes.length} class — หลัง filter เหลือ{" "}
+              {filtered.length} class
+            </div>
+
+            <button
+              type="button"
+              onClick={refreshClasses}
+              disabled={refreshing}
+              className={cx(
+                "inline-flex h-8 items-center gap-2 rounded-xl px-3 text-xs ring-1 transition",
+                refreshing
+                  ? "bg-admin-surfaceMuted text-admin-textMuted ring-admin-border"
+                  : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+              )}
+              title="โหลดรายการจาก DB ใหม่"
+            >
+              <RefreshCw
+                className={cx("h-4 w-4", refreshing && "animate-spin")}
+              />
+              Refresh
+            </button>
           </div>
-          <div>
-            <label className="block text-[11px] text-admin-textMuted">
-              ชื่อ CLASS
-            </label>
-            <input
-              className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={title}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                setPage(1);
-              }}
-            />
-          </div> */}
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
           <div>
             <label className="block text-[11px] text-admin-textMuted">
               ค้นหา
@@ -313,6 +600,7 @@ export default function ClassesListClient({ initialClasses, total }) {
               }}
             />
           </div>
+
           <div>
             <label className="block text-[11px] text-admin-textMuted">
               จากวันที่
@@ -323,10 +611,12 @@ export default function ClassesListClient({ initialClasses, total }) {
               value={dateFrom}
               onChange={(e) => {
                 setDateFrom(e.target.value);
+                setRangePreset("custom");
                 setPage(1);
               }}
             />
           </div>
+
           <div>
             <label className="block text-[11px] text-admin-textMuted">
               ถึงวันที่
@@ -337,30 +627,15 @@ export default function ClassesListClient({ initialClasses, total }) {
               value={dateTo}
               onChange={(e) => {
                 setDateTo(e.target.value);
+                setRangePreset("custom");
                 setPage(1);
               }}
             />
           </div>
         </div>
-
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-admin-textMuted">
-            ทั้งหมด {classes.length} class — หลัง filter เหลือ {filtered.length}{" "}
-            class
-          </div>
-          {/* <input
-            className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary sm:w-80"
-            placeholder="ค้นหา (ชื่อ Class / รหัสคอร์ส / ห้อง / อาจารย์)"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          /> */}
-        </div>
       </div>
+
       <div className="w-full overflow-auto max-h-[calc(100vh-240px)]">
-        {/* Table */}
         <table className="w-full table-fixed text-base sm:text-sm">
           <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
             <tr>
@@ -372,9 +647,11 @@ export default function ClassesListClient({ initialClasses, total }) {
               <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
             </tr>
           </thead>
+
           <tbody>
             {visible.map((cls) => {
               const id = cls._id || cls.id;
+
               const studentCount =
                 cls.studentsCount ??
                 cls.studentCount ??
@@ -398,6 +675,7 @@ export default function ClassesListClient({ initialClasses, total }) {
                   <td className="px-3 py-2 text-admin-textMuted">
                     {formatDateRange(cls)}
                   </td>
+
                   <td className="px-3 py-2">
                     <div className="font-medium">
                       {cls.title || "ไม่ตั้งชื่อ"}
@@ -406,46 +684,25 @@ export default function ClassesListClient({ initialClasses, total }) {
                       {cls.courseCode || cls.course_id || ""}
                     </div>
                   </td>
+
                   <td className="px-3 py-2 text-admin-textMuted text-center">
                     {room}
                   </td>
+
                   <td className="px-3 py-2 text-admin-textMuted">
                     {instructor}
                   </td>
+
                   <td className="px-3 py-2 text-center">{studentCount}</td>
-                  {/* <td className="px-3 py-2 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Link
-                      href={`/admin/classroom/classes/${id}`}
-                      className="text-xs font-medium text-brand-primary hover:underline"
-                    >
-                      เปิดดู
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(cls)}
-                      className="rounded-lg border border-admin-border px-2 py-1 text-[11px] text-admin-text hover:bg-admin-surfaceMuted"
-                    >
-                      แก้ไข
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(cls)}
-                      disabled={deletingId === id}
-                      className="rounded-lg border border-red-200 px-2 py-1 text-[11px] text-red-600 hover:bg-red-50 disabled:opacity-60"
-                    >
-                      {deletingId === id ? "กำลังลบ..." : "ลบ"}
-                    </button>
-                  </div>
-                </td> */}
+
                   <td className="px-3 py-2 text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
                           className="inline-flex h-8 w-8 items-center justify-center rounded-full
-                   border border-admin-border bg-white text-admin-text
-                   hover:bg-admin-surfaceMuted focus:outline-none"
+                          border border-admin-border bg-white text-admin-text
+                          hover:bg-admin-surfaceMuted focus:outline-none"
                           aria-label="เมนูการจัดการ"
                         >
                           <MoreVertical className="h-4 w-4" />
@@ -522,7 +779,10 @@ export default function ClassesListClient({ initialClasses, total }) {
 
       {/* ===== Modal แก้ไข Class ===== */}
       {editingClass && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40"
+          onClick={closeEditModal}
+        >
           <div
             className="w-[95vw] max-w-lg rounded-2xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
@@ -554,13 +814,11 @@ export default function ClassesListClient({ initialClasses, total }) {
                     className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
                     value={editForm.courseCode}
                     onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        courseCode: e.target.value,
-                      }))
+                      setEditForm((f) => ({ ...f, courseCode: e.target.value }))
                     }
                   />
                 </div>
+
                 <div>
                   <label className="block text-[11px] text-admin-textMuted">
                     ห้องอบรม
@@ -576,35 +834,84 @@ export default function ClassesListClient({ initialClasses, total }) {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-[11px] text-admin-textMuted">
-                    วันที่เริ่ม
+                    ช่วงวันที่อบรม (เลือกข้ามวันได้)
                   </label>
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                    value={editForm.date}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, date: e.target.value }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-admin-textMuted">
-                    จำนวนวันอบรม
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                    value={editForm.dayCount}
-                    onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        dayCount: e.target.value,
-                      }))
-                    }
-                  />
+
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cx(
+                            "h-9 w-full justify-start rounded-xl border-admin-border bg-white px-3 text-xs font-normal shadow-sm",
+                            (!editForm.selectedDays ||
+                              editForm.selectedDays.length === 0) &&
+                              "text-admin-textMuted",
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {editForm.selectedDays?.length ? (
+                            (() => {
+                              const sorted = uniqueSortDates(
+                                editForm.selectedDays,
+                              );
+                              const first = sorted[0];
+                              const last = sorted[sorted.length - 1];
+                              return (
+                                <>
+                                  {formatThaiDate(first)} -{" "}
+                                  {formatThaiDate(last)}{" "}
+                                  <span className="ml-2 text-admin-textMuted">
+                                    ({sorted.length} วัน)
+                                  </span>
+                                </>
+                              );
+                            })()
+                          ) : (
+                            <>เลือกวันอบรม (เลือกข้ามวันได้)</>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+
+                      <PopoverContent
+                        align="start"
+                        side="bottom"
+                        sideOffset={8}
+                        className="z-[9999] w-auto rounded-2xl p-2"
+                      >
+                        <Calendar
+                          mode="multiple"
+                          numberOfMonths={2}
+                          selected={editForm.selectedDays}
+                          onSelect={(days) => {
+                            const arr = uniqueSortDates(
+                              Array.isArray(days) ? days : [],
+                            );
+                            setEditForm((f) => ({
+                              ...f,
+                              selectedDays: arr,
+                              dayCount: Math.max(1, arr.length),
+                            }));
+                          }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+
+                    <div className="flex items-center gap-2 text-xs text-admin-textMuted">
+                      <span>จำนวนวัน:</span>
+                      <span className="font-semibold text-admin-text">
+                        {editForm.dayCount || 1}
+                      </span>
+                      <span>วัน</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 text-[11px] text-admin-textMuted">
+                    * ระบบจะคำนวณจำนวนวันอัตโนมัติจาก “จำนวนวันที่เลือก”
+                  </div>
                 </div>
               </div>
 

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
-import SignaturePad from "./SignaturePad";
+import SignaturePad from "../../../../components/shared/SignaturePad";
 
 export default function SignPage() {
   const searchParams = useSearchParams();

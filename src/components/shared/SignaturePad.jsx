@@ -1,4 +1,3 @@
-// src/app/classroom/checkin/sign/SignaturePad.jsx
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
@@ -7,7 +6,7 @@ export default function SignaturePad({ onChange }) {
   const canvasRef = useRef(null);
   const historyRef = useRef([]); // เก็บประวัติภาพไว้สำหรับ Undo
   const drawingRef = useRef(false); // flag ว่ากำลังเขียนอยู่ไหม
-  const lastPointRef = useRef(null); // จุดล่าสุดที่วาด (เผื่อจะขยายต่อภายหลัง)
+  const lastPointRef = useRef(null); // จุดล่าสุดที่วาด
 
   /* --------------------- helpers --------------------- */
 
@@ -24,7 +23,7 @@ export default function SignaturePad({ onChange }) {
 
     const parentRect = canvas.parentElement.getBoundingClientRect();
     const width = parentRect.width;
-    const height = 260; // ความสูง fix ตาม design
+    const height = 260;
 
     canvas.width = width;
     canvas.height = height;
@@ -88,7 +87,6 @@ export default function SignaturePad({ onChange }) {
       fitCanvasToParent();
 
       if (last) {
-        // ถ้าขนาดเปลี่ยนเยอะ จะไม่พอดีเป๊ะ แต่พอใช้ได้
         context.putImageData(last, 0, 0);
       }
     };
@@ -111,7 +109,7 @@ export default function SignaturePad({ onChange }) {
 
     saveSnapshot(); // เก็บก่อนเริ่มเส้นใหม่
 
-    ctx.beginPath(); // สำคัญ! ไม่งั้นจะมีเส้นลากมาจากเส้นเก่า
+    ctx.beginPath();
     ctx.moveTo(x, y);
   };
 
@@ -141,7 +139,7 @@ export default function SignaturePad({ onChange }) {
     onChange?.(base64);
 
     const ctx = getCtx();
-    if (ctx) ctx.beginPath(); // reset path ใหม่
+    if (ctx) ctx.beginPath();
   };
 
   const handleUndo = () => {
@@ -149,7 +147,6 @@ export default function SignaturePad({ onChange }) {
     const ctx = getCtx();
     if (!canvas || !ctx) return;
 
-    // ต้องเหลืออย่างน้อย 1 snapshot (พื้นว่าง)
     if (historyRef.current.length <= 1) {
       const last = historyRef.current[0];
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -158,7 +155,6 @@ export default function SignaturePad({ onChange }) {
       return;
     }
 
-    // ย้อนกลับ 1 ขั้น
     historyRef.current.pop();
     const prev = historyRef.current[historyRef.current.length - 1];
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -166,6 +162,18 @@ export default function SignaturePad({ onChange }) {
 
     const base64 = canvas.toDataURL("image/png");
     onChange?.(base64);
+  };
+
+  const handleClear = () => {
+    const canvas = canvasRef.current;
+    const ctx = getCtx();
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    historyRef.current = [];
+    saveSnapshot();
+    onChange?.("");
   };
 
   /* --------------------- render --------------------- */
@@ -184,14 +192,22 @@ export default function SignaturePad({ onChange }) {
         onTouchEnd={endDrawing}
       />
 
-      {/* ปุ่ม Undo */}
-      <button
-        type="button"
-        onClick={handleUndo}
-        className="absolute right-3 top-3 rounded-lg bg-front-bgSoft px-3 py-1 text-sm text-front-text shadow"
-      >
-        Undo
-      </button>
+      <div className="absolute right-3 top-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleUndo}
+          className="rounded-lg bg-front-bgSoft px-3 py-1 text-sm text-front-text shadow"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          onClick={handleClear}
+          className="rounded-lg bg-white px-3 py-1 text-sm text-front-text shadow ring-1 ring-black/5"
+        >
+          ล้าง
+        </button>
+      </div>
     </div>
   );
 }
