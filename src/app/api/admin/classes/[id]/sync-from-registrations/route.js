@@ -3,7 +3,7 @@ import dbConnect from "@/lib/mongoose";
 import Class from "@/models/Class";
 // ❗ TODO: เปลี่ยนชื่อ Model ให้ตรงของจริง
 // เช่น "@/models/Registration" หรือ "@/models/Register"
-import Registration from "@/models/Registration";
+// import Registration from "@/models/Registration";
 
 export const dynamic = "force-dynamic";
 
