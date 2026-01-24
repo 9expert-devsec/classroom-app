@@ -1,73 +1,13 @@
 // src/app/classroom/checkin/success/page.jsx
-"use client";
+import { Suspense } from "react";
+import CheckinSuccessClient from "./CheckinSuccessClient";
 
-import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
-import StepHeader from "../StepHeader";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+export const dynamic = "force-dynamic"; // กัน prerender ง่ายๆ ด้วย
 
-export default function CheckinSuccessPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const sid = searchParams.get("sid");
-
-  const [countdown, setCountdown] = useState(5); // ⬅️ เริ่ม 5 วินาที
-
-  const message = useMemo(() => {
-    return "ระบบบันทึกการเช็คอินเรียบร้อยแล้ว";
-  }, []);
-
-  // 🔥 Countdown & Auto-Redirect
-  useEffect(() => {
-    if (countdown <= 0) {
-      router.push("/classroom/checkin");
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setCountdown((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [countdown, router]);
-
-  function handleBack() {
-    router.push("/classroom/checkin");
-  }
-
+export default function Page() {
   return (
-    <div className="flex flex-col">
-      <StepHeader currentStep={4} />
-
-      <div className="px-6 py-10 flex flex-col items-center text-center gap-6">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10">
-          <span className="text-4xl text-green-500">✔</span>
-        </div>
-
-        <div>
-          <h2 className="text-xl font-semibold text-front-text">
-            เช็คอินสำเร็จ
-          </h2>
-
-          <p className="mt-2 text-sm text-front-textMuted">{message}</p>
-
-          {sid && (
-            <p className="mt-1 text-[11px] text-front-textMuted">
-              (รหัสผู้เรียน: {sid})
-            </p>
-          )}
-
-          <p className="mt-4 text-xs text-front-textMuted">
-            ระบบจะพากลับไปหน้าเช็คอินอัตโนมัติใน {countdown} วินาที...
-          </p>
-        </div>
-
-        <div className="mt-4 w-full max-w-sm">
-          <PrimaryButton className="w-full" onClick={handleBack}>
-            กลับไปหน้าเช็คอิน
-          </PrimaryButton>
-        </div>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <CheckinSuccessClient />
+    </Suspense>
   );
 }
