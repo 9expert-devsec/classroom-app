@@ -1,13 +1,12 @@
-// src/app/classroom/checkin/food/page.jsx
 import { Suspense } from "react";
-import CheckinFoodClient from "./CheckinFoodClient";
+import EventCheckinClient from "./EventCheckinClient";
 
 export const dynamic = "force-dynamic";
 
 export default function Page({ searchParams }) {
   return (
     <Suspense fallback={null}>
-      <CheckinFoodClient searchParams={searchParams || {}} />
+      <EventCheckinClient searchParams={searchParams || {}} />
     </Suspense>
   );
 }

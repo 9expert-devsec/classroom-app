@@ -1,20 +1,38 @@
 // src/app/admin/classroom/classes/new/page.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import { Calendar } from "@/components/ui/calendar";
 
 const ROOMS = ["Jupiter", "Mars", "Saturn", "Venus", "Opera", "Online"];
 
-// แปลง Date เป็น YYYY-MM-DD แบบ local
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+// YYYY-MM-DD local (จาก Date object)
 function toLocalYMD(dateInput) {
   if (!dateInput) return "";
   const d = new Date(dateInput);
   if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function uniqDates(dates) {
+  const map = new Map();
+  for (const d of dates || []) {
+    const ymd = toLocalYMD(d);
+    if (ymd) map.set(ymd, new Date(d));
+  }
+  return Array.from(map.values()).sort((a, b) => a.getTime() - b.getTime());
+}
+
+function buildDefaultTitle(course) {
+  const code = course?.course_id || "";
+  const name = course?.course_name || "";
+  const t = `${code} - ${name}`.trim();
+  return t.replace(/\s+/g, " ");
 }
 
 export default function NewClassManualPage() {
@@ -22,14 +40,44 @@ export default function NewClassManualPage() {
   const [instructors, setInstructors] = useState([]);
 
   const [courseId, setCourseId] = useState("");
-  const [dateStr, setDateStr] = useState("");
-  const [dayCount, setDayCount] = useState(1);
+
+  // ✅ ตั้งชื่อ Class เอง
+  const [title, setTitle] = useState("");
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  // ✅ เลือกวันเองหลายวัน
+  const [selectedDates, setSelectedDates] = useState([]); // Date[]
+  const selectedSorted = useMemo(
+    () => uniqDates(selectedDates),
+    [selectedDates],
+  );
+
+  // วันแรก = วันที่น้อยสุด (compat)
+  const dateStr = useMemo(() => {
+    const first = selectedSorted[0];
+    return first ? toLocalYMD(first) : "";
+  }, [selectedSorted]);
+
+  // จำนวนวัน = จำนวนวันที่เลือก
+  const dayCount = useMemo(() => selectedSorted.length || 0, [selectedSorted]);
+
+  // days[] = YMD ของทุกวันที่เลือก (source of truth สำหรับข้ามวัน/เว้นวัน)
+  const daysYMD = useMemo(
+    () => selectedSorted.map((d) => toLocalYMD(d)).filter(Boolean),
+    [selectedSorted],
+  );
+
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("16:00");
   const [room, setRoom] = useState("");
   const [instructorId, setInstructorId] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedCourse = useMemo(
+    () => courses.find((c) => String(c._id) === courseId) || null,
+    [courses, courseId],
+  );
 
   // โหลดคอร์ส + instructor
   useEffect(() => {
@@ -61,7 +109,6 @@ export default function NewClassManualPage() {
         setInstructors(rows || []);
       } catch (err) {
         console.error(err);
-        // ไม่ต้อง alert ก็ได้ แค่ไม่มี option ให้เลือก
       }
     }
 
@@ -69,27 +116,32 @@ export default function NewClassManualPage() {
     loadInstructors();
   }, []);
 
+  // ✅ ถ้ายังไม่เคยแก้ title เอง ให้ auto-fill ตามคอร์สที่เลือก
+  useEffect(() => {
+    if (!selectedCourse) return;
+    if (titleTouched) return;
+    setTitle(buildDefaultTitle(selectedCourse));
+  }, [selectedCourse, titleTouched]);
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (submitting) return;
 
-    const selectedCourse = courses.find((c) => String(c._id) === courseId);
     if (!selectedCourse) {
       alert("กรุณาเลือกคอร์ส");
       return;
     }
-    if (!dateStr) {
-      alert("กรุณาเลือกวันอบรม (Day 1)");
+
+    if (!daysYMD.length) {
+      alert("กรุณาเลือกวันอบรมอย่างน้อย 1 วัน");
       return;
     }
 
-    const ymd = toLocalYMD(dateStr);
-    if (!ymd) {
-      alert("รูปแบบวันที่ไม่ถูกต้อง");
+    const t = String(title || "").trim();
+    if (!t) {
+      alert("กรุณากรอกชื่อ Class");
       return;
     }
-
-    const dc = Number(dayCount) || 1;
 
     // หา instructor ที่เลือก
     const selectedInst =
@@ -97,20 +149,25 @@ export default function NewClassManualPage() {
         (i) =>
           String(i._id) === instructorId ||
           i.instructor_id === instructorId ||
-          i.code === instructorId
+          i.code === instructorId,
       ) || null;
 
-    // ตั้งชื่อ class แบบเรียบ ๆ (ปรับได้ตามใจ)
-    const title = `${selectedCourse.course_id || ""} - ${
-      selectedCourse.course_name || ""
-    }`;
-
     const payload = {
-      title: title.trim(),
+      // ✅ ใช้ชื่อที่กรอกเอง
+      title: t,
+
       courseCode: selectedCourse.course_id || "",
       courseName: selectedCourse.course_name || "",
-      date: ymd,
-      dayCount: dc,
+
+      // compat (วันแรก)
+      date: dateStr,
+
+      // นับจากวันที่เลือกจริง
+      dayCount: dayCount || 1,
+
+      // ✅ วันอบรมจริงทั้งหมด (รองรับเลือกข้ามวัน/เว้นวัน)
+      days: daysYMD,
+
       startTime,
       endTime,
       room: room || "",
@@ -147,13 +204,17 @@ export default function NewClassManualPage() {
       }
 
       alert("สร้าง Class (manual) สำเร็จแล้ว");
-      // ล้างฟอร์มบางส่วน
-      setDateStr("");
-      setDayCount(1);
+
+      // reset
+      setSelectedDates([]);
       setStartTime("09:00");
       setEndTime("16:00");
       setRoom("");
       setInstructorId("");
+
+      // reset title → ให้ auto-fill รอบถัดไป
+      setTitleTouched(false);
+      setTitle(selectedCourse ? buildDefaultTitle(selectedCourse) : "");
     } catch (err) {
       console.error(err);
       alert("เกิดข้อผิดพลาดในการเรียก API");
@@ -165,8 +226,8 @@ export default function NewClassManualPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-semibold">สร้าง Class (manual)</h1>
       <p className="mt-1 text-sm text-admin-textMuted">
-        เลือกคอร์สจาก public-courses แล้วกำหนดวันที่/เวลา/ห้อง และอาจารย์ผู้สอนของ
-        Class ด้วยตัวเอง
+        เลือกคอร์ส, เลือกวันอบรมเองหลายวัน, ตั้งชื่อ Class เองได้
+        และระบบจะนับจำนวนวันอัตโนมัติ
       </p>
 
       <form
@@ -181,7 +242,9 @@ export default function NewClassManualPage() {
           <select
             className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
             value={courseId}
-            onChange={(e) => setCourseId(e.target.value)}
+            onChange={(e) => {
+              setCourseId(e.target.value);
+            }}
           >
             <option value="">-- กรุณาเลือกคอร์ส --</option>
             {courses.map((c) => (
@@ -192,58 +255,119 @@ export default function NewClassManualPage() {
           </select>
         </div>
 
-        {/* แถววันที่ / จำนวนวัน */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        {/* ✅ ตั้งชื่อ Class เอง */}
+        <div>
+          <div className="flex items-center justify-between gap-3">
             <label className="block text-sm font-medium text-admin-text">
-              วันอบรม (Day 1)
+              ชื่อ Class (แก้ไขเองได้)
             </label>
-            <input
-              type="date"
-              className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={dateStr}
-              onChange={(e) => setDateStr(e.target.value)}
-            />
+
+            <button
+              type="button"
+              className="rounded-full border border-admin-border bg-white px-3 py-1 text-xs text-admin-text hover:bg-admin-surfaceMuted"
+              onClick={() => {
+                if (!selectedCourse) return;
+                setTitle(buildDefaultTitle(selectedCourse));
+                setTitleTouched(false);
+              }}
+              disabled={!selectedCourse}
+              title="ตั้งค่าเป็นชื่อ default จากคอร์ส"
+            >
+              ใช้ชื่อจากคอร์ส
+            </button>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-admin-text">
-              จำนวนวันอบรม
-            </label>
-            <input
-              type="number"
-              min={1}
-              className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={dayCount}
-              onChange={(e) => setDayCount(e.target.value)}
-            />
-          </div>
+          <input
+            className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              setTitleTouched(true);
+            }}
+            placeholder="เช่น CR-PUB-XXX-26-01-26-1 หรือ ชื่ออะไรก็ได้"
+          />
+          <p className="mt-1 text-[11px] text-admin-textMuted">
+            * ระบบจะใช้ชื่อนี้เป็น title ของ Class ทันที (คุณตั้งรูปแบบเองได้)
+          </p>
         </div>
 
-        {/* แถวเวลาเริ่ม / สิ้นสุด */}
+        {/* เลือกวันเอง + จำนวนวันอัตโนมัติ */}
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-admin-text">
-              เวลาเริ่ม
+              วันอบรม (เลือกวันเอง)
             </label>
-            <input
-              type="time"
-              className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
+
+            <div className="mt-2 rounded-2xl border border-admin-border bg-white p-3">
+              <Calendar
+                mode="multiple"
+                numberOfMonths={2}
+                selected={selectedDates}
+                onSelect={(v) => setSelectedDates(Array.isArray(v) ? v : [])}
+                // ทำให้ selected เป็นวงขอบ (ไม่ใช่ range)
+                classNames={{
+                  day_selected:
+                    "bg-transparent text-admin-text ring-2 ring-brand-primary hover:bg-transparent",
+                }}
+              />
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {daysYMD.length ? (
+                  daysYMD.map((d) => (
+                    <span
+                      key={d}
+                      className="rounded-full bg-admin-surfaceMuted px-3 py-1 text-xs text-admin-text"
+                    >
+                      {d}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-admin-textMuted">
+                    ยังไม่ได้เลือกวัน (คลิกวันที่เพื่อเลือกหลายวันได้)
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-admin-text">
-              เวลาสิ้นสุด
+              จำนวนวันอบรม (คำนวณอัตโนมัติ)
             </label>
             <input
-              type="time"
-              className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm"
+              value={dayCount || 0}
             />
+            <p className="mt-1 text-[11px] text-admin-textMuted">
+              จำนวนวัน = จำนวน “วันที่เลือก” (เลือกเว้นวันได้)
+            </p>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-1">
+              <div>
+                <label className="block text-sm font-medium text-admin-text">
+                  เวลาเริ่ม
+                </label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-admin-text">
+                  เวลาสิ้นสุด
+                </label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -280,11 +404,7 @@ export default function NewClassManualPage() {
             {instructors.map((t) => {
               const id = t._id || t.instructor_id || t.code || t.email || "";
               const name =
-                t.name ||
-                t.display_name ||
-                t.fullname ||
-                t.name_th ||
-                id;
+                t.name || t.display_name || t.fullname || t.name_th || id;
               return (
                 <option key={id} value={id}>
                   {name}

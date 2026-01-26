@@ -50,6 +50,7 @@ const NAV = [
       },
     ],
   },
+
   {
     label: "Food Menu",
     href: "/admin/classroom/food",
@@ -69,6 +70,34 @@ const NAV = [
         label: "Food Report",
         href: "/admin/classroom/food/report",
         icon: Soup,
+      },
+    ],
+  },
+
+  {
+    label: "Event",
+    href: "/admin/classroom/event",
+    icon: CalendarDays,
+    children: [
+      {
+        label: "จัดการ Event",
+        href: "/admin/classroom/event",
+        icon: CalendarDays,
+      },
+      {
+        label: "Create Event",
+        href: "/admin/classroom/event/new",
+        icon: PlusCircle,
+      },
+      {
+        label: "Import CSV ผู้เข้าร่วม",
+        href: "/admin/classroom/event/import",
+        icon: Upload,
+      },
+      {
+        label: "Event Report",
+        href: "/admin/classroom/event/report",
+        icon: Soup, // หรือ CalendarDays ก็ได้
       },
     ],
   },

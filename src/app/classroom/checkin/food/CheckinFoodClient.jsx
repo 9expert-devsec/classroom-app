@@ -1,7 +1,7 @@
-// src/app/classroom/checkin/food/page.jsx
+// src/app/classroom/checkin/food/CheckinFoodClient.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import { useRouter } from "next/navigation";
@@ -12,11 +12,19 @@ import MenuCard from "./MenuCard";
 
 function pick(sp, key) {
   const v = sp?.[key];
-  return Array.isArray(v) ? (v[0] || "") : (v || "");
+  return Array.isArray(v) ? v[0] || "" : v || "";
 }
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
+}
+
+function safeReturnTo(path, fallback) {
+  const s = String(path || "").trim();
+  if (!s) return fallback;
+  // allow only same-origin relative paths
+  if (s.startsWith("/")) return s;
+  return fallback;
 }
 
 /** choiceType:
@@ -167,12 +175,25 @@ function DrinkCard2({ item, active, onClick }) {
   );
 }
 
-export default function FoodPage({ searchParams = {} }) {
+export default function CheckinFoodClient({ searchParams = {} }) {
   const router = useRouter();
 
-  const studentId = pick(searchParams, "studentId") || pick(searchParams, "sid");
-  const classId = pick(searchParams, "classId") || pick(searchParams, "classid");
+  const studentId =
+    pick(searchParams, "studentId") || pick(searchParams, "sid");
+  const classId =
+    pick(searchParams, "classId") || pick(searchParams, "classid");
   const day = Number(pick(searchParams, "day") || 1);
+
+  const isEdit =
+    String(pick(searchParams, "edit") || "") === "1" ||
+    String(pick(searchParams, "mode") || "") === "edit" ||
+    String(pick(searchParams, "from") || "") === "edit-user";
+
+  const returnToDefault = `/classroom/edit-user?day=${day}`;
+  const returnTo = safeReturnTo(
+    pick(searchParams, "returnTo") || pick(searchParams, "back") || "",
+    returnToDefault,
+  );
 
   const [restaurants, setRestaurants] = useState([]);
   const [restaurant, setRestaurant] = useState(null);
@@ -188,36 +209,8 @@ export default function FoodPage({ searchParams = {} }) {
   // ✅ ไม่ default เลือกอะไร
   const [choiceType, setChoiceType] = useState("");
 
-  useEffect(() => {
-    async function loadFood() {
-      const params = new URLSearchParams();
-      params.set("day", String(day));
-      if (studentId) params.set("studentId", studentId);
-      if (classId) params.set("classId", classId);
-
-      try {
-        const res = await fetch(`/api/food/today?${params.toString()}`);
-        if (!res.ok) {
-          const text = await res.text();
-          console.error("food/today error:", res.status, text);
-          setRestaurants([]);
-          setHasFoodSetup(true);
-          return;
-        }
-
-        const data = await res.json();
-        setHasFoodSetup(
-          typeof data?.hasFoodSetup === "boolean" ? data.hasFoodSetup : true,
-        );
-        setRestaurants(data.items || []);
-      } catch (e) {
-        console.error("food/today fetch fail:", e);
-        setRestaurants([]);
-        setHasFoodSetup(true);
-      }
-    }
-    loadFood();
-  }, [studentId, classId, day]);
+  // กัน prefill ซ้ำแล้วไปทับการแก้ของ user
+  const didPrefillRef = useRef(false);
 
   function resetFoodSelection() {
     setRestaurant(null);
@@ -265,6 +258,125 @@ export default function FoodPage({ searchParams = {} }) {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   }
+
+  function applyPrefill(currentFood, items) {
+    if (!currentFood) return;
+
+    const cf = currentFood || {};
+    const cfChoice = String(cf.choiceType || "");
+    const cfNote = String(cf.note || "");
+    const cfNoFood = !!cf.noFood;
+
+    // noFood/coupon
+    if (cfChoice === "noFood" || cfNoFood) {
+      setChoiceType("noFood");
+      resetFoodSelection();
+      setNote(cfNote.trim() || "ไม่รับอาหาร");
+      return;
+    }
+    if (cfChoice === "coupon") {
+      setChoiceType("coupon");
+      resetFoodSelection();
+      setNote(cfNote.trim() || "COUPON");
+      return;
+    }
+
+    // food
+    if (cfChoice === "food") {
+      setChoiceType("food");
+      setNote(cfNote || "");
+
+      const restId = String(cf.restaurantId || "");
+      const menuId = String(cf.menuId || "");
+      const addonIdList = Array.isArray(cf.addonIds)
+        ? cf.addonIds.map((x) => String(x))
+        : [];
+      const dId = String(cf.drinkId || "");
+
+      const foundRest = (items || []).find((r) => String(r.id) === restId);
+
+      if (!foundRest) {
+        // ร้านเดิมไม่อยู่ในตัวเลือกวันนี้ -> ให้ user เลือกใหม่
+        resetFoodSelection();
+        return;
+      }
+
+      const restObj = {
+        id: foundRest.id,
+        name: foundRest.name,
+        logo: foundRest.logoUrl,
+        menus: foundRest.menus || [],
+        addons: foundRest.addons || [],
+        drinks: foundRest.drinks || [],
+      };
+      setRestaurant(restObj);
+
+      const foundMenu = (restObj.menus || []).find(
+        (m) => String(m.id) === menuId,
+      );
+      if (!foundMenu) {
+        setMenu(null);
+        setAddonIds([]);
+        setDrinkId("");
+        return;
+      }
+
+      const menuObj = {
+        id: foundMenu.id,
+        name: foundMenu.name,
+        addonIds: (foundMenu.addonIds || []).map(String),
+        drinkIds: (foundMenu.drinkIds || []).map(String),
+      };
+      setMenu(menuObj);
+
+      // filter ให้เหลือเฉพาะที่อยู่ใน menu จริง
+      const allowedAddon = new Set(menuObj.addonIds || []);
+      const allowedDrink = new Set(menuObj.drinkIds || []);
+
+      setAddonIds(addonIdList.filter((x) => allowedAddon.has(String(x))));
+      setDrinkId(allowedDrink.has(String(dId)) ? String(dId) : "");
+    }
+  }
+
+  useEffect(() => {
+    async function loadFood() {
+      const params = new URLSearchParams();
+      params.set("day", String(day));
+      if (studentId) params.set("studentId", studentId);
+      if (classId) params.set("classId", classId);
+
+      try {
+        const res = await fetch(`/api/food/today?${params.toString()}`);
+        if (!res.ok) {
+          const text = await res.text();
+          console.error("food/today error:", res.status, text);
+          setRestaurants([]);
+          setHasFoodSetup(true);
+          return;
+        }
+
+        const data = await res.json();
+        setHasFoodSetup(
+          typeof data?.hasFoodSetup === "boolean" ? data.hasFoodSetup : true,
+        );
+        setRestaurants(data.items || []);
+
+        // ✅ prefill ครั้งเดียว (เฉพาะตอนเข้ามา edit หรือเข้ามาหน้านี้พร้อม studentId)
+        if (!didPrefillRef.current && data?.currentFood) {
+          didPrefillRef.current = true;
+          applyPrefill(data.currentFood, data.items || []);
+        }
+      } catch (e) {
+        console.error("food/today fetch fail:", e);
+        setRestaurants([]);
+        setHasFoodSetup(true);
+      }
+    }
+
+    loadFood();
+    // reset prefill flag เมื่อเปลี่ยน student/class/day
+    didPrefillRef.current = false;
+  }, [studentId, classId, day]);
 
   // ✅ ทำ map จาก master list ต่อร้าน
   const addonById = useMemo(() => {
@@ -349,20 +461,30 @@ export default function FoodPage({ searchParams = {} }) {
                 noFood: false,
                 restaurantId: restaurant?.id || "",
                 menuId: menu?.id || "",
-                addonIds: addonIds, // ✅ ส่ง id จริง
-                drinkId: drinkId || "", // ✅ ส่ง id จริง
+                addonIds: addonIds,
+                drinkId: drinkId || "",
                 note,
               };
 
-      await fetch("/api/checkin/food", {
+      const res = await fetch("/api/checkin/food", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      router.push(
-        `/classroom/checkin/sign?studentId=${studentId}&classId=${classId}&day=${day}`,
-      );
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || "save failed");
+      }
+
+      // ✅ edit mode: กลับหน้า edit-user
+      if (isEdit) {
+        router.push(returnTo);
+      } else {
+        router.push(
+          `/classroom/checkin/sign?studentId=${studentId}&classId=${classId}&day=${day}`,
+        );
+      }
     } catch (err) {
       console.error(err);
       alert("บันทึกเมนูไม่สำเร็จ");
@@ -370,6 +492,9 @@ export default function FoodPage({ searchParams = {} }) {
 
     setSubmitting(false);
   }
+
+  const backHref = isEdit ? returnTo : `/classroom/checkin?day=${day}`;
+  const primaryLabel = isEdit ? "บันทึกเมนู" : "ไปต่อ → เซ็นชื่อ";
 
   return (
     <div className="relative flex flex-col">
@@ -382,21 +507,23 @@ export default function FoodPage({ searchParams = {} }) {
       <StepHeader currentStep={2} />
 
       <div className="px-6 py-6">
-        <h2 className="text-lg font-semibold">Step 2: เลือกเมนูอาหาร</h2>
+        <h2 className="text-lg font-semibold">
+          {isEdit ? "แก้ไขเมนูอาหาร" : "Step 2: เลือกเมนูอาหาร"}
+        </h2>
 
         {!hasFoodSetup ? (
           <div className="mt-4 space-y-4">
             <div className="grid grid-cols-2 gap-3 animate-fadeIn">
               <QuickChoiceCard
                 title="ไม่รับอาหาร"
-                subtitle="เลือกแล้วสามารถไปต่อเพื่อเซ็นชื่อได้ทันที"
+                subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                 icon="🍽️"
                 active={choiceType === "noFood"}
                 onClick={chooseNoFood}
               />
               <QuickChoiceCard
                 title="Coupon"
-                subtitle="เลือกแล้วสามารถไปต่อเพื่อเซ็นชื่อได้ทันที"
+                subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                 icon="🎫"
                 active={choiceType === "coupon"}
                 onClick={chooseCoupon}
@@ -419,10 +546,10 @@ export default function FoodPage({ searchParams = {} }) {
             <div className="mt-6 flex gap-3">
               <button
                 type="button"
-                onClick={() => router.push(`/classroom/checkin?day=${day}`)}
+                onClick={() => router.push(backHref)}
                 className="flex-1 rounded-2xl border border-brand-border bg-white px-4 py-2 text-sm font-medium text-front-text hover:bg-front-bgSoft"
               >
-                ← ย้อนกลับไปค้นหาชื่อ (Step 1)
+                ← ย้อนกลับ
               </button>
 
               <PrimaryButton
@@ -430,7 +557,7 @@ export default function FoodPage({ searchParams = {} }) {
                 className="flex-1"
                 disabled={!ready || submitting}
               >
-                ไปต่อ → เซ็นชื่อ
+                {primaryLabel}
               </PrimaryButton>
             </div>
           </div>
@@ -443,14 +570,14 @@ export default function FoodPage({ searchParams = {} }) {
             <div className="grid grid-cols-2 gap-3 animate-fadeIn">
               <QuickChoiceCard
                 title="ไม่รับอาหาร"
-                subtitle="เลือกแล้วสามารถไปต่อเพื่อเซ็นชื่อได้ทันที"
+                subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                 icon="🍽️"
                 active={choiceType === "noFood"}
                 onClick={chooseNoFood}
               />
               <QuickChoiceCard
                 title="Coupon"
-                subtitle="เลือกแล้วสามารถไปต่อเพื่อเซ็นชื่อได้ทันที"
+                subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                 icon="🎫"
                 active={choiceType === "coupon"}
                 onClick={chooseCoupon}
@@ -468,7 +595,7 @@ export default function FoodPage({ searchParams = {} }) {
               {restaurants.length === 0 && (
                 <p className="col-span-2 text-sm text-front-textMuted">
                   วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก
-                  “ไม่รับอาหาร” หรือ “Coupon” แล้วไปต่อได้)
+                  “ไม่รับอาหาร” หรือ “Coupon” แล้วบันทึกได้)
                 </p>
               )}
             </div>
@@ -490,7 +617,9 @@ export default function FoodPage({ searchParams = {} }) {
                         setMenu(null);
                         setAddonIds([]);
                         setDrinkId("");
-                        setNote("");
+                        // note: ไม่ล้าง note ในโหมดแก้ไขก็ได้ แต่คงเดิมจะดีกว่า
+                        // setNote("");
+
                         setTimeout(
                           () =>
                             setMenu({
@@ -594,10 +723,10 @@ export default function FoodPage({ searchParams = {} }) {
             <div className="mt-8 flex gap-3">
               <button
                 type="button"
-                onClick={() => router.push(`/classroom/checkin?day=${day}`)}
+                onClick={() => router.push(backHref)}
                 className="flex-1 rounded-2xl border border-brand-border bg-white px-4 py-2 text-sm font-medium text-front-text hover:bg-front-bgSoft"
               >
-                ← ย้อนกลับไปค้นหาชื่อ (Step 1)
+                ← ย้อนกลับ
               </button>
 
               <PrimaryButton
@@ -605,7 +734,7 @@ export default function FoodPage({ searchParams = {} }) {
                 className="flex-1"
                 disabled={!ready || submitting}
               >
-                ไปต่อ → เซ็นชื่อ
+                {primaryLabel}
               </PrimaryButton>
             </div>
           </>

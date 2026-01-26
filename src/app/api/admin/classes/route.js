@@ -123,6 +123,51 @@ function pickStudentName(stu) {
   );
 }
 
+/* ---------- days helpers (เลือกวันเอง) ---------- */
+
+function isYMD(x) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(x || "").trim());
+}
+
+function uniqSortYMD(list) {
+  const m = new Map();
+  for (const v of Array.isArray(list) ? list : []) {
+    const s = String(v || "").trim();
+    if (!isYMD(s)) continue;
+    m.set(s, true);
+  }
+  return Array.from(m.keys()).sort(); // YMD sort ได้ด้วย string
+}
+
+function ymdToUTCDate(ymd) {
+  // ymd "YYYY-MM-DD" -> Date (UTC)
+  const [y, m, d] = String(ymd)
+    .split("-")
+    .map((n) => Number(n));
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+}
+
+function utcDateToYMD(dt) {
+  if (!dt || Number.isNaN(dt.getTime())) return "";
+  const y = dt.getUTCFullYear();
+  const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(dt.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function buildContiguousDaysFromStart(ymdStart, dayCount) {
+  const base = ymdToUTCDate(ymdStart);
+  if (!base) return [];
+  const n = Number(dayCount) || 1;
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    const dt = new Date(base.getTime() + i * 86400000);
+    out.push(utcDateToYMD(dt));
+  }
+  return out;
+}
+
 /* ---------------- GET ---------------- */
 
 export async function GET(req) {
@@ -145,8 +190,12 @@ export async function GET(req) {
       );
     }
 
-    // จำนวนวันอบรม
-    const dayCount = cls.duration?.dayCount || cls.dayCount || 1;
+    // ✅ จำนวนวันอบรม: days.length > duration.dayCount > dayCount > 1
+    const dayCount =
+      (Array.isArray(cls.days) && cls.days.length) ||
+      cls.duration?.dayCount ||
+      cls.dayCount ||
+      1;
 
     // ดึงรายชื่อนักเรียน
     const students = await Student.find({ classId: id }).lean();
@@ -154,10 +203,7 @@ export async function GET(req) {
     // ดึงเช็คอินทั้งหมด
     const checkins = await Checkin.find({ classId: id }).lean();
 
-    // -----------------------------
     // 1) map checkins: studentId -> { [dayNumber]: { isLate, time, signatureUrl } }
-    //    NOTE: บางโปรเจกต์อาจไม่ได้ใส่ signatureUrl ลง Checkin -> fallback ไป Student.signatureUrl
-    // -----------------------------
     const checkinMap = new Map();
     for (const ch of checkins) {
       const sid = String(ch.studentId);
@@ -170,20 +216,12 @@ export async function GET(req) {
       };
     }
 
-    // -----------------------------
     // 2) map receive signatures from DocumentReceipt
-    //    เก็บที่: DocumentReceipt.receivers[].receiptSig { url, signedAt, ... }
-    //    และกรณี INV เดียวกันหลายคน -> ให้ทุกคนใช้ลายเซ็นเดียวกันได้
-    // -----------------------------
     const receiptDocs = await DocumentReceipt.find({ classId: id })
       .select("_id classId docId receivers type")
       .lean();
 
-    // map by normalized docId -> { url, signedAt }
-    // (เลือกตัวแรกที่มี url)
     const receiveSigByDocId = new Map();
-
-    // map by receiverId -> { url, signedAt } (ถ้ามี receiverId)
     const receiveSigByReceiverId = new Map();
 
     for (const r of receiptDocs || []) {
@@ -198,8 +236,6 @@ export async function GET(req) {
         if (rid && url && !receiveSigByReceiverId.has(rid)) {
           receiveSigByReceiverId.set(rid, { url, signedAt });
         }
-
-        // ใส่ลง docId map ด้วย (กรณีต้องการกระจายให้ทุกคนที่ paymentRef เดียวกัน)
         if (docNorm && url && !receiveSigByDocId.has(docNorm)) {
           receiveSigByDocId.set(docNorm, { url, signedAt });
         }
@@ -220,7 +256,6 @@ export async function GET(req) {
       for (let d = 1; d <= dayCount; d += 1) {
         const info = byDay[d];
         if (info) {
-          // fallback signature: ถ้า Checkin ไม่มี signatureUrl แต่ Student มี (บาง flow เขียนลง Student)
           const sigUrl = info.signatureUrl || clean(stu?.signatureUrl) || "";
 
           checkinsByDay[d] = {
@@ -246,7 +281,6 @@ export async function GET(req) {
           : `Pass (Day ${lastDay})`;
       }
 
-      // receive signature (หลัก: receiverId -> docId)
       const paymentRef = clean(stu?.paymentRef);
       const docNorm = normalizeDocId(paymentRef);
 
@@ -276,7 +310,7 @@ export async function GET(req) {
         receiveType: stu.documentReceiveType || stu.receiveType || "",
         receiveDate: stu.documentReceivedAt || stu.receiveDate || null,
 
-        // ✅ receive signature fields (ให้ StudentsTable หาเจอ)
+        // receive signature fields
         documentReceiptSigUrl: receiveSigUrl || "",
         documentReceiptSignedAt: receiveSigSignedAt || null,
         documentReceiptSig: receiveSigUrl
@@ -302,9 +336,7 @@ export async function GET(req) {
   }
 
   // ----------------------------- //
-  // กรณี list class ทั้งหมด
-  // + รองรับ filter สำหรับเดา RUN:
-  //   /api/admin/classes?date=YYYY-MM-DD&titlePrefix=...
+  // list class ทั้งหมด
   // ----------------------------- //
 
   const find = {};
@@ -334,6 +366,12 @@ export async function GET(req) {
   const items = classes.map((c) => ({
     ...c,
     studentsCount: countMap.get(String(c._id)) || 0,
+    // ช่วยให้ list แสดงจำนวนวันได้ถูก (ถ้าใช้)
+    dayCount:
+      (Array.isArray(c.days) && c.days.length) ||
+      c.duration?.dayCount ||
+      c.dayCount ||
+      1,
   }));
 
   return NextResponse.json({ ok: true, items });
@@ -351,8 +389,9 @@ export async function POST(req) {
     courseCode,
     courseName,
     title, // manual override (ใช้เฉพาะ manual)
-    date, // "YYYY-MM-DD"
-    dayCount,
+    date, // "YYYY-MM-DD" (compat)
+    days, // ✅ ["YYYY-MM-DD", ...] (เลือกวันเอง)
+    dayCount, // compat
     startTime,
     endTime,
     room,
@@ -363,22 +402,41 @@ export async function POST(req) {
     channel, // "PUB" (optional)
   } = body || {};
 
-  if (!courseCode || !courseName || !date) {
+  if (!courseCode || !courseName) {
     return NextResponse.json(
-      { ok: false, error: "missing courseCode / courseName / date" },
+      { ok: false, error: "missing courseCode / courseName" },
       { status: 400 },
     );
   }
 
-  const startDate = new Date(date);
-  if (Number.isNaN(startDate.getTime())) {
+  // ✅ ถ้ามี days[] ให้ใช้ days เป็น source of truth
+  const daysSorted = uniqSortYMD(days);
+
+  // startDateYMD = วันแรก
+  const startDateYMD = daysSorted[0] || clean(date);
+
+  if (!startDateYMD || !isYMD(startDateYMD)) {
+    return NextResponse.json(
+      { ok: false, error: "missing/invalid date (YYYY-MM-DD) or days[]" },
+      { status: 400 },
+    );
+  }
+
+  const startDateUTC = ymdToUTCDate(startDateYMD);
+  if (!startDateUTC) {
     return NextResponse.json(
       { ok: false, error: "invalid date" },
       { status: 400 },
     );
   }
 
-  const dayCnt = Number(dayCount) || 1;
+  // dayCount = จำนวนวันจาก days[] (ถ้ามี) ไม่งั้นใช้ body.dayCount
+  const dayCnt = daysSorted.length ? daysSorted.length : Number(dayCount) || 1;
+
+  // ✅ days ที่จะเก็บ: ถ้ามี days[] ใช้เลย ไม่งั้น generate แบบ contiguous
+  const daysToStore = daysSorted.length
+    ? daysSorted
+    : buildContiguousDaysFromStart(startDateYMD, dayCnt);
 
   const instructorList = (instructors || []).map((ins) => {
     if (typeof ins === "string") return { name: ins, email: "" };
@@ -387,16 +445,15 @@ export async function POST(req) {
 
   const src = source === "api" || source === "sync" ? source : "manual";
 
-  // ✅ กรณีมาจาก schedule (api/sync หรือมี externalScheduleId) -> generate title pattern ให้เสมอ
+  // ✅ กรณีมาจาก schedule (api/sync หรือมี externalScheduleId) -> auto title เสมอ
   const shouldAutoTitle = src !== "manual" || !!externalScheduleId;
 
   let finalTitle = (title || "").trim();
 
   if (shouldAutoTitle) {
-    const prefix = buildTitlePrefixFromBody({ body, startDate });
+    const prefix = buildTitlePrefixFromBody({ body, startDate: startDateUTC });
     let run = (await getMaxRunByPrefix(prefix)) + 1;
 
-    // ✅ retry กัน title ชน (race condition)
     for (let attempt = 0; attempt < 10; attempt += 1) {
       finalTitle = `${prefix}-${run}`;
       try {
@@ -406,7 +463,14 @@ export async function POST(req) {
           courseCode,
           courseName,
           title: finalTitle,
-          date: startDate,
+
+          // compat: date = วันแรก
+          date: startDateUTC,
+
+          // ✅ เก็บ days + dayCount
+          days: daysToStore,
+          dayCount: dayCnt,
+
           duration: {
             dayCount: dayCnt,
             startTime: startTime || "09:00",
@@ -423,7 +487,6 @@ export async function POST(req) {
 
         return NextResponse.json({ ok: true, item: doc });
       } catch (err) {
-        // duplicate title -> run++
         const msg = String(err?.message || "");
         const code = err?.code;
         if (code === 11000 || msg.toLowerCase().includes("duplicate")) {
@@ -444,7 +507,7 @@ export async function POST(req) {
     );
   }
 
-  // manual: title ใช้ที่ user ส่งมา หรือ fallback เป็น courseName
+  // manual: ใช้ title ที่ user ส่งมา หรือ fallback เป็น courseName
   finalTitle = finalTitle || courseName;
 
   const doc = await Class.create({
@@ -453,7 +516,14 @@ export async function POST(req) {
     courseCode,
     courseName,
     title: finalTitle,
-    date: startDate,
+
+    // compat: date = วันแรก
+    date: startDateUTC,
+
+    // ✅ เก็บ days + dayCount
+    days: daysToStore,
+    dayCount: dayCnt,
+
     duration: {
       dayCount: dayCnt,
       startTime: startTime || "09:00",

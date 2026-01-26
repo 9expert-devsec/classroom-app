@@ -19,6 +19,33 @@ function normalizeDay(date) {
   return d;
 }
 
+function toStr(x) {
+  return x == null ? "" : String(x);
+}
+
+function buildCurrentFood(studentDoc) {
+  const f = studentDoc?.food || {};
+  const choiceType = toStr(f.choiceType || "");
+  const restaurantId = toStr(f.restaurantId || "");
+  const menuId = toStr(f.menuId || "");
+  const addonIds = Array.isArray(f.addonIds)
+    ? f.addonIds.map((x) => toStr(x))
+    : [];
+  const drinkId = toStr(f.drinkId || "");
+  const note = toStr(f.note || "");
+  const noFood = !!f.noFood;
+
+  return {
+    choiceType,
+    restaurantId,
+    menuId,
+    addonIds,
+    drinkId,
+    note,
+    noFood,
+  };
+}
+
 export async function GET(req) {
   try {
     await dbConnect();
@@ -30,6 +57,15 @@ export async function GET(req) {
 
     const day = Number(dayParam);
     const hasDay = Number.isFinite(day) && day > 0;
+
+    // ---------------------------
+    // ✅ NEW: currentFood (prefill)
+    // ---------------------------
+    let currentFood = null;
+    if (studentId) {
+      const stu = await Student.findById(studentId).select("food").lean();
+      if (stu) currentFood = buildCurrentFood(stu);
+    }
 
     let targetDate = new Date();
 
@@ -75,7 +111,12 @@ export async function GET(req) {
       !Array.isArray(daySet.entries) ||
       daySet.entries.length === 0
     ) {
-      return NextResponse.json({ ok: true, hasFoodSetup: false, items: [] });
+      return NextResponse.json({
+        ok: true,
+        hasFoodSetup: false,
+        items: [],
+        currentFood, // ✅ still return
+      });
     }
 
     const restaurantIds = daySet.entries.map((e) => e.restaurant);
@@ -250,7 +291,12 @@ export async function GET(req) {
 
     const items = Array.from(map.values()).filter((r) => r.menus.length > 0);
 
-    return NextResponse.json({ ok: true, hasFoodSetup: true, items });
+    return NextResponse.json({
+      ok: true,
+      hasFoodSetup: true,
+      items,
+      currentFood, // ✅ NEW
+    });
   } catch (err) {
     console.error("GET /api/food/today error:", err);
     return NextResponse.json(
