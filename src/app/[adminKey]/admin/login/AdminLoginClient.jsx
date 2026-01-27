@@ -1,17 +1,34 @@
-// src/app/admin/login/AdminLoginClient.jsx
+// src/app/[adminKey]/admin/login/AdminLoginClient.jsx
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 function pick(sp, key) {
   const v = sp?.[key];
-  return Array.isArray(v) ? (v[0] || "") : (v || "");
+  return Array.isArray(v) ? v[0] || "" : v || "";
 }
 
-export default function AdminLoginPage({ searchParams = {} }) {
+// กัน open-redirect: อนุญาตเฉพาะ path ที่ขึ้นต้นด้วย "/"
+function safeRedirectPath(x, fallback) {
+  const s = String(x || "").trim();
+  if (!s.startsWith("/")) return fallback;
+  if (s.startsWith("//")) return fallback; // กัน protocol-relative
+  return s;
+}
+
+export default function AdminLoginClient({
+  searchParams = {},
+  adminKey = "a1exqwvCqTXP7s0",
+}) {
   const router = useRouter();
-  const redirect = pick(searchParams, "redirect") || "/admin/classroom";
+
+  const fallback = useMemo(() => `/${adminKey}/admin/classroom`, [adminKey]);
+
+  const redirect = useMemo(() => {
+    const raw = pick(searchParams, "redirect");
+    return safeRedirectPath(raw, fallback);
+  }, [searchParams, fallback]);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +47,7 @@ export default function AdminLoginPage({ searchParams = {} }) {
         body: JSON.stringify({ username, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setError(data.error || "เข้าสู่ระบบไม่สำเร็จ");
         setLoading(false);
@@ -79,11 +96,7 @@ export default function AdminLoginPage({ searchParams = {} }) {
             />
           </div>
 
-          {error && (
-            <p className="text-xs text-red-500">
-              {error}
-            </p>
-          )}
+          {error ? <p className="text-xs text-red-500">{error}</p> : null}
 
           <button
             type="submit"

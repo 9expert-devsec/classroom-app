@@ -1,3 +1,4 @@
+// src/app/[adminKey]/admin/classroom/layout.jsx
 "use client";
 
 import Link from "next/link";
@@ -14,38 +15,38 @@ import {
   Soup,
   LogOut,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-/** โครงสร้างเมนู */
+/** โครงสร้างเมนู (ใช้ path แบบ relative ภายใต้ /admin) */
 const NAV = [
   {
     label: "Dashboard",
-    href: "/admin/classroom",
+    href: "/classroom",
     icon: LayoutDashboard,
   },
   {
     label: "Classes (จาก DB)",
-    href: "/admin/classroom/classes",
+    href: "/classroom/classes",
     icon: BookOpen,
     children: [
       {
         label: "Class ทั้งหมด",
-        href: "/admin/classroom/classes",
+        href: "/classroom/classes",
         icon: Users2,
       },
       {
         label: "Import จาก schedule",
-        href: "/admin/classroom/classes/from-schedule",
+        href: "/classroom/classes/from-schedule",
         icon: Upload,
       },
       {
         label: "New Class (manual)",
-        href: "/admin/classroom/classes/new",
+        href: "/classroom/classes/new",
         icon: PlusCircle,
       },
       {
         label: "Import CSV Students",
-        href: "/admin/classroom/import",
+        href: "/classroom/import",
         icon: Upload,
       },
     ],
@@ -53,22 +54,22 @@ const NAV = [
 
   {
     label: "Food Menu",
-    href: "/admin/classroom/food",
+    href: "/classroom/food",
     icon: UtensilsCrossed,
     children: [
       {
         label: "Food Menu",
-        href: "/admin/classroom/food/restaurants",
+        href: "/classroom/food/restaurants",
         icon: UtensilsCrossed,
       },
       {
         label: "Food Calendar",
-        href: "/admin/classroom/food/calendar",
+        href: "/classroom/food/calendar",
         icon: CalendarDays,
       },
       {
         label: "Food Report",
-        href: "/admin/classroom/food/report",
+        href: "/classroom/food/report",
         icon: Soup,
       },
     ],
@@ -76,40 +77,60 @@ const NAV = [
 
   {
     label: "Event",
-    href: "/admin/classroom/event",
+    href: "/classroom/event",
     icon: CalendarDays,
     children: [
       {
         label: "จัดการ Event",
-        href: "/admin/classroom/event",
+        href: "/classroom/event",
         icon: CalendarDays,
       },
       {
         label: "Create Event",
-        href: "/admin/classroom/event/new",
+        href: "/classroom/event/new",
         icon: PlusCircle,
       },
       {
         label: "Import CSV ผู้เข้าร่วม",
-        href: "/admin/classroom/event/import",
+        href: "/classroom/event/import",
         icon: Upload,
       },
       {
         label: "Event Report",
-        href: "/admin/classroom/event/report",
-        icon: Soup, // หรือ CalendarDays ก็ได้
+        href: "/classroom/event/report",
+        icon: Soup,
       },
     ],
   },
 ];
 
-function SectionItem({ item }) {
+function joinAdminBase(adminBase, href) {
+  const base = String(adminBase || "").replace(/\/+$/, "");
+  const h = String(href || "").trim();
+  if (!h) return base || "/";
+  if (h.startsWith("/")) return `${base}${h}`;
+  return `${base}/${h}`;
+}
+
+/** หา /{adminKey}/admin จาก pathname */
+function getAdminBaseFromPathname(pathname) {
+  const p = String(pathname || "");
+  const m = p.match(/^\/([^/]+)\/admin(\/.*)?$/);
+  if (!m) return "/admin"; // fallback (ไม่ควรเกิดในหน้านี้)
+  const adminKey = m[1];
+  return `/${adminKey}/admin`;
+}
+
+function SectionItem({ item, adminBase }) {
   const pathname = usePathname();
+
   const hasChildren = item.children && item.children.length > 0;
 
+  const itemHref = joinAdminBase(adminBase, item.href);
   const isActiveSection = hasChildren
-    ? pathname.startsWith(item.href)
-    : pathname === item.href;
+    ? pathname.startsWith(itemHref)
+    : pathname === itemHref;
+
   const [open, setOpen] = useState(isActiveSection);
 
   const Icon = item.icon;
@@ -119,7 +140,7 @@ function SectionItem({ item }) {
     return (
       <div className="mb-2">
         <Link
-          href={item.href}
+          href={itemHref}
           className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
           ${
             isActiveSection
@@ -187,12 +208,13 @@ function SectionItem({ item }) {
             <div className="absolute left-[10px] top-0 bottom-0 w-px bg-white/15" />
             <div className="space-y-1 pl-4">
               {item.children.map((child) => {
-                const childActive = pathname === child.href;
+                const childHref = joinAdminBase(adminBase, child.href);
+                const childActive = pathname === childHref;
                 const ChildIcon = child.icon;
                 return (
                   <Link
-                    key={child.href}
-                    href={child.href}
+                    key={childHref}
+                    href={childHref}
                     className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs transition
                     ${
                       childActive
@@ -215,6 +237,12 @@ function SectionItem({ item }) {
 
 export default function AdminClassroomLayout({ children }) {
   const router = useRouter();
+  const pathname = usePathname();
+
+  const adminBase = useMemo(
+    () => getAdminBaseFromPathname(pathname),
+    [pathname],
+  );
 
   async function handleLogout() {
     try {
@@ -222,7 +250,7 @@ export default function AdminClassroomLayout({ children }) {
     } catch (e) {
       console.error(e);
     }
-    router.push("/admin/login");
+    router.push(`${adminBase}/login`);
   }
 
   return (
@@ -240,7 +268,7 @@ export default function AdminClassroomLayout({ children }) {
         <div className="mx-3 flex-1 rounded-3xl bg-white/5 p-3">
           <nav className="space-y-1 text-sm">
             {NAV.map((item) => (
-              <SectionItem key={item.label} item={item} />
+              <SectionItem key={item.label} item={item} adminBase={adminBase} />
             ))}
           </nav>
         </div>

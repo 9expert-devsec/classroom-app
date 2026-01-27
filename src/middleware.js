@@ -2,37 +2,54 @@
 import { NextResponse } from "next/server";
 
 const TOKEN_NAME = process.env.ADMIN_TOKEN_NAME || "admin_token";
-const PUBLIC_ADMIN_PATHS = ["/admin/login"];
+const ADMIN_KEY = process.env.ADMIN_KEY || "a1exqwvCqTXP7s0";
 
 export function middleware(req) {
   const { pathname, search } = req.nextUrl;
   const path = pathname || "/";
 
-  console.log("[MIDDLEWARE] path =", path);
+  // ✅ อย่าให้ middleware ไปยุ่งกับ API routes (ไม่งั้น /api/admin/* จะโดนเข้าเคส adminKey=api)
+  if (path.startsWith("/api")) return NextResponse.next();
 
-  if (!path.startsWith("/admin")) {
+  // redirect home
+  if (path === "/") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/classroom/";
+    return NextResponse.redirect(url);
+  }
+
+  // ✅ กัน /admin เดิมให้เป็น 404
+  if (path === "/admin" || path.startsWith("/admin/")) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  // ✅ ตรวจรูปแบบ /:adminKey/admin/...
+  const m = path.match(/^\/([^/]+)\/admin(\/.*)?$/);
+  if (!m) return NextResponse.next();
+
+  const keyFromPath = m[1];
+
+  // ✅ key ไม่ตรง -> 404
+  if (keyFromPath !== ADMIN_KEY) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
+  // ✅ public login path
+  if (path === `/${ADMIN_KEY}/admin/login`) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_ADMIN_PATHS.some((p) => path === p)) {
-    console.log("[MIDDLEWARE] public path -> pass");
-    return NextResponse.next();
-  }
-
+  // ✅ protect admin pages
   const token = req.cookies.get(TOKEN_NAME)?.value;
-  console.log("[MIDDLEWARE] token =", token);
-
   if (!token) {
-    const loginUrl = new URL("/admin/login", req.url);
+    const loginUrl = new URL(`/${ADMIN_KEY}/admin/login`, req.url);
     loginUrl.searchParams.set("redirect", path + search);
-    console.log("[MIDDLEWARE] no token -> redirect to", loginUrl.toString());
     return NextResponse.redirect(loginUrl);
   }
 
-  console.log("[MIDDLEWARE] has token -> allow");
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/", "/admin/:path*", "/:adminKey/admin/:path*"],
 };
