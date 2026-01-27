@@ -1,8 +1,9 @@
 // src/app/admin/classroom/ClassroomDashboardClient.jsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -10,7 +11,19 @@ function cx(...a) {
 
 function fmtTime(t) {
   if (!t) return "-";
-  return new Date(t).toLocaleTimeString("th-TH", {
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDateTimeTH(t) {
+  if (!t) return "-";
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -21,13 +34,12 @@ function isHttpUrl(x) {
 }
 
 function IconBubble({ icon, classCode, title, programIconUrl }) {
-  // ✅ เอา url เฉพาะกรณีที่เป็น http(s) เท่านั้น
   const iconUrlFromIcon =
     icon?.type === "url"
       ? icon?.value || icon?.url || icon?.src || ""
       : typeof icon === "string"
-      ? icon
-      : "";
+        ? icon
+        : "";
 
   const candidate = String(programIconUrl || iconUrlFromIcon || "").trim();
   const url = isHttpUrl(candidate) ? candidate : "";
@@ -69,14 +81,14 @@ function StatCard({ active, label, value, sub, onClick, tone }) {
         "rounded-2xl p-4 shadow-card text-left border transition",
         active
           ? "border-brand-primary ring-2 ring-brand-primary/20 bg-admin-surface"
-          : "border-admin-border bg-admin-surface hover:bg-admin-surfaceMuted"
+          : "border-admin-border bg-admin-surface hover:bg-admin-surfaceMuted",
       )}
     >
       <p className="text-xs text-admin-textMuted">{label}</p>
       <p
         className={cx(
           "mt-2 text-2xl font-semibold",
-          tone === "danger" ? "text-brand-danger" : ""
+          tone === "danger" ? "text-brand-danger" : "",
         )}
       >
         {value}
@@ -92,12 +104,12 @@ function ModeLabel(active) {
   return active === "classes"
     ? "จำนวนคลาส"
     : active === "students"
-    ? "จำนวนนักเรียน"
-    : active === "checkins"
-    ? "จำนวนเช็คอิน"
-    : active === "late"
-    ? "เช็คอินสาย"
-    : "ไม่มาเช็คอิน";
+      ? "จำนวนนักเรียน"
+      : active === "checkins"
+        ? "จำนวนเช็คอิน"
+        : active === "late"
+          ? "เช็คอินสาย"
+          : "ไม่มาเช็คอิน";
 }
 
 function filterItemsByMode(items, mode) {
@@ -187,14 +199,13 @@ function GroupedStudentTable({ groups, mode }) {
                       </th>
                     </tr>
                   </thead>
-
                   <tbody>
                     {items.map((x, idx) => (
                       <tr
                         key={x.id}
                         className={cx(
                           "border-t border-admin-border",
-                          idx % 2 ? "bg-white/0" : ""
+                          idx % 2 ? "bg-white/0" : "",
                         )}
                       >
                         <td className="px-3 py-2">{idx + 1}</td>
@@ -235,38 +246,32 @@ function GroupedStudentTable({ groups, mode }) {
   );
 }
 
+/* ---------------- main ---------------- */
+
 export default function ClassroomDashboardClient({
   range = "today",
   rangeLabel = "วันนี้",
   initialData,
+  // ✅ ถ้าหน้า page.jsx ส่ง custom from/to มา ให้รองรับด้วย
+  from = "",
+  to = "",
 }) {
+  const router = useRouter();
+
   const [active, setActive] = useState("classes");
   const [data, setData] = useState(initialData || null);
+
   const [loading, setLoading] = useState(!initialData);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(
+    initialData ? new Date().toISOString() : "",
+  );
 
-  useEffect(() => {
-    let alive = true;
-    let timer = null;
-
-    async function tick() {
-      setLoading(true);
-      const res = await fetch(`/api/admin/classroom/dashboard?range=${range}`, {
-        cache: "no-store",
-      }).catch(() => null);
-
-      const json = res ? await res.json().catch(() => null) : null;
-      if (alive && json?.ok) setData(json);
-      if (alive) setLoading(false);
-
-      timer = setTimeout(tick, 4000);
-    }
-
-    tick();
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [range]);
+  // ✅ state สำหรับ filter bar (ควบคุมเองได้ ไม่ต้องรอ navigation)
+  const [currentRange, setCurrentRange] = useState(range || "today");
+  const [customFrom, setCustomFrom] = useState(from || "");
+  const [customTo, setCustomTo] = useState(to || "");
+  const [showCustom, setShowCustom] = useState(currentRange === "custom");
 
   const totals = data?.totals || {
     totalClasses: 0,
@@ -281,38 +286,205 @@ export default function ClassroomDashboardClient({
       { key: "today", label: "วันนี้" },
       { key: "week", label: "7 วันล่าสุด" },
       { key: "month", label: "เดือนนี้" },
+      { key: "custom", label: "กำหนดเอง" },
     ],
-    []
+    [],
   );
+
+  function buildQs(nextRange, nextFrom, nextTo) {
+    const qs = new URLSearchParams();
+    qs.set("range", nextRange);
+    if (nextRange === "custom") {
+      if (nextFrom) qs.set("from", nextFrom);
+      if (nextTo) qs.set("to", nextTo);
+    }
+    return qs.toString();
+  }
+
+  async function refresh(nextParams) {
+    const nextRange = nextParams?.range ?? currentRange;
+    const nextFrom = nextParams?.from ?? customFrom;
+    const nextTo = nextParams?.to ?? customTo;
+
+    setErrorMsg("");
+    setLoading(true);
+
+    const qs = buildQs(nextRange, nextFrom, nextTo);
+    const res = await fetch(`/api/admin/classroom/dashboard?${qs}`, {
+      cache: "no-store",
+    }).catch(() => null);
+
+    const json = res ? await res.json().catch(() => null) : null;
+
+    if (json?.ok) {
+      setData(json);
+      setLastUpdatedAt(new Date().toISOString());
+    } else {
+      const msg =
+        json?.error ||
+        json?.message ||
+        (!res ? "network_error" : `request_failed (${res.status})`);
+      setErrorMsg(String(msg));
+    }
+
+    setLoading(false);
+  }
+
+  // ✅ กด filter แล้ว refresh อัตโนมัติ + update url (ไม่ reload หน้า)
+  async function handlePickRange(nextRange) {
+    setCurrentRange(nextRange);
+    setShowCustom(nextRange === "custom");
+
+    // update url
+    const qs = buildQs(nextRange, customFrom, customTo);
+    router.replace(`/admin/classroom?${qs}`);
+
+    // auto refresh (ยกเว้น custom ให้รอ Apply)
+    if (nextRange !== "custom") {
+      await refresh({ range: nextRange });
+    }
+  }
+
+  async function applyCustom() {
+    // validate เบื้องต้น
+    if (!customFrom || !customTo) {
+      setErrorMsg("กรุณาเลือกวันที่เริ่มและวันที่สิ้นสุด");
+      return;
+    }
+    if (customFrom > customTo) {
+      setErrorMsg("ช่วงวันไม่ถูกต้อง (from ต้องไม่มากกว่า to)");
+      return;
+    }
+
+    const qs = buildQs("custom", customFrom, customTo);
+    router.replace(`/admin/classroom?${qs}`);
+    await refresh({ range: "custom", from: customFrom, to: customTo });
+  }
+
+  // ✅ ถ้าคุณยังใช้ SSR initialData อยู่: ไม่ต้อง refresh ตอน mount
+  // แต่ถ้า props range/from/to เปลี่ยน (กรณี navigate) ให้ sync state ตาม
+  useEffect(() => {
+    setCurrentRange(range || "today");
+    setShowCustom((range || "today") === "custom");
+    setCustomFrom(from || "");
+    setCustomTo(to || "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, from, to]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Classroom Dashboard</h1>
-          <p className="text-sm text-admin-textMuted">
-            ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา {rangeLabel}
-            {loading ? " • กำลังอัปเดต..." : ""}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-admin-textMuted">
+              ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา {rangeLabel}
+              {loading ? " • กำลังโหลด..." : ""}
+            </p>
+
+            {lastUpdatedAt ? (
+              <span className="inline-flex items-center rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] text-admin-textMuted">
+                อัปเดตล่าสุด {fmtDateTimeTH(lastUpdatedAt)}
+              </span>
+            ) : null}
+
+            {errorMsg ? (
+              <span className="inline-flex items-center rounded-full border border-brand-danger/30 bg-brand-danger/10 px-2 py-0.5 text-[11px] font-semibold text-brand-danger">
+                {errorMsg}
+              </span>
+            ) : null}
+          </div>
         </div>
 
-        <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
-          {RANGE_OPTIONS.map((opt) => (
-            <Link
-              key={opt.key}
-              href={`/admin/classroom?range=${opt.key}`}
-              className={cx(
-                "px-3 py-1 rounded-full transition",
-                range === opt.key
-                  ? "bg-brand-primary text-white"
-                  : "text-admin-textMuted hover:bg-admin-surfaceMuted"
-              )}
-            >
-              {opt.label}
-            </Link>
-          ))}
+        <div className="flex items-center gap-2">
+          {/* ✅ ปุ่ม Refresh manual */}
+          <button
+            type="button"
+            onClick={() => refresh()}
+            disabled={loading}
+            className={cx(
+              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition",
+              loading
+                ? "border-admin-border bg-admin-surface text-admin-textMuted opacity-70"
+                : "border-admin-border bg-admin-surface text-admin-textMuted hover:bg-admin-surfaceMuted",
+            )}
+            title="Refresh ข้อมูล"
+          >
+            <RefreshCw
+              className={cx("h-4 w-4", loading ? "animate-spin" : "")}
+            />
+            Refresh
+          </button>
+
+          {/* ✅ Filter bar: กดแล้ว refresh อัตโนมัติ */}
+          <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
+            {RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => handlePickRange(opt.key)}
+                className={cx(
+                  "px-3 py-1 rounded-full transition",
+                  currentRange === opt.key
+                    ? "bg-brand-primary text-white"
+                    : "text-admin-textMuted hover:bg-admin-surfaceMuted",
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* ✅ Custom date range UI */}
+      {showCustom ? (
+        <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-card">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[11px] text-admin-textMuted mb-1">
+                วันที่เริ่ม
+              </label>
+              <input
+                type="date"
+                className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-admin-textMuted mb-1">
+                วันที่สิ้นสุด
+              </label>
+              <input
+                type="date"
+                className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={applyCustom}
+              disabled={loading}
+              className={cx(
+                "rounded-lg px-4 py-2 text-sm font-semibold",
+                loading
+                  ? "bg-admin-surfaceMuted text-admin-textMuted opacity-70"
+                  : "bg-brand-primary text-white hover:opacity-95",
+              )}
+            >
+              ใช้ช่วงวันที่นี้
+            </button>
+          </div>
+
+          <p className="mt-2 text-[11px] text-admin-textMuted">
+            * เลือกช่วงวันแล้วกด “ใช้ช่วงวันที่นี้” เพื่อโหลดข้อมูล
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
@@ -375,7 +547,7 @@ export default function ClassroomDashboardClient({
                         <IconBubble
                           icon={c.icon}
                           programIconUrl={c.programIconUrl}
-                          classCode={c.courseCode} // ✅ แก้จาก classCode -> courseCode
+                          classCode={c.courseCode}
                           title={c.title}
                         />
                         <div className="flex flex-col">
@@ -506,7 +678,7 @@ export default function ClassroomDashboardClient({
                           "inline-block mt-1 rounded-full px-2 py-0.5 text-[11px]",
                           c.isLate
                             ? "bg-brand-danger/10 text-brand-danger"
-                            : "bg-brand-success/10 text-brand-success"
+                            : "bg-brand-success/10 text-brand-success",
                         )}
                       >
                         {c.isLate ? "สาย" : "ปกติ"}

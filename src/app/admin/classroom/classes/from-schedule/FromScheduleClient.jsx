@@ -1,4 +1,4 @@
-// src/app/admin/classroom/classes/from-schedule/page.jsx
+// src/app/admin/classroom/classes/from-schedule/FromScheduleClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -8,9 +8,26 @@ const ROOMS = ["Jupiter", "Mars", "Saturn", "Venus", "Opera"];
 
 /* ---------- helpers ---------- */
 
+function cx(...a) {
+  return a.filter(Boolean).join(" ");
+}
+
 function formatDateTime(dateStr) {
   if (!dateStr) return "-";
   const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatSyncedAt(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("th-TH", {
     year: "numeric",
@@ -128,63 +145,138 @@ export default function FromScheduleClient() {
   const [instructors, setInstructors] = useState([]);
   const [instructorId, setInstructorId] = useState("");
 
+  // meta สำหรับ badge
+  const [scheduleMeta, setScheduleMeta] = useState({
+    latestSyncedAt: null,
+    stale: null,
+    synced: null,
+  });
+  const [instructorMeta, setInstructorMeta] = useState({
+    latestSyncedAt: null,
+    stale: null,
+    synced: null,
+  });
+
   // search + filter
   const [search, setSearch] = useState("");
   const [roomFilter, setRoomFilter] = useState("ALL");
   const [fromDate, setFromDate] = useState(""); // YYYY-MM-DD
   const [toDate, setToDate] = useState("");
 
-  useEffect(() => {
-    async function loadSchedules() {
-      setLoading(true);
-      try {
-        // คำนวณช่วง: เดือนนี้ + เดือนหน้า
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  // ✅ เก็บ query ล่าสุดไว้ใช้กด refresh
+  const [lastQs, setLastQs] = useState("");
 
-        const toYMD = (d) => d.toISOString().slice(0, 10);
+  // ✅ reusable load (ไม่ reload)
+  async function loadSchedules({ forceRefresh = false } = {}) {
+    setLoading(true);
+    try {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
 
-        const qs = new URLSearchParams({
-          from: toYMD(start),
-          to: toYMD(end),
-        }).toString();
+      const toYMD = (d) => d.toISOString().slice(0, 10);
 
-        const res = await fetch(`/api/admin/ai/schedule?${qs}`);
-        const data = await res.json();
+      const qs = new URLSearchParams({
+        from: toYMD(start),
+        to: toYMD(end),
+      }).toString();
 
-        const rowsAll =
-          data.items ||
-          data.data ||
-          data.schedules ||
-          (Array.isArray(data) ? data : []);
+      setLastQs(qs);
 
-        setItems(rowsAll || []);
-      } catch (err) {
-        console.error(err);
+      const url = forceRefresh
+        ? `/api/admin/ai/schedule?${qs}&refresh=1`
+        : `/api/admin/ai/schedule?${qs}`;
+
+      const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+      const data = res ? await res.json().catch(() => null) : null;
+
+      if (!data?.ok) {
+        console.error("schedule load failed:", data);
         alert("โหลด schedule ไม่สำเร็จ");
+        return;
       }
+
+      const rowsAll =
+        data.items ||
+        data.data ||
+        data.schedules ||
+        (Array.isArray(data) ? data : []);
+
+      setItems(rowsAll || []);
+      setScheduleMeta({
+        latestSyncedAt: data.latestSyncedAt || null,
+        stale: typeof data.stale === "boolean" ? data.stale : null,
+        synced: typeof data.synced === "boolean" ? data.synced : null,
+      });
+    } catch (err) {
+      console.error(err);
+      alert("โหลด schedule ไม่สำเร็จ");
+    } finally {
       setLoading(false);
     }
+  }
 
-    async function loadInstructors() {
-      try {
-        const res = await fetch("/api/admin/ai/instructors");
-        const data = await res.json();
-        const rows =
-          data.items ||
-          data.data ||
-          data.instructors ||
-          (Array.isArray(data) ? data : []);
-        setInstructors(rows || []);
-      } catch (err) {
-        console.error(err);
+  async function loadInstructors({ forceRefresh = false } = {}) {
+    try {
+      const url = forceRefresh
+        ? "/api/admin/ai/instructors?refresh=1"
+        : "/api/admin/ai/instructors";
+
+      const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+      const data = res ? await res.json().catch(() => null) : null;
+
+      if (!data?.ok) {
+        console.error("instructors load failed:", data);
+        return;
       }
-    }
 
-    loadSchedules();
-    loadInstructors();
+      const rows =
+        data.items ||
+        data.data ||
+        data.instructors ||
+        (Array.isArray(data) ? data : []);
+
+      setInstructors(rows || []);
+      setInstructorMeta({
+        latestSyncedAt: data.latestSyncedAt || null,
+        stale: typeof data.stale === "boolean" ? data.stale : null,
+        synced: typeof data.synced === "boolean" ? data.synced : null,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  useEffect(() => {
+    loadSchedules({ forceRefresh: false });
+    loadInstructors({ forceRefresh: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleRefreshUpstream() {
+    await Promise.all([
+      loadSchedules({ forceRefresh: true }),
+      loadInstructors({ forceRefresh: true }),
+    ]);
+  }
+
+  function Badge({ label, value, tone }) {
+    return (
+      <span
+        className={cx(
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+          tone === "fresh"
+            ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
+            : tone === "stale"
+              ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
+              : "border-admin-border bg-admin-surfaceMuted text-admin-textMuted",
+        )}
+      >
+        <span className="font-medium">{label}</span>
+        <span className="font-semibold">{value}</span>
+      </span>
+    );
+  }
 
   // ====== apply search + filter + SORT ใกล้ -> ไกล ======
   const filteredItems = useMemo(() => {
@@ -204,7 +296,7 @@ export default function FromScheduleClient() {
           if (d > dt) return false;
         }
 
-        // filter ห้อง (schedule ตัวอย่างไม่มี room ก็ปล่อยผ่าน)
+        // filter ห้อง
         if (roomFilter !== "ALL") {
           const r = (s.room || "").toString().trim();
           if (r !== roomFilter) return false;
@@ -228,15 +320,13 @@ export default function FromScheduleClient() {
         const db = new Date(getFirstDateRaw(b));
         const ta = Number.isNaN(da.getTime()) ? 0 : da.getTime();
         const tb = Number.isNaN(db.getTime()) ? 0 : db.getTime();
-        return ta - tb; // ใกล้ -> ไกล
+        return ta - tb;
       });
 
     return base;
   }, [items, search, roomFilter, fromDate, toDate]);
 
   async function guessNextRunNumber({ dateYMD, titlePrefix }) {
-    // พยายามดึง class ของวันนั้นเพื่อเดา run = max+1
-    // ถ้า endpoint ไม่รองรับ จะ fallback 1
     try {
       const qs = new URLSearchParams({
         date: dateYMD,
@@ -274,25 +364,21 @@ export default function FromScheduleClient() {
     }
   }
 
-  // เมื่อกด "สร้าง Class" บน row ใด
   async function handleOpenModal(s, index) {
     setCurrentSchedule({ ...s, index });
 
     const firstDate = getFirstDateRaw(s);
-
-    // ✅ ยึดตาม JSON จริง: course.course_id เป็นหลัก
     const courseCode =
       s.course?.course_id || s.course_id || s.courseCode || s.code || "CLASS";
 
     const titlePrefix = buildTitlePrefix(s, courseCode, firstDate);
-
     const dateYMD = firstDate ? toLocalYMD(firstDate) : "";
+
     const run = dateYMD
       ? await guessNextRunNumber({ dateYMD, titlePrefix })
       : 1;
 
     setClassTitle(`${titlePrefix}-${String(run)}`);
-
     setRoom(s.room || "");
     setInstructorId("");
     setOpenModal(true);
@@ -326,9 +412,7 @@ export default function FromScheduleClient() {
       ) || null;
 
     const payload = {
-      // ✅ ให้มี title preview ได้ แต่ server จะเป็นผู้ finalize (และกันชน run)
       title: classTitle.trim(),
-
       courseCode,
       courseName,
 
@@ -341,8 +425,7 @@ export default function FromScheduleClient() {
       source: "api",
       externalScheduleId: String(s._id || s.id || s.schedule_id || ""),
 
-      // ✅ ยึด type จาก API จริง
-      trainingType: String(s.type || ""), // "hybrid" | "classroom"
+      trainingType: String(s.type || ""),
       channel: "PUB",
 
       instructors: selectedInst
@@ -387,18 +470,72 @@ export default function FromScheduleClient() {
     setSaving(false);
   }
 
-  /* ---------- Render ---------- */
+  const scheduleTone =
+    scheduleMeta.stale === false
+      ? "fresh"
+      : scheduleMeta.stale === true
+        ? "stale"
+        : "";
+  const instructorTone =
+    instructorMeta.stale === false
+      ? "fresh"
+      : instructorMeta.stale === true
+        ? "stale"
+        : "";
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">
-          สร้าง Class จากรอบอบรม (schedule API)
-        </h1>
-        <p className="text-sm text-admin-textMuted">
-          ดึงข้อมูลจาก https://9exp-sec.com/api/ai/schedules ผ่าน proxy
-          แล้วกดสร้าง Class
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">
+            สร้าง Class จากรอบอบรม (schedule API)
+          </h1>
+          <p className="text-sm text-admin-textMuted">
+            โหลดจากฐานข้อมูล (sync จากต้นทางตาม TTL) และสามารถกด Refresh ได้
+          </p>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <PrimaryButton
+              type="button"
+              className={cx("px-3 py-1 text-xs", loading ? "opacity-70" : "")}
+              onClick={handleRefreshUpstream}
+              disabled={loading}
+              title="บังคับดึงข้อมูลใหม่จากต้นทาง แล้ว sync เข้าฐานข้อมูล"
+            >
+              {loading ? "กำลัง Refresh..." : "Refresh จากต้นทาง"}
+            </PrimaryButton>
+
+            <button
+              type="button"
+              className="rounded-lg border border-admin-border bg-admin-surface px-3 py-1 text-xs text-admin-textMuted hover:bg-admin-surfaceMuted"
+              onClick={() => Promise.all([loadSchedules(), loadInstructors()])}
+              disabled={loading}
+              title="โหลดจากฐานข้อมูล (ไม่บังคับ refresh)"
+            >
+              โหลดจากฐานข้อมูล
+            </button>
+
+            <div className="flex flex-wrap gap-2">
+              <Badge
+                label="Schedule sync:"
+                value={formatSyncedAt(scheduleMeta.latestSyncedAt)}
+                tone={scheduleTone}
+              />
+              <Badge
+                label="Instructors sync:"
+                value={formatSyncedAt(instructorMeta.latestSyncedAt)}
+                tone={instructorTone}
+              />
+            </div>
+          </div>
+        </div>
+
+        {lastQs ? (
+          <div className="text-[11px] text-admin-textMuted text-right">
+            <div className="font-medium text-admin-textMuted">ช่วงข้อมูล</div>
+            <div className="mt-0.5">{lastQs}</div>
+          </div>
+        ) : null}
       </div>
 
       {/* ส่วนค้นหา + filter */}

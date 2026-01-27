@@ -202,7 +202,12 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   const [addonIds, setAddonIds] = useState([]);
   const [drinkId, setDrinkId] = useState("");
 
+  // ✅ หมายเหตุ
   const [note, setNote] = useState("");
+
+  // ✅ โหมด note: auto = ระบบตั้งค่าให้ / manual = user พิมพ์เองแล้ว ห้ามทับ
+  const [noteMode, setNoteMode] = useState("auto");
+
   const [submitting, setSubmitting] = useState(false);
   const [hasFoodSetup, setHasFoodSetup] = useState(true);
 
@@ -219,16 +224,23 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setDrinkId("");
   }
 
+  function setNoteAuto(nextText) {
+    // ถ้า user พิมพ์เอง (manual) → ไม่ทับ
+    if (noteMode === "manual") return;
+    setNote(String(nextText || ""));
+    setNoteMode("auto");
+  }
+
   function chooseNoFood() {
     setChoiceType("noFood");
     resetFoodSelection();
-    setNote((prev) => (String(prev || "").trim() ? prev : "ไม่รับอาหาร"));
+    setNoteAuto("ไม่รับอาหาร");
   }
 
   function chooseCoupon() {
     setChoiceType("coupon");
     resetFoodSelection();
-    setNote((prev) => (String(prev || "").trim() ? prev : "COUPON"));
+    setNoteAuto("COUPON");
   }
 
   function chooseRestaurant(r) {
@@ -237,7 +249,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setMenu(null);
     setAddonIds([]);
     setDrinkId("");
+
+    // ✅ เลือกร้าน = เริ่ม note ใหม่ (วันใหม่ไม่ควรดึง note เก่า)
     setNote("");
+    setNoteMode("auto");
 
     setTimeout(
       () =>
@@ -266,6 +281,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     const cfChoice = String(cf.choiceType || "");
     const cfNote = String(cf.note || "");
     const cfNoFood = !!cf.noFood;
+
+    // ✅ prefill ถือว่าเป็น "auto" (user ยังไม่ได้พิมพ์)
+    setNoteMode("auto");
 
     // noFood/coupon
     if (cfChoice === "noFood" || cfNoFood) {
@@ -339,6 +357,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   }
 
   useEffect(() => {
+    // ✅ reset guard ทุกครั้งที่เปลี่ยน student/class/day/isEdit
+    didPrefillRef.current = false;
+
     async function loadFood() {
       const params = new URLSearchParams();
       params.set("day", String(day));
@@ -361,8 +382,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         );
         setRestaurants(data.items || []);
 
-        // ✅ prefill ครั้งเดียว (เฉพาะตอนเข้ามา edit หรือเข้ามาหน้านี้พร้อม studentId)
-        if (!didPrefillRef.current && data?.currentFood) {
+        // ✅ POLICY:
+        // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
+        // - prefill เฉพาะ isEdit เท่านั้น
+        if (isEdit && !didPrefillRef.current && data?.currentFood) {
           didPrefillRef.current = true;
           applyPrefill(data.currentFood, data.items || []);
         }
@@ -374,9 +397,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     }
 
     loadFood();
-    // reset prefill flag เมื่อเปลี่ยน student/class/day
-    didPrefillRef.current = false;
-  }, [studentId, classId, day]);
+  }, [studentId, classId, day, isEdit]);
 
   // ✅ ทำ map จาก master list ต่อร้าน
   const addonById = useMemo(() => {
@@ -441,7 +462,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
               menuId: "",
               addonIds: [],
               drinkId: "",
-              note: note?.trim() || "ไม่รับอาหาร",
+              note: String(note || "").trim() || "ไม่รับอาหาร",
             }
           : choiceType === "coupon"
             ? {
@@ -453,7 +474,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 menuId: "",
                 addonIds: [],
                 drinkId: "",
-                note: note?.trim() || "COUPON",
+                note: String(note || "").trim() || "COUPON",
               }
             : {
                 ...base,
@@ -463,7 +484,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 menuId: menu?.id || "",
                 addonIds: addonIds,
                 drinkId: drinkId || "",
-                note,
+                note: note || "",
               };
 
       const res = await fetch("/api/checkin/food", {
@@ -539,7 +560,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
                 placeholder="เช่น ไม่รับอาหาร, Coupon, แพ้อาหาร ฯลฯ"
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  setNote(e.target.value);
+                  setNoteMode("manual");
+                }}
               />
             </div>
 
@@ -617,8 +641,6 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                         setMenu(null);
                         setAddonIds([]);
                         setDrinkId("");
-                        // note: ไม่ล้าง note ในโหมดแก้ไขก็ได้ แต่คงเดิมจะดีกว่า
-                        // setNote("");
 
                         setTimeout(
                           () =>
@@ -716,7 +738,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
                 placeholder="เช่น เผ็ดน้อย, ไม่ใส่ผัก ฯลฯ"
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  setNote(e.target.value);
+                  setNoteMode("manual");
+                }}
               />
             </div>
 

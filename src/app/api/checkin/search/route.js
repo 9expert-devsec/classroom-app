@@ -5,6 +5,7 @@ import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const TZ_OFFSET = "+07:00"; // Bangkok
@@ -16,6 +17,14 @@ function safeNum(x, fallback = 1) {
 
 function isValidDate(d) {
   return d instanceof Date && !Number.isNaN(d.getTime());
+}
+
+function clean(s) {
+  return String(s || "").trim();
+}
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // YYYY-MM-DD ตามเวลาไทย
@@ -31,6 +40,7 @@ function toYMD_BKK(dateInput) {
   return fmt.format(d);
 }
 
+// base YMD + addDays → YMD (BKK)
 function addDaysYMD_BKK(ymd, addDays) {
   if (!ymd) return "";
   const base = new Date(`${ymd}T00:00:00${TZ_OFFSET}`);
@@ -39,12 +49,50 @@ function addDaysYMD_BKK(ymd, addDays) {
   return toYMD_BKK(base);
 }
 
+// diff days (end - start) in Bangkok date space
+function diffDaysYMD_BKK(startYMD, endYMD) {
+  const a = new Date(`${startYMD}T00:00:00${TZ_OFFSET}`);
+  const b = new Date(`${endYMD}T00:00:00${TZ_OFFSET}`);
+  if (!isValidDate(a) || !isValidDate(b)) return 0;
+  const ms = b.getTime() - a.getTime();
+  return Math.floor(ms / 86400000);
+}
+
 function getDayCountFromClassDoc(c) {
   return typeof c?.dayCount === "number"
     ? c.dayCount
     : typeof c?.duration?.dayCount === "number"
       ? c.duration.dayCount
       : 1;
+}
+
+// หา dayIndex ของ "วันนี้" สำหรับคลาสนั้น
+// 1) ถ้ามี days[] (YYYY-MM-DD) ใช้อันนี้แม่นสุด
+// 2) fallback ใช้ date + dayCount คำนวณช่วง
+function computeDayIndexToday(c, todayYMD) {
+  if (!c) return null;
+
+  // ✅ ถ้ามี days[] เช่น ["2026-01-26","2026-01-27",...]
+  if (Array.isArray(c.days) && c.days.length) {
+    const idx = c.days.findIndex((d) => String(d || "") === todayYMD);
+    if (idx >= 0) return idx + 1; // 1-based
+    return null;
+  }
+
+  // fallback แบบ date + dayCount
+  if (!c.date) return null;
+  const dayCount = getDayCountFromClassDoc(c);
+  const startYMD = toYMD_BKK(c.date);
+  if (!startYMD) return null;
+
+  const endYMD = addDaysYMD_BKK(startYMD, dayCount - 1);
+  if (!endYMD) return null;
+
+  // วันนี้ต้องอยู่ในช่วงวันอบรม
+  if (!(todayYMD >= startYMD && todayYMD <= endYMD)) return null;
+
+  const dayToday = diffDaysYMD_BKK(startYMD, todayYMD) + 1;
+  return Math.min(Math.max(dayToday, 1), dayCount);
 }
 
 export async function POST(req) {
@@ -60,28 +108,28 @@ export async function POST(req) {
     );
   }
 
-  const keyword = String(body?.keyword || "").trim();
+  const keyword = clean(body?.keyword);
   const classId = body?.classId ? String(body.classId) : "";
-  const day = safeNum(body?.day, 1);
+  const dayFromClient = safeNum(body?.day, 1);
 
   if (!keyword) return NextResponse.json({ ok: true, items: [] });
-
-  const regex = new RegExp(keyword, "i");
 
   const todayYMD = toYMD_BKK(new Date());
   if (!todayYMD) return NextResponse.json({ ok: true, items: [] });
 
+  const regex = new RegExp(escapeRegExp(keyword), "i");
+
   // -----------------------------
-  // หา class ที่จะค้นหา
-  // - ถ้าส่ง classId มา: ใช้คลาสนั้น
-  // - ถ้าไม่ส่ง: เอาเฉพาะคลาสที่ "วันนี้" ตรงกับ day ที่เลือก
+  // หา class ที่จะค้นหา + dayIndex ของ "วันนี้" ต่อคลาส
   // -----------------------------
   let targetClassIds = [];
+  const dayByClassId = new Map(); // classId -> dayIndex
 
   if (classId) {
     const c = await Class.findById(classId, {
       _id: 1,
       date: 1,
+      days: 1,
       dayCount: 1,
       "duration.dayCount": 1,
     }).lean();
@@ -89,34 +137,40 @@ export async function POST(req) {
     if (!c) return NextResponse.json({ ok: true, items: [] });
 
     const dayCount = getDayCountFromClassDoc(c);
-    if (day > dayCount) return NextResponse.json({ ok: true, items: [] });
 
-    // (ถ้าอยากบังคับว่าต้องตรง “วันนี้” ด้วยค่อยเปิด)
-    // const startYMD = toYMD_BKK(c.date);
-    // const expectedYMD = addDaysYMD_BKK(startYMD, day - 1);
-    // if (expectedYMD !== todayYMD) return NextResponse.json({ ok: true, items: [] });
+    // ✅ compat: ถ้าฝั่ง UI ส่ง day มา (เช่น admin เลือก day เอง) ให้ใช้ day นั้นได้
+    // แต่ถ้าไม่ได้ส่งจริง ๆ (หรือส่งมั่ว) → fallback ไปใช้ day ของวันนี้ที่คำนวณได้
+    let useDay = dayFromClient;
+
+    if (useDay > dayCount) {
+      // fallback หา dayToday
+      const d = computeDayIndexToday(c, todayYMD);
+      if (!d) return NextResponse.json({ ok: true, items: [] });
+      useDay = d;
+    }
+
+    // ถ้าต้องการ “บังคับว่าต้องตรงวันนี้เท่านั้น” เปิดเงื่อนไขนี้:
+    // const d2 = computeDayIndexToday(c, todayYMD);
+    // if (!d2) return NextResponse.json({ ok: true, items: [] });
 
     targetClassIds = [String(c._id)];
+    dayByClassId.set(String(c._id), useDay);
   } else {
+    // ไม่มี classId → เอาคลาสที่วันนี้อยู่ในช่วงอบรมทั้งหมด
     const all = await Class.find(
       {},
-      { _id: 1, date: 1, dayCount: 1, "duration.dayCount": 1 },
+      { _id: 1, date: 1, days: 1, dayCount: 1, "duration.dayCount": 1 },
     ).lean();
 
     const activeIds = [];
 
     for (const c of all) {
-      if (!c?.date) continue;
+      const d = computeDayIndexToday(c, todayYMD);
+      if (!d) continue;
 
-      const dayCount = getDayCountFromClassDoc(c);
-      if (day > dayCount) continue;
-
-      const startYMD = toYMD_BKK(c.date);
-      if (!startYMD) continue;
-
-      // วันนี้ต้องตรงกับ “วันอบรมของ day ที่เลือก”
-      const expectedYMD = addDaysYMD_BKK(startYMD, day - 1);
-      if (expectedYMD === todayYMD) activeIds.push(String(c._id));
+      const cid = String(c._id);
+      activeIds.push(cid);
+      dayByClassId.set(cid, d);
     }
 
     if (!activeIds.length) return NextResponse.json({ ok: true, items: [] });
@@ -124,12 +178,14 @@ export async function POST(req) {
   }
 
   // -----------------------------
-  // ✅ ตัดคนที่เช็คอิน day นี้แล้ว (ใช้ Checkin จริง)
+  // ✅ ตัดคนที่เช็คอินแล้ว "ของวันนั้น" (ต่อคลาส)
   // -----------------------------
-  const checked = await Checkin.find(
-    { classId: { $in: targetClassIds }, day: Number(day) },
-    { studentId: 1 },
-  ).lean();
+  const orConds = targetClassIds.map((cid) => ({
+    classId: cid,
+    day: Number(dayByClassId.get(cid) || 1),
+  }));
+
+  const checked = await Checkin.find({ $or: orConds }, { studentId: 1 }).lean();
 
   const checkedStudentIds = checked.map((x) => x.studentId).filter(Boolean);
 
@@ -140,8 +196,20 @@ export async function POST(req) {
     classId: { $in: targetClassIds },
     ...(checkedStudentIds.length ? { _id: { $nin: checkedStudentIds } } : {}),
     $or: [
+      // ฟิลด์เดิม
       { thaiName: regex },
       { engName: regex },
+
+      // ✅ เพิ่มให้ครอบคลุม (แล้วแต่ schema มี/ไม่มีไม่เป็นไร)
+      { fullName: regex },
+      { name: regex },
+      { firstName: regex },
+      { lastName: regex },
+      { thaiFirstName: regex },
+      { thaiLastName: regex },
+
+      // ช่องทางค้นหาที่ใช้จริงบ่อย
+      { phone: regex },
       { email: regex },
       { company: regex },
       { paymentRef: regex },
@@ -152,6 +220,7 @@ export async function POST(req) {
     .sort({ thaiName: 1 })
     .limit(30)
     .lean();
+
   if (!students.length) return NextResponse.json({ ok: true, items: [] });
 
   // -----------------------------
@@ -170,6 +239,7 @@ export async function POST(req) {
       courseName: 1,
       room: 1,
       date: 1,
+      days: 1,
       dayCount: 1,
       "duration.dayCount": 1,
     },
