@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import AiCache from "@/models/AiCache";
+import { requireAdmin } from "@/lib/adminAuth.server";
 
 import {
   requireAiEnv,
@@ -17,44 +18,21 @@ function cleanStr(x) {
   return String(x || "").trim();
 }
 
-export async function GET(req) {
+export async function POST(req) {
+  await requireAdmin();
   await dbConnect();
+
   const { BASE } = requireAiEnv();
 
   const { searchParams } = new URL(req.url);
-
-  const fresh = cleanStr(searchParams.get("fresh")) === "1";
-
   const id = cleanStr(searchParams.get("id"));
   const programId = cleanStr(searchParams.get("program_id"));
 
   if (![id, programId].some(Boolean)) {
     return NextResponse.json(
       { ok: false, error: "Missing query: id or program_id" },
-      { status: 400 }
+      { status: 400 },
     );
-  }
-
-  const cacheKey = id ? `id:${id}` : `program_id:${programId}`;
-
-  // ✅ cache hit
-  if (!fresh) {
-    const hit = await AiCache.findOne({
-      endpoint: "program",
-      key: cacheKey,
-      expiresAt: { $gt: new Date() },
-    }).lean();
-
-    if (hit?.data) {
-      return NextResponse.json({
-        ...hit.data,
-        ok: true,
-        cached: true,
-        cacheKey,
-        syncedAt: hit.syncedAt,
-        expiresAt: hit.expiresAt,
-      });
-    }
   }
 
   const qs = new URLSearchParams();
@@ -74,12 +52,13 @@ export async function GET(req) {
         contentType: upstream.contentType,
         detail: upstream.detail,
       },
-      { status: upstream.status || 502 }
+      { status: upstream.status || 502 },
     );
   }
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + TTL_MS);
+  const cacheKey = id ? `id:${id}` : `program_id:${programId}`;
 
   await AiCache.findOneAndUpdate(
     { endpoint: "program", key: cacheKey },
@@ -91,13 +70,14 @@ export async function GET(req) {
         upstreamUrl: upstream.url,
       },
     },
-    { upsert: true }
+    { upsert: true, new: true },
   );
 
   return NextResponse.json({
     ok: true,
-    cached: false,
-    cacheKey,
+    synced: true,
+    endpoint: "program",
+    key: cacheKey,
     syncedAt: now,
     expiresAt,
     upstreamUrl: upstream.url,

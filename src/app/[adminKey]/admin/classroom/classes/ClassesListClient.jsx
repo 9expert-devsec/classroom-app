@@ -715,7 +715,7 @@ export default function ClassesListClient({ initialClasses, total }) {
                         className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                       >
                         <DropdownMenuItem asChild>
-                          <Link href={`/admin/classroom/classes/${id}`}>
+                          <Link href={`/a1exqwvCqTXP7s0/admin/classroom/classes/${id}`}>
                             เปิดดู
                           </Link>
                         </DropdownMenuItem>

@@ -239,7 +239,7 @@ export default function EventDetailAdminClient({ eventId }) {
         <div className="flex gap-2">
           <button
             className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
-            onClick={() => router.push("/admin/classroom/event")}
+            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event")}
             disabled={loading}
           >
             กลับหน้า Event

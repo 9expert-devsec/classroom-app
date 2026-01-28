@@ -339,7 +339,7 @@ export default function VendorsPage() {
                 type="button"
                 onClick={() =>
                   router.push(
-                    `/admin/classroom/food/restaurants/${String(r._id)}`
+                    `/a1exqwvCqTXP7s0/admin/classroom/food/restaurants/${String(r._id)}`
                   )
                 }
                 className="w-full text-left"

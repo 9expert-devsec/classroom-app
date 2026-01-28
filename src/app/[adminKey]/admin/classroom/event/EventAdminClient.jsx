@@ -472,7 +472,7 @@ export default function EventAdminClient() {
                       <button
                         className="h-9 rounded-xl border px-3 text-sm font-semibold hover:bg-zinc-50"
                         onClick={() =>
-                          router.push(`/admin/classroom/event/${it._id}`)
+                          router.push(`/a1exqwvCqTXP7s0/admin/classroom/event/${it._id}`)
                         }
                       >
                         Detail

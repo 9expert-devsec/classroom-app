@@ -135,7 +135,7 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
         const data = await res.json();
         if (!res.ok || !data?.ok)
           throw new Error(data?.error || "create failed");
-        router.push("/admin/classroom/event");
+        router.push("/a1exqwvCqTXP7s0/admin/classroom/event");
         return;
       }
 
@@ -146,7 +146,7 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "update failed");
-      router.push("/admin/classroom/event");
+      router.push("/a1exqwvCqTXP7s0/admin/classroom/event");
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -168,7 +168,7 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
 
         <button
           className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
-          onClick={() => router.push("/admin/classroom/event")}
+          onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event")}
           disabled={loading}
         >
           กลับหน้า List
@@ -318,7 +318,7 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
 
           <button
             className="h-11 rounded-xl border px-4 font-semibold hover:bg-zinc-50"
-            onClick={() => router.push("/admin/classroom/event")}
+            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event")}
             disabled={loading}
           >
             Cancel

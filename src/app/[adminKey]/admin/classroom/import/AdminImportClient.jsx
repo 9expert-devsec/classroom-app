@@ -130,7 +130,7 @@ export default function ImportPage({ searchParams = {} }) {
 
       // เคลียร์ preview แล้วเด้งกลับไปหน้า Class นั้น
       setCsvData(null);
-      router.push(`/admin/classroom/classes/${classId}`);
+      router.push(`/a1exqwvCqTXP7s0/admin/classroom/classes/${classId}`);
     } catch (err) {
       console.error(err);
       alert("เกิดปัญหาในการเชื่อมต่อ API");

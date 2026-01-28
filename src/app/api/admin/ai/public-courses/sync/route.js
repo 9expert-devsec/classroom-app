@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import AiCache from "@/models/AiCache";
+import { requireAdmin } from "@/lib/adminAuth.server";
 
 import {
   requireAiEnv,
@@ -18,13 +19,14 @@ function cleanStr(x) {
   return String(x || "").trim();
 }
 
-export async function GET(req) {
+export async function POST(req) {
+  await requireAdmin();
   await dbConnect();
+
   const { BASE } = requireAiEnv();
 
   const { searchParams } = new URL(req.url);
-
-  const fresh = cleanStr(searchParams.get("fresh")) === "1";
+  const qs = searchParams.toString();
 
   const courseId =
     cleanStr(searchParams.get("course_id")) ||
@@ -34,31 +36,14 @@ export async function GET(req) {
   const id = cleanStr(searchParams.get("id"));
   const keyParam = courseId || id;
 
-  const qs = searchParams.toString();
   const cacheKey = keyParam ? `key:${keyParam}` : qs ? `qs:${qs}` : "__list__";
 
-  // ✅ cache hit
-  if (!fresh) {
-    const hit = await AiCache.findOne({
-      endpoint: "public-courses",
-      key: cacheKey,
-      expiresAt: { $gt: new Date() },
-    }).lean();
+  const candidates = buildPublicCoursesCandidates({
+    BASE,
+    qs,
+    key: keyParam,
+  });
 
-    if (hit?.data) {
-      return NextResponse.json({
-        ...hit.data,
-        ok: true,
-        cached: true,
-        cacheKey,
-        syncedAt: hit.syncedAt,
-        expiresAt: hit.expiresAt,
-      });
-    }
-  }
-
-  // ✅ ไป upstream แล้วค่อยอัปเดต cache
-  const candidates = buildPublicCoursesCandidates({ BASE, qs, key: keyParam });
   const upstream = await tryFetchUpstream(candidates);
 
   if (!upstream.ok) {
@@ -71,7 +56,7 @@ export async function GET(req) {
         contentType: upstream.contentType,
         detail: upstream.detail,
       },
-      { status: upstream.status || 502 }
+      { status: upstream.status || 502 },
     );
   }
 
@@ -86,24 +71,30 @@ export async function GET(req) {
     { endpoint: "public-courses", key: cacheKey },
     {
       $set: {
-        data: { ok: true, upstreamUrl: upstream.url, item, items, data: items ? undefined : payload },
+        data: {
+          ok: true,
+          upstreamUrl: upstream.url,
+          item,
+          items,
+          data: items ? undefined : payload,
+        },
         syncedAt: now,
         expiresAt,
         upstreamUrl: upstream.url,
       },
     },
-    { upsert: true }
+    { upsert: true, new: true },
   );
 
   return NextResponse.json({
     ok: true,
-    cached: false,
-    cacheKey,
+    synced: true,
+    endpoint: "public-courses",
+    key: cacheKey,
     syncedAt: now,
     expiresAt,
     upstreamUrl: upstream.url,
     item: item || null,
     items: items || payload?.items || null,
-    data: items ? undefined : payload,
   });
 }

@@ -11,7 +11,7 @@ export default function SyncStudentsButton({ classId }) {
     if (!classId) return;
 
     // ✅ พาไปหน้า import โดยพ่วง classId ไปด้วย
-    router.push(`/admin/classroom/import?classId=${classId}`);
+    router.push(`/a1exqwvCqTXP7s0/admin/classroom/import?classId=${classId}`);
   }
 
   return (

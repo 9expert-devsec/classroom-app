@@ -7,7 +7,7 @@ function AdminLogoutButton() {
     } catch (e) {
       console.error(e);
     }
-    router.push("/admin/login");
+    router.push("/a1exqwvCqTXP7s0/admin/login");
   }
 
   return (

@@ -740,7 +740,7 @@ export default function RestaurantDetailPage({ params }) {
         <div>
           <button
             type="button"
-            onClick={() => router.push("/admin/classroom/food/restaurants")}
+            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/food/restaurants")}
             className="text-xs text-admin-textMuted hover:underline"
           >
             ← กลับไปร้านทั้งหมด

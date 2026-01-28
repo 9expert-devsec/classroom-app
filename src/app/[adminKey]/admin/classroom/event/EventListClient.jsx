@@ -64,7 +64,7 @@ export default function EventListClient() {
         <div className="flex gap-2">
           <button
             className="h-10 rounded-xl bg-black px-4 text-sm font-semibold text-white"
-            onClick={() => router.push("/admin/classroom/event/new")}
+            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event/new")}
           >
             + Create Event
           </button>
@@ -137,7 +137,7 @@ export default function EventListClient() {
                       <button
                         className="h-9 rounded-xl border px-3 text-sm font-semibold hover:bg-zinc-50"
                         onClick={() =>
-                          router.push(`/admin/classroom/event/${it._id}`)
+                          router.push(`/a1exqwvCqTXP7s0/admin/classroom/event/${it._id}`)
                         }
                       >
                         Detail
@@ -146,7 +146,7 @@ export default function EventListClient() {
                       <button
                         className="h-9 rounded-xl border px-3 text-sm font-semibold hover:bg-zinc-50"
                         onClick={() =>
-                          router.push(`/admin/classroom/event/${it._id}/edit`)
+                          router.push(`/a1exqwvCqTXP7s0/admin/classroom/event/${it._id}/edit`)
                         }
                       >
                         Edit

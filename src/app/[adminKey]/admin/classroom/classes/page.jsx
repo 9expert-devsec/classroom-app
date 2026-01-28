@@ -54,7 +54,7 @@ export default async function ClassesPage() {
         <div className="flex flex-wrap gap-2">
           {/* ปุ่ม Import จาก schedule */}
           <Link
-            href="/admin/classroom/classes/from-schedule"
+            href="/a1exqwvCqTXP7s0/admin/classroom/classes/from-schedule"
             className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             Import Class จาก Schedule

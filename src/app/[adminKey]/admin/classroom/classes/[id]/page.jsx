@@ -468,7 +468,7 @@ export default function ClassDetailPage() {
       }
 
       alert("ลบ Class เรียบร้อยแล้ว");
-      router.push("/admin/classroom/classes");
+      router.push("/a1exqwvCqTXP7s0/admin/classroom/classes");
     } catch (err) {
       console.error("delete class error", err);
       alert("เกิดข้อผิดพลาดระหว่างลบ Class");
@@ -483,7 +483,7 @@ export default function ClassDetailPage() {
       <div className="flex justify-between">
         <button
           type="button"
-          onClick={() => router.replace("/admin/classroom/classes")}
+          onClick={() => router.replace("/a1exqwvCqTXP7s0/admin/classroom/classes")}
           className="inline-flex h-9 w-9 items-center justify-center rounded-full
                border border-admin-border bg-white text-admin-text
                hover:bg-admin-surfaceMuted"

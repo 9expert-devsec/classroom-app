@@ -337,7 +337,7 @@ export default function ClassroomDashboardClient({
 
     // update url
     const qs = buildQs(nextRange, customFrom, customTo);
-    router.replace(`/admin/classroom?${qs}`);
+    router.replace(`/a1exqwvCqTXP7s0/admin/classroom?${qs}`);
 
     // auto refresh (ยกเว้น custom ให้รอ Apply)
     if (nextRange !== "custom") {
@@ -357,7 +357,7 @@ export default function ClassroomDashboardClient({
     }
 
     const qs = buildQs("custom", customFrom, customTo);
-    router.replace(`/admin/classroom?${qs}`);
+    router.replace(`/a1exqwvCqTXP7s0/admin/classroom?${qs}`);
     await refresh({ range: "custom", from: customFrom, to: customTo });
   }
 
