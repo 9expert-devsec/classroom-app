@@ -1,5 +1,4 @@
 // src/lib/aiUpstream.server.js
-
 export const dynamic = "force-dynamic";
 
 function cleanStr(x) {
@@ -152,10 +151,11 @@ export function pickSingleItem(payload, courseIdOrId) {
   );
 }
 
-// สร้าง candidate URLs สำหรับ public-courses
+// ✅ สร้าง candidate URLs สำหรับ public-courses (รองรับ BASE ที่ส่งมา)
 export function buildPublicCoursesCandidates({ BASE, qs = "", key = "" } = {}) {
-  const env = requireAiEnv();
-  const base = normalizeBase(BASE) || env.BASE; // ✅ รับ BASE ที่ส่งมา หรือ fallback env
+  const env = !BASE ? requireAiEnv() : null;
+  const base = normalizeBase(BASE || env.BASE);
+
   const query = typeof qs === "string" ? qs.replace(/^\?/, "") : "";
 
   const paths = [
@@ -186,10 +186,11 @@ export function buildPublicCoursesCandidates({ BASE, qs = "", key = "" } = {}) {
   return candidates.filter(Boolean);
 }
 
-// สร้าง candidate URLs สำหรับ program
+// ✅ สร้าง candidate URLs สำหรับ program (รองรับ BASE ที่ส่งมา)
 export function buildProgramCandidates({ BASE, qs = "" } = {}) {
-  const env = requireAiEnv();
-  const base = normalizeBase(BASE) || env.BASE; // ✅ รับ BASE ที่ส่งมา หรือ fallback env
+  const env = !BASE ? requireAiEnv() : null;
+  const base = normalizeBase(BASE || env.BASE);
+
   const query = typeof qs === "string" ? qs.replace(/^\?/, "") : "";
 
   return [
@@ -197,7 +198,6 @@ export function buildProgramCandidates({ BASE, qs = "" } = {}) {
     buildCandidateUrl(base, "program", query),
   ].filter(Boolean);
 }
-
 
 /**
  * fetchAiJson
@@ -207,7 +207,7 @@ export function buildProgramCandidates({ BASE, qs = "" } = {}) {
  * - fetchAiJson("schedule", { query: { from, to } })
  */
 export async function fetchAiJson(candidates, opts = {}) {
-  const { BASE, KEY } = requireAiEnv();
+  const { BASE } = requireAiEnv();
 
   const list = Array.isArray(candidates) ? candidates : [candidates];
 

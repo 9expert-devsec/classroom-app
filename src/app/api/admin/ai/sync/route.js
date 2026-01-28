@@ -1,13 +1,24 @@
 // src/app/api/admin/ai/sync/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+
 import AiInstructor from "@/models/AiInstructor";
 import AiSchedule from "@/models/AiSchedule";
-import { fetchAiJson } from "@/lib/aiUpstream.server";
-// import { requireAdmin } from "@/lib/adminAuth.server";
+import AiCache from "@/models/AiCache";
 
-export const runtime = "nodejs";
+import {
+  requireAiEnv,
+  fetchAiJson,
+  buildProgramCandidates,
+  buildPublicCoursesCandidates,
+  tryFetchUpstream,
+  pickSingleItem,
+} from "@/lib/aiUpstream.server";
+
+// export const runtime = "nodejs"; // ถ้าต้องการ
 export const dynamic = "force-dynamic";
+
+/* ---------------- helpers ---------------- */
 
 function pickArray(data) {
   return (
@@ -34,12 +45,32 @@ function minMaxDates(dateStrs) {
   return { startAt: ds[0], endAt: ds[ds.length - 1] };
 }
 
+async function upsertCache({ endpoint, key, data, ttlMs, upstreamUrl }) {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMs);
+
+  await AiCache.findOneAndUpdate(
+    { endpoint, key },
+    {
+      $set: {
+        data,
+        syncedAt: now,
+        expiresAt,
+        upstreamUrl: upstreamUrl || "",
+      },
+    },
+    { upsert: true },
+  );
+
+  return { endpoint, key, syncedAt: now, expiresAt };
+}
+
+/* ---------------- sync: instructors ---------------- */
+
 async function syncInstructors() {
-  // ✅ ปรับให้เรียก upstream โดยตรง (ลองหลาย path เผื่อชื่อ endpoint ต่างกัน)
   const upstream = await fetchAiJson([
+    "/api/admin/ai/instructors",
     "instructors",
-    "instructor",
-    "admin/ai/instructors",
   ]);
   const rows = pickArray(upstream);
 
@@ -74,19 +105,12 @@ async function syncInstructors() {
   return { count: ops.length };
 }
 
+/* ---------------- sync: schedule ---------------- */
+
 async function syncSchedule({ from, to }) {
-  const qs = new URLSearchParams();
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
-
-  // ✅ ปรับให้เรียก upstream โดยตรง
-  const upstream = await fetchAiJson(
-    ["schedule", "schedules", "admin/ai/schedule"],
-    {
-      query: qs,
-    },
-  );
-
+  const upstream = await fetchAiJson(["/api/admin/ai/schedule", "schedule"], {
+    query: { ...(from ? { from } : {}), ...(to ? { to } : {}) },
+  });
   const rows = pickArray(upstream);
 
   const now = new Date();
@@ -136,28 +160,150 @@ async function syncSchedule({ from, to }) {
   return { count: ops.length };
 }
 
+/* ---------------- sync: public-courses ---------------- */
+// TTL 10 นาที (เหมือน route)
+const TTL_PUBLIC_COURSES = 10 * 60 * 1000;
+
+async function syncPublicCourses({ qs = "", key = "" } = {}) {
+  const { BASE } = requireAiEnv();
+  const candidates = buildPublicCoursesCandidates({ BASE, qs, key });
+
+  const upstream = await tryFetchUpstream(candidates);
+  if (!upstream.ok) {
+    const err = new Error("upstream public-courses error");
+    err.upstream = upstream;
+    throw err;
+  }
+
+  const payload = upstream.body;
+  const item = key ? pickSingleItem(payload, key) : null;
+  const items = Array.isArray(payload?.items) ? payload.items : null;
+
+  const cacheKey = key ? `key:${key}` : qs ? `qs:${qs}` : "__list__";
+
+  const cache = await upsertCache({
+    endpoint: "public-courses",
+    key: cacheKey,
+    ttlMs: TTL_PUBLIC_COURSES,
+    upstreamUrl: upstream.url,
+    data: {
+      ok: true,
+      upstreamUrl: upstream.url,
+      item,
+      items,
+      data: items ? undefined : payload,
+    },
+  });
+
+  return {
+    cacheKey,
+    upstreamUrl: upstream.url,
+    itemsCount: items?.length || 0,
+    ...cache,
+  };
+}
+
+/* ---------------- sync: program ---------------- */
+// TTL 1 วัน
+const TTL_PROGRAM = 24 * 60 * 60 * 1000;
+
+async function syncProgram({ id = "", program_id = "" } = {}) {
+  const { BASE } = requireAiEnv();
+
+  // ถ้ามี id/program_id -> sync แบบ single เหมือน route
+  if (id || program_id) {
+    const qs = new URLSearchParams();
+    if (id) qs.set("id", id);
+    if (!id && program_id) qs.set("program_id", program_id);
+
+    const candidates = buildProgramCandidates({ BASE, qs: qs.toString() });
+    const upstream = await tryFetchUpstream(candidates);
+    if (!upstream.ok) {
+      const err = new Error("upstream program error");
+      err.upstream = upstream;
+      throw err;
+    }
+
+    const cacheKey = id ? `id:${id}` : `program_id:${program_id}`;
+
+    const cache = await upsertCache({
+      endpoint: "program",
+      key: cacheKey,
+      ttlMs: TTL_PROGRAM,
+      upstreamUrl: upstream.url,
+      data: { ok: true, upstreamUrl: upstream.url, ...upstream.body },
+    });
+
+    return { cacheKey, upstreamUrl: upstream.url, ...cache };
+  }
+
+  // ไม่มี param -> พยายาม sync “list” ถ้า upstream รองรับ
+  const candidates = [`${BASE}/programs`, `${BASE}/program`];
+
+  const upstream = await tryFetchUpstream(candidates);
+  if (!upstream.ok) {
+    const err = new Error("upstream program(list) error");
+    err.upstream = upstream;
+    throw err;
+  }
+
+  const payload = upstream.body;
+  const items = Array.isArray(payload?.items)
+    ? payload.items
+    : pickArray(payload);
+
+  const cache = await upsertCache({
+    endpoint: "program",
+    key: "__list__",
+    ttlMs: TTL_PROGRAM,
+    upstreamUrl: upstream.url,
+    data: { ok: true, upstreamUrl: upstream.url, items, data: payload },
+  });
+
+  return {
+    cacheKey: "__list__",
+    upstreamUrl: upstream.url,
+    itemsCount: items?.length || 0,
+    ...cache,
+  };
+}
+
+/* ---------------- POST handler ---------------- */
+
 export async function POST(req) {
   try {
-    // await requireAdmin(req);
     await dbConnect();
 
     const { searchParams } = new URL(req.url);
-    const kind = String(searchParams.get("kind") || "all");
+    const kind = String(searchParams.get("kind") || "all"); // all | instructors | schedule | public-courses | program
+
     const from = searchParams.get("from") || "";
     const to = searchParams.get("to") || "";
 
+    const qs = searchParams.get("qs") || ""; // สำหรับ public-courses
+    const key = searchParams.get("key") || ""; // course_id/id สำหรับ public-courses
+
+    const id = searchParams.get("id") || ""; // program id
+    const program_id = searchParams.get("program_id") || "";
+
     const out = {};
+
     if (kind === "all" || kind === "instructors")
       out.instructors = await syncInstructors();
     if (kind === "all" || kind === "schedule")
       out.schedule = await syncSchedule({ from, to });
+    if (kind === "all" || kind === "public-courses")
+      out.publicCourses = await syncPublicCourses({ qs, key });
+    if (kind === "all" || kind === "program")
+      out.program = await syncProgram({ id, program_id });
 
     return NextResponse.json({ ok: true, ...out });
   } catch (e) {
-    const status = Number(e?.status) || 500;
+    const msg = String(e?.message || e);
+    const upstream = e?.upstream?.upstream || e?.upstream || null;
     return NextResponse.json(
-      { ok: false, error: String(e?.message || e) },
-      { status },
+      { ok: false, error: msg, upstream },
+      { status: e?.status || 500 },
     );
   }
 }
