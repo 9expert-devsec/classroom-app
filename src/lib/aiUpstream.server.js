@@ -38,19 +38,18 @@ async function readBodySafe(res) {
 }
 
 function buildCandidateUrl(BASE, candidate, queryString) {
-  // candidate อาจเป็น:
-  // - full url: https://...
-  // - path relative: instructors, /instructors, schedule?x=1
   const raw = String(candidate || "").trim();
   if (!raw) return "";
 
-  // ถ้าเป็น full url ใช้เลย
+  // full url
   if (isAbsoluteUrl(raw)) {
     if (!queryString) return raw;
-    return raw.includes("?") ? `${raw}&${queryString}` : `${raw}?${queryString}`;
+    return raw.includes("?")
+      ? `${raw}&${queryString}`
+      : `${raw}?${queryString}`;
   }
 
-  // ถ้าเป็น path -> join กับ BASE
+  // path relative
   const u = joinUrl(BASE, raw);
   if (!u) return "";
 
@@ -58,85 +57,184 @@ function buildCandidateUrl(BASE, candidate, queryString) {
   return u.includes("?") ? `${u}&${queryString}` : `${u}?${queryString}`;
 }
 
-/**
- * fetchAiJson
- * - candidate: string | string[]  (ลองทีละตัวจนกว่าจะเจอ)
- * - opts.query: object | URLSearchParams | string
- * - จะใส่ header x-api-key อัตโนมัติ
- * - return: parsed JSON (body.json)
- */
-export async function fetchAiJson(candidates, opts = {}) {
+/* =========================
+ * Public utils (export)
+ * ========================= */
+
+export function requireAiEnv() {
   const BASE = normalizeBase(process.env.AI_API_BASE);
-  const KEY = process.env.AI_API_KEY;
+  const KEY = cleanStr(process.env.AI_API_KEY);
 
   if (!BASE || !KEY) {
     const err = new Error("Missing AI_API_BASE or AI_API_KEY");
     err.status = 500;
+    err.detail = {
+      AI_API_BASE: BASE || null,
+      AI_API_KEY: KEY ? "***set***" : null,
+    };
     throw err;
   }
+
+  return { BASE, KEY };
+}
+
+export async function tryFetchUpstream(
+  urls,
+  { method = "GET", headers = {}, body } = {},
+) {
+  const { KEY } = requireAiEnv();
+
+  for (const url of urls || []) {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        "x-api-key": KEY,
+        accept: "application/json",
+        ...(body ? { "content-type": "application/json" } : {}),
+        ...headers,
+      },
+      cache: "no-store",
+      body: body ? JSON.stringify(body) : undefined,
+    }).catch(() => null);
+
+    if (!res) continue;
+
+    const parsed = await readBodySafe(res);
+
+    // 200 แต่ไม่ใช่ JSON (เช่น HTML) => ลองตัวถัดไป
+    if (res.ok && !parsed.okJson) continue;
+
+    if (res.ok && parsed.okJson) {
+      return { ok: true, url, status: res.status, body: parsed.json };
+    }
+
+    // 404 => ลองตัวถัดไป
+    if (!res.ok && res.status === 404) continue;
+
+    // error อื่น => ส่งกลับทันที
+    return {
+      ok: false,
+      url,
+      status: res.status,
+      contentType: parsed.ct,
+      detail: parsed.okJson ? parsed.json : (parsed.text || "").slice(0, 500),
+    };
+  }
+
+  return {
+    ok: false,
+    url: urls?.[0] || "",
+    status: 404,
+    contentType: "text/plain",
+    detail: "not found in any upstream path",
+  };
+}
+
+// ใช้ normalize ให้ได้ item เดียว (เอาไว้ใช้กับ public-courses)
+export function pickSingleItem(payload, courseIdOrId) {
+  const directItem = payload?.item || payload?.data || null;
+  if (directItem) return directItem;
+
+  const items = Array.isArray(payload?.items) ? payload.items : null;
+  if (!items) return null;
+
+  const key = String(courseIdOrId || "").trim();
+  if (!key) return null;
+
+  return (
+    items.find((x) => String(x?._id || "") === key) ||
+    items.find((x) => String(x?.id || "") === key) ||
+    items.find((x) => String(x?.course_id || "") === key) ||
+    items.find((x) => String(x?.courseId || "") === key) ||
+    items.find((x) => String(x?.course_code || "") === key) ||
+    items.find((x) => String(x?.courseCode || "") === key) ||
+    null
+  );
+}
+
+// สร้าง candidate URLs สำหรับ public-courses
+export function buildPublicCoursesCandidates({ BASE, qs = "", key = "" } = {}) {
+  const env = requireAiEnv();
+  const base = normalizeBase(BASE) || env.BASE; // ✅ รับ BASE ที่ส่งมา หรือ fallback env
+  const query = typeof qs === "string" ? qs.replace(/^\?/, "") : "";
+
+  const paths = [
+    "public-courses",
+    "public-course",
+    "publiccourses",
+    "public_course",
+    "public_courses",
+    "courses",
+    "course",
+  ];
+
+  const candidates = [];
+
+  function add(path, mode = "query") {
+    if (mode === "query") {
+      candidates.push(buildCandidateUrl(base, path, query));
+    } else if (mode === "segment" && key) {
+      candidates.push(joinUrl(base, `${path}/${encodeURIComponent(key)}`));
+    }
+  }
+
+  for (const p of paths) {
+    add(p, "query");
+    add(p, "segment");
+  }
+
+  return candidates.filter(Boolean);
+}
+
+// สร้าง candidate URLs สำหรับ program
+export function buildProgramCandidates({ BASE, qs = "" } = {}) {
+  const env = requireAiEnv();
+  const base = normalizeBase(BASE) || env.BASE; // ✅ รับ BASE ที่ส่งมา หรือ fallback env
+  const query = typeof qs === "string" ? qs.replace(/^\?/, "") : "";
+
+  return [
+    buildCandidateUrl(base, "programs", query),
+    buildCandidateUrl(base, "program", query),
+  ].filter(Boolean);
+}
+
+
+/**
+ * fetchAiJson
+ * ใช้ได้ทั้ง:
+ * - fetchAiJson("instructors")
+ * - fetchAiJson(["instructors","instructor"])
+ * - fetchAiJson("schedule", { query: { from, to } })
+ */
+export async function fetchAiJson(candidates, opts = {}) {
+  const { BASE, KEY } = requireAiEnv();
 
   const list = Array.isArray(candidates) ? candidates : [candidates];
 
   let qs = "";
-  if (typeof opts.query === "string") {
-    qs = opts.query.replace(/^\?/, "");
-  } else if (opts.query instanceof URLSearchParams) {
-    qs = opts.query.toString();
-  } else if (opts.query && typeof opts.query === "object") {
+  if (typeof opts.query === "string") qs = opts.query.replace(/^\?/, "");
+  else if (opts.query instanceof URLSearchParams) qs = opts.query.toString();
+  else if (opts.query && typeof opts.query === "object")
     qs = new URLSearchParams(opts.query).toString();
+
+  const urls = list.map((c) => buildCandidateUrl(BASE, c, qs)).filter(Boolean);
+
+  const upstream = await tryFetchUpstream(urls, {
+    method: opts.method || "GET",
+    headers: opts.headers || {},
+    body: opts.body,
+  });
+
+  if (!upstream.ok) {
+    const err = new Error(
+      `AI upstream error ${upstream.status || 502} @ ${upstream.url}: ${String(
+        upstream.detail || "",
+      ).slice(0, 300)}`,
+    );
+    err.status = upstream.status || 502;
+    err.upstream = upstream;
+    throw err;
   }
 
-  let lastErr = null;
-
-  for (const c of list) {
-    const url = buildCandidateUrl(BASE, c, qs);
-    if (!url) continue;
-
-    try {
-      const res = await fetch(url, {
-        method: opts.method || "GET",
-        headers: {
-          "x-api-key": KEY,
-          accept: "application/json",
-          ...(opts.headers || {}),
-        },
-        cache: "no-store",
-        body: opts.body ? JSON.stringify(opts.body) : undefined,
-      });
-
-      const body = await readBodySafe(res);
-
-      // 200 แต่ไม่ใช่ JSON -> ลองตัวถัดไป (กัน upstream ส่ง HTML)
-      if (res.ok && !body.okJson) continue;
-
-      // ok + json => return เลย
-      if (res.ok && body.okJson) return body.json;
-
-      // 404 -> ลองตัวถัดไป
-      if (!res.ok && res.status === 404) continue;
-
-      // error อื่น ๆ -> โยน error ออก
-      const msg =
-        body.okJson
-          ? JSON.stringify(body.json).slice(0, 500)
-          : (body.text || "").slice(0, 500);
-
-      const err = new Error(`AI upstream error ${res.status} @ ${url}: ${msg}`);
-      err.status = res.status || 502;
-      lastErr = err;
-      break;
-    } catch (e) {
-      const err = new Error(`AI fetch failed @ ${url}: ${String(e?.message || e)}`);
-      err.status = 502;
-      lastErr = err;
-      // ลองตัวถัดไปได้ ถ้าอยาก strict ก็ break
-      continue;
-    }
-  }
-
-  if (lastErr) throw lastErr;
-
-  const err = new Error("AI upstream not found in any candidate path");
-  err.status = 404;
-  throw err;
+  return upstream.body;
 }
