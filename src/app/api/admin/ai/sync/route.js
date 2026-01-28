@@ -1,9 +1,9 @@
+// src/app/api/admin/ai/sync/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import AiInstructor from "@/models/AiInstructor";
 import AiSchedule from "@/models/AiSchedule";
 import { fetchAiJson } from "@/lib/aiUpstream.server";
-// ถ้ามี requireAdmin ของโปรเจคคุณ ให้ใส่ด้วย
 // import { requireAdmin } from "@/lib/adminAuth.server";
 
 export const runtime = "nodejs";
@@ -35,7 +35,12 @@ function minMaxDates(dateStrs) {
 }
 
 async function syncInstructors() {
-  const upstream = await fetchAiJson("/api/admin/ai/instructors"); // หรือ path upstream จริงของคุณ
+  // ✅ ปรับให้เรียก upstream โดยตรง (ลองหลาย path เผื่อชื่อ endpoint ต่างกัน)
+  const upstream = await fetchAiJson([
+    "instructors",
+    "instructor",
+    "admin/ai/instructors",
+  ]);
   const rows = pickArray(upstream);
 
   const now = new Date();
@@ -74,7 +79,14 @@ async function syncSchedule({ from, to }) {
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
 
-  const upstream = await fetchAiJson(`/api/admin/ai/schedule?${qs.toString()}`); // หรือ path upstream จริงของคุณ
+  // ✅ ปรับให้เรียก upstream โดยตรง
+  const upstream = await fetchAiJson(
+    ["schedule", "schedules", "admin/ai/schedule"],
+    {
+      query: qs,
+    },
+  );
+
   const rows = pickArray(upstream);
 
   const now = new Date();
@@ -121,7 +133,6 @@ async function syncSchedule({ from, to }) {
     .filter(Boolean);
 
   if (ops.length) await AiSchedule.bulkWrite(ops, { ordered: false });
-
   return { count: ops.length };
 }
 
@@ -143,9 +154,10 @@ export async function POST(req) {
 
     return NextResponse.json({ ok: true, ...out });
   } catch (e) {
+    const status = Number(e?.status) || 500;
     return NextResponse.json(
       { ok: false, error: String(e?.message || e) },
-      { status: 500 },
+      { status },
     );
   }
 }

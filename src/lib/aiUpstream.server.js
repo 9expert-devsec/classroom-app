@@ -1,28 +1,27 @@
-const RAW_BASE = process.env.AI_API_BASE;
-const KEY = process.env.AI_API_KEY;
+// src/lib/aiUpstream.server.js
+
+export const dynamic = "force-dynamic";
 
 function cleanStr(x) {
   return String(x || "").trim();
 }
 
-export function normalizeBase(base = RAW_BASE) {
+function normalizeBase(base) {
   const b = cleanStr(base);
-  if (!b) return "";
-  return b.replace(/\/+$/, "");
+  return b ? b.replace(/\/+$/, "") : "";
 }
 
-export function requireAiEnv() {
-  const BASE = normalizeBase(RAW_BASE);
-  if (!BASE || !KEY) {
-    const err = new Error("Missing AI_API_BASE or AI_API_KEY");
-    err.status = 500;
-    err.detail = {
-      AI_API_BASE: BASE || null,
-      AI_API_KEY: KEY ? "***set***" : null,
-    };
-    throw err;
-  }
-  return { BASE, KEY };
+function isAbsoluteUrl(x) {
+  return /^https?:\/\//i.test(String(x || ""));
+}
+
+function joinUrl(base, path) {
+  const b = normalizeBase(base);
+  const p = String(path || "");
+  if (!b) return "";
+  if (!p) return b;
+  if (p.startsWith("/")) return `${b}${p}`;
+  return `${b}/${p}`;
 }
 
 async function readBodySafe(res) {
@@ -30,7 +29,6 @@ async function readBodySafe(res) {
   const text = await res.text().catch(() => "");
   const isJson = ct.includes("application/json");
   if (!isJson) return { okJson: false, ct, text, json: null };
-
   try {
     const json = JSON.parse(text);
     return { okJson: true, ct, text, json };
@@ -39,92 +37,106 @@ async function readBodySafe(res) {
   }
 }
 
-export async function tryFetchUpstream(urls, { signal } = {}) {
-  const { KEY } = requireAiEnv();
+function buildCandidateUrl(BASE, candidate, queryString) {
+  // candidate อาจเป็น:
+  // - full url: https://...
+  // - path relative: instructors, /instructors, schedule?x=1
+  const raw = String(candidate || "").trim();
+  if (!raw) return "";
 
-  for (const url of urls) {
-    const res = await fetch(url, {
-      headers: { "x-api-key": KEY, accept: "application/json" },
-      cache: "no-store",
-      signal,
-    }).catch(() => null);
+  // ถ้าเป็น full url ใช้เลย
+  if (isAbsoluteUrl(raw)) {
+    if (!queryString) return raw;
+    return raw.includes("?") ? `${raw}&${queryString}` : `${raw}?${queryString}`;
+  }
 
-    if (!res) continue;
+  // ถ้าเป็น path -> join กับ BASE
+  const u = joinUrl(BASE, raw);
+  if (!u) return "";
 
-    const body = await readBodySafe(res);
+  if (!queryString) return u;
+  return u.includes("?") ? `${u}&${queryString}` : `${u}?${queryString}`;
+}
 
-    // 200 แต่ไม่ใช่ JSON (เช่น HTML) -> ลองตัวถัดไป
-    if (res.ok && !body.okJson) continue;
+/**
+ * fetchAiJson
+ * - candidate: string | string[]  (ลองทีละตัวจนกว่าจะเจอ)
+ * - opts.query: object | URLSearchParams | string
+ * - จะใส่ header x-api-key อัตโนมัติ
+ * - return: parsed JSON (body.json)
+ */
+export async function fetchAiJson(candidates, opts = {}) {
+  const BASE = normalizeBase(process.env.AI_API_BASE);
+  const KEY = process.env.AI_API_KEY;
 
-    if (res.ok && body.okJson) {
-      return { ok: true, url, status: res.status, body: body.json };
+  if (!BASE || !KEY) {
+    const err = new Error("Missing AI_API_BASE or AI_API_KEY");
+    err.status = 500;
+    throw err;
+  }
+
+  const list = Array.isArray(candidates) ? candidates : [candidates];
+
+  let qs = "";
+  if (typeof opts.query === "string") {
+    qs = opts.query.replace(/^\?/, "");
+  } else if (opts.query instanceof URLSearchParams) {
+    qs = opts.query.toString();
+  } else if (opts.query && typeof opts.query === "object") {
+    qs = new URLSearchParams(opts.query).toString();
+  }
+
+  let lastErr = null;
+
+  for (const c of list) {
+    const url = buildCandidateUrl(BASE, c, qs);
+    if (!url) continue;
+
+    try {
+      const res = await fetch(url, {
+        method: opts.method || "GET",
+        headers: {
+          "x-api-key": KEY,
+          accept: "application/json",
+          ...(opts.headers || {}),
+        },
+        cache: "no-store",
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+
+      const body = await readBodySafe(res);
+
+      // 200 แต่ไม่ใช่ JSON -> ลองตัวถัดไป (กัน upstream ส่ง HTML)
+      if (res.ok && !body.okJson) continue;
+
+      // ok + json => return เลย
+      if (res.ok && body.okJson) return body.json;
+
+      // 404 -> ลองตัวถัดไป
+      if (!res.ok && res.status === 404) continue;
+
+      // error อื่น ๆ -> โยน error ออก
+      const msg =
+        body.okJson
+          ? JSON.stringify(body.json).slice(0, 500)
+          : (body.text || "").slice(0, 500);
+
+      const err = new Error(`AI upstream error ${res.status} @ ${url}: ${msg}`);
+      err.status = res.status || 502;
+      lastErr = err;
+      break;
+    } catch (e) {
+      const err = new Error(`AI fetch failed @ ${url}: ${String(e?.message || e)}`);
+      err.status = 502;
+      lastErr = err;
+      // ลองตัวถัดไปได้ ถ้าอยาก strict ก็ break
+      continue;
     }
-
-    if (!res.ok && res.status === 404) continue;
-
-    return {
-      ok: false,
-      url,
-      status: res.status,
-      contentType: body.ct,
-      detail: body.okJson ? body.json : body.text.slice(0, 500),
-    };
   }
 
-  return {
-    ok: false,
-    url: urls[0] || "",
-    status: 404,
-    contentType: "text/plain",
-    detail: "not found in any upstream path",
-  };
-}
+  if (lastErr) throw lastErr;
 
-export function pickSingleItem(payload, courseIdOrId) {
-  const directItem = payload?.item || payload?.data || null;
-  if (directItem) return directItem;
-
-  const items = Array.isArray(payload?.items) ? payload.items : null;
-  if (!items) return null;
-
-  const key = String(courseIdOrId || "").trim();
-  if (!key) return null;
-
-  return (
-    items.find((x) => String(x?._id || "") === key) ||
-    items.find((x) => String(x?.id || "") === key) ||
-    items.find((x) => String(x?.course_id || "") === key) ||
-    items.find((x) => String(x?.courseId || "") === key) ||
-    items.find((x) => String(x?.course_code || "") === key) ||
-    items.find((x) => String(x?.courseCode || "") === key) ||
-    null
-  );
-}
-
-export function buildPublicCoursesCandidates({ BASE, qs, key }) {
-  const candidates = [];
-  function add(path, mode = "query") {
-    if (mode === "query") candidates.push(`${BASE}/${path}${qs ? `?${qs}` : ""}`);
-    if (mode === "segment" && key) candidates.push(`${BASE}/${path}/${encodeURIComponent(key)}`);
-  }
-
-  const paths = [
-    "public-courses",
-    "public-course",
-    "publiccourses",
-    "public_course",
-    "public_courses",
-    "courses",
-    "course",
-  ];
-
-  for (const p of paths) {
-    add(p, "query");
-    add(p, "segment");
-  }
-  return candidates;
-}
-
-export function buildProgramCandidates({ BASE, qs }) {
-  return [`${BASE}/programs?${qs}`, `${BASE}/program?${qs}`];
+  const err = new Error("AI upstream not found in any candidate path");
+  err.status = 404;
+  throw err;
 }
