@@ -7,6 +7,50 @@ import Checkin from "@/models/Checkin";
 
 export const dynamic = "force-dynamic";
 
+/* ---------------- helpers ---------------- */
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+// แปลง dateInput ให้เป็น YYYY-MM-DD ตามเวลาไทย (Asia/Bangkok)
+function toYMD_BKK(dateInput) {
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "";
+  const bkk = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
+  return `${bkk.getFullYear()}-${pad2(bkk.getMonth() + 1)}-${pad2(bkk.getDate())}`;
+}
+
+// เพิ่มวันให้ YYYY-MM-DD (คง timezone +07:00)
+function addDaysYMD(ymd, addDays) {
+  const base = new Date(`${ymd}T00:00:00+07:00`);
+  base.setDate(base.getDate() + (Number(addDays) || 0));
+  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
+}
+
+// หา “วันที่อบรมของ day นั้น”
+// - ถ้ามี klass.days[] ใช้เป็น source of truth
+// - ไม่งั้น fallback จาก klass.date + (day-1)
+function resolveTrainingYMD(klass, day) {
+  const d = Math.max(1, Number(day || 1));
+
+  if (Array.isArray(klass?.days) && klass.days[d - 1]) {
+    // เก็บเป็น YYYY-MM-DD อยู่แล้วก็ได้ หรือเป็น date string ก็ slice ได้
+    return String(klass.days[d - 1]).slice(0, 10);
+  }
+
+  const startYMD = toYMD_BKK(klass?.date || new Date());
+  return addDaysYMD(startYMD, d - 1);
+}
+
+// สร้าง cutoff เวลา 09:00 ของวันนั้น (เวลาไทย)
+function buildCutoff0900BKK(ymd) {
+  // 09:00:00 เวลาไทยของวันนั้น
+  return new Date(`${ymd}T09:00:00+07:00`);
+}
+
+/* ---------------- route ---------------- */
+
 export async function POST(req) {
   await dbConnect();
 
@@ -16,7 +60,7 @@ export async function POST(req) {
   if (!studentId || !classId || !day) {
     return NextResponse.json(
       { ok: false, error: "missing studentId / classId / day" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -26,49 +70,35 @@ export async function POST(req) {
   if (!student || !klass) {
     return NextResponse.json(
       { ok: false, error: "student or class not found" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
   const now = new Date();
 
   // ---------------------------------------------------
-  // ✅ โลจิก “สายหรือไม่สาย”
-  //    - ใช้วัน/เวลาอบรมของคลาส (cls.date)
-  //    - ถ้าเลย 09:30 (เวลาไทย) → isLate = true
-  //      (ถ้าอยากผูกกับเวลาที่ตั้งใน class.duration.startTime ก็ทำต่อได้)
+  // ✅ โลจิก “สายหรือไม่สาย” (รายวัน)
+  // - ของทุกๆวันนับใหม่
+  // - ถ้าเวลาไทย <= 09:00 ไม่สาย
+  // - ถ้าเวลาไทย > 09:00 สาย
   // ---------------------------------------------------
   let isLate = false;
+  let lateMeta = null;
 
   try {
-    // กำหนดวันที่อบรมจาก field date ของ Class
-    const start = new Date(klass.date || now);
+    const ymd = resolveTrainingYMD(klass, day);
+    const cutoff = buildCutoff0900BKK(ymd);
 
-    // ถ้าคุณมีเวลาเริ่มใน duration.startTime (เช่น "09:00")
-    // จะผูก cutoff = เวลาเริ่ม + 30 นาที
-    const startTimeStr = klass.duration?.startTime || "09:00"; // fallback 09:00
-    const [hStr, mStr] = startTimeStr.split(":");
-    const startHour = Number(hStr) || 9;
-    const startMinute = Number(mStr) || 0;
+    // now เป็นเวลาปัจจุบัน (UTC ภายใน) แต่เทียบกับ cutoff ที่ fix +07 ได้ตรง
+    isLate = now > cutoff;
 
-    // เซ็ตเวลาเริ่มเป็น hh:mm ของวันอบรม
-    start.setHours(startHour, startMinute, 0, 0);
-
-    // cutoff = เวลาเริ่ม + 30 นาที  → ถ้าเลยเวลานี้ = สาย
-    const cutoff = new Date(start.getTime() + 30 * 60 * 1000);
-
-    // ถ้าคุณอยาก fix 09:30 ตายตัว ไม่ตามเวลาเริ่มของคลาส
-    // ให้ใช้โค้ดนี้แทน 2 บรรทัดด้านบน:
-    //
-    // start.setHours(9, 30, 0, 0); // 09:30 ของวันอบรม
-    // const cutoff = start;
-
-    if (now > cutoff) {
-      isLate = true;
-    }
+    lateMeta = {
+      trainingYMD: ymd,
+      cutoffISO: cutoff.toISOString(),
+      nowISO: now.toISOString(),
+    };
   } catch (e) {
     console.error("late check error:", e);
-    // ถ้าเกิด error ระหว่างคำนวณ ให้ถือว่า "ไม่สาย" เพื่อไม่ให้พัง
     isLate = false;
   }
 
@@ -78,7 +108,7 @@ export async function POST(req) {
   const food = student.food || {};
   const signatureUrl = student.signatureUrl || "";
 
-  // upsert Checkin record ของวันนั้น
+  // upsert Checkin record ของวันนั้น (รายวัน)
   const checkinDoc = await Checkin.findOneAndUpdate(
     {
       studentId: student._id,
@@ -91,11 +121,11 @@ export async function POST(req) {
       food,
       signatureUrl,
     },
-    { new: true, upsert: true }
+    { new: true, upsert: true },
   ).lean();
 
   // ---------------------------------------------------
-  // อัปเดตสถานะใน Student เองด้วย (ให้หน้า Class ใช้ render)
+  // อัปเดตสถานะใน Student (รายวันผ่าน checkinStatus)
   // ---------------------------------------------------
   const checkinStatus = student.checkinStatus || {};
   checkinStatus[`day${day}`] = true;
@@ -103,7 +133,6 @@ export async function POST(req) {
   await Student.findByIdAndUpdate(studentId, {
     $set: {
       checkinStatus,
-      isLate, // ถ้าต้องการให้ flag ว่าคนนี้เคยสาย
       lastCheckinAt: now,
       signatureUrl,
       food,
@@ -114,5 +143,6 @@ export async function POST(req) {
     ok: true,
     item: checkinDoc,
     isLate,
+    lateMeta, // debug ได้ (จะเอาออกทีหลังก็ได้)
   });
 }

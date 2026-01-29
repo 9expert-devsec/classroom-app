@@ -3,7 +3,7 @@ export default function PrimaryButton({ children, className = "", ...props }) {
     <button
       {...props}
       className={
-        "inline-flex items-center justify-center rounded-2xl bg-brand-primary px-5 py-2.5 text-sm font-medium text-white shadow-md transition hover:bg-brand-primaryDark " +
+        " inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2  focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed" +
         className
       }
     >

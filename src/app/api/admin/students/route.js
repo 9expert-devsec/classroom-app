@@ -21,3 +21,6 @@ export async function GET(req) {
     items: students,
   });
 }
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";

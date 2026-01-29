@@ -1,33 +1,49 @@
+// src/models/Class.js
 import mongoose from "mongoose";
 
 const ClassSchema = new mongoose.Schema(
   {
-    // ชื่อ class ที่จะใช้แสดงใน admin และหน้าอื่น ๆ
-    title: { type: String, required: true },
+    // ชื่อ class (ใช้เป็น code หลัก) เช่น CR-PUB-MSE-L6-23-02-69-1
+    title: { type: String, required: true, unique: true, index: true },
 
-    // ผูกกับ course (รองรับ manual + จาก API)
-    courseCode: String,     // code จาก public-courses เช่น "EXCEL-I"
-    courseName: String,     // ชื่อคอร์ส
+    publicCourseId: { type: String, index: true },
+
+    courseCode: String,
+    courseName: String,
 
     // วันที่เรียนหลัก (day 1)
-    date: { type: Date, required: true },
+    date: { type: Date, required: true, index: true },
+    days: { type: [String], default: [] },
 
-    // ช่วงเวลา + จำนวนวัน
     duration: {
       dayCount: { type: Number, default: 1 },
-      startTime: { type: String, default: "09:00" }, // "HH:MM"
+      startTime: { type: String, default: "09:00" },
       endTime: { type: String, default: "16:00" },
+    },
+
+    program: {
+      programObjectId: String,
+      program_id: String,
+      program_name: String,
+      programcolor: String,
+      programiconurl: String,
     },
 
     room: String,
 
-    // แหล่งที่มา: api schedule / manual
     source: {
       type: String,
-      enum: ["api", "manual"],
+      enum: ["api", "manual", "sync"],
       default: "manual",
+      index: true,
     },
-    externalScheduleId: String, // ไว้ map กับ /schedule ถ้าดึงจาก API
+
+    // map กับ schedule
+    externalScheduleId: { type: String, index: true, default: "" },
+
+    // เก็บประเภทเพื่อ trace (optional)
+    trainingType: { type: String, default: "" }, // "classroom" | "hybrid"
+    channel: { type: String, default: "" }, // "PUB" ...
 
     instructors: [
       {
@@ -36,7 +52,7 @@ const ClassSchema = new mongoose.Schema(
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.models.Class || mongoose.model("Class", ClassSchema);
