@@ -258,8 +258,8 @@ export default function AdminClassroomLayout({ children }) {
       <aside className="flex w-72 flex-col bg-admin-sidebarBg text-admin-sidebarText">
         {/* top logo / title */}
         <div className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/10 text-sm font-semibold">
-            9E
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-semibold">
+            <img src="/logo-9expert-app.png" alt="9Expert Logo" className="h-6 w-6" />
           </div>
           <div className="text-base font-semibold">9Expert Admin</div>
         </div>
