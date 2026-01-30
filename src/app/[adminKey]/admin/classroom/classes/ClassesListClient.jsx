@@ -1,7 +1,7 @@
-// src/app/admin/classroom/classes/ClassesListClient.jsx
+// src/app/[adminKey]/admin/classroom/classes/ClassesListClient.jsx
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -154,15 +154,26 @@ export default function ClassesListClient({ initialClasses, total }) {
     }
   }, []);
 
-  // ✅ auto refresh ตอนเข้า page (กันเคส initialClasses เก่า/ติด cache)
+  const didAutoRefreshRef = useRef(false);
+
   useEffect(() => {
-    refreshClasses();
+    // ✅ ไม่ต้องยิงซ้ำ ถ้า SSR ส่ง initialClasses มาแล้ว
+    if (didAutoRefreshRef.current) return;
+    didAutoRefreshRef.current = true;
+
+    if (!Array.isArray(initialClasses) || initialClasses.length === 0) {
+      refreshClasses();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ auto refresh เมื่อกลับมาที่ tab นี้
   useEffect(() => {
+    // ✅ throttle focus refresh กันยิงรัว
+    let last = 0;
     function onFocus() {
+      const now = Date.now();
+      if (now - last < 30_000) return; // 30s
+      last = now;
       refreshClasses();
     }
     window.addEventListener("focus", onFocus);
@@ -715,7 +726,9 @@ export default function ClassesListClient({ initialClasses, total }) {
                         className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                       >
                         <DropdownMenuItem asChild>
-                          <Link href={`/a1exqwvCqTXP7s0/admin/classroom/classes/${id}`}>
+                          <Link
+                            href={`/a1exqwvCqTXP7s0/admin/classroom/classes/${id}`}
+                          >
                             เปิดดู
                           </Link>
                         </DropdownMenuItem>

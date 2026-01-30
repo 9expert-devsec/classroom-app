@@ -1,3 +1,4 @@
+// src/app/[adminKey]/admin/classroom/classes/page.jsx
 import Link from "next/link";
 import ClassesListClient from "./ClassesListClient";
 import { getBaseUrl } from "@/lib/baseUrl.server";

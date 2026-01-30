@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import FoodDaySet from "@/models/FoodDaySet";
+import FoodSet from "@/models/FoodSet";
 
 export const dynamic = "force-dynamic";
 

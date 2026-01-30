@@ -1,12 +1,125 @@
-// src/app/admin/classroom/ClassroomDashboardClient.jsx
+// src/app/[adminKey]/admin/classroom/ClassroomDashboardClient.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
+}
+
+function SkeletonBox({ className }) {
+  return (
+    <div
+      className={cx(
+        "animate-pulse rounded-xl bg-admin-surfaceMuted/70",
+        className,
+      )}
+    />
+  );
+}
+
+function SkeletonLine({ className }) {
+  return <SkeletonBox className={cx("h-3 rounded-lg", className)} />;
+}
+
+function SkeletonIcon() {
+  return <SkeletonBox className="h-10 w-10 rounded-xl" />;
+}
+
+function SkeletonClassCards() {
+  return (
+    <ul className="mt-4 space-y-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <li
+          key={i}
+          className="rounded-2xl border border-admin-border bg-admin-surface p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <SkeletonIcon />
+              <div className="space-y-2">
+                <SkeletonLine className="w-56" />
+                <SkeletonLine className="w-40" />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <SkeletonBox className="h-[60px] min-w-[90px]" />
+              <SkeletonBox className="h-[60px] min-w-[90px]" />
+              <SkeletonBox className="h-[60px] min-w-[90px]" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SkeletonStudentGroups({ groups = 2, rows = 5 }) {
+  return (
+    <div className="mt-4 space-y-4">
+      {Array.from({ length: groups }).map((_, gi) => (
+        <div
+          key={gi}
+          className="rounded-2xl border border-admin-border bg-admin-surface p-4"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <SkeletonIcon />
+              <div className="space-y-2">
+                <SkeletonLine className="w-64" />
+                <SkeletonLine className="w-44" />
+              </div>
+            </div>
+
+            <div className="space-y-2 text-right">
+              <SkeletonLine className="w-24 ml-auto" />
+              <SkeletonLine className="w-28 ml-auto" />
+            </div>
+          </div>
+
+          <div className="mt-3 overflow-hidden rounded-xl border border-admin-border">
+            <div className="bg-admin-surfaceMuted px-3 py-2">
+              <SkeletonLine className="w-72" />
+            </div>
+
+            <div className="divide-y divide-admin-border">
+              {Array.from({ length: rows }).map((_, ri) => (
+                <div key={ri} className="flex items-center gap-3 px-3 py-3">
+                  <SkeletonLine className="w-10" />
+                  <SkeletonLine className="w-56" />
+                  <SkeletonLine className="w-40" />
+                  <SkeletonLine className="w-24 ml-auto" />
+                  <SkeletonBox className="h-5 w-14 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonAsideList({ count = 3 }) {
+  return (
+    <ul className="mt-4 space-y-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <li
+          key={i}
+          className="flex items-center justify-between rounded-xl border border-admin-border px-3 py-2"
+        >
+          <div className="space-y-2">
+            <SkeletonLine className="w-40" />
+            <SkeletonLine className="w-56" />
+          </div>
+          <SkeletonLine className="w-12" />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function fmtTime(t) {
@@ -134,7 +247,9 @@ function GroupedStudentTable({ groups, mode }) {
     <div className="mt-4 space-y-4">
       {sortedGroups.map((g) => {
         const items = filterItemsByMode(g?.items, mode);
-        const totalInClass = Array.isArray(g?.items) ? g.items.length : 0;
+        const totalInClass = Number.isFinite(Number(g?.totalInClass))
+          ? Number(g.totalInClass)
+          : 0;
 
         return (
           <div
@@ -246,13 +361,16 @@ function GroupedStudentTable({ groups, mode }) {
   );
 }
 
+function isStudentMode(active) {
+  return ["students", "checkins", "late", "absent"].includes(active);
+}
+
 /* ---------------- main ---------------- */
 
 export default function ClassroomDashboardClient({
   range = "today",
   rangeLabel = "วันนี้",
   initialData,
-  // ✅ ถ้าหน้า page.jsx ส่ง custom from/to มา ให้รองรับด้วย
   from = "",
   to = "",
 }) {
@@ -267,11 +385,21 @@ export default function ClassroomDashboardClient({
     initialData ? new Date().toISOString() : "",
   );
 
-  // ✅ state สำหรับ filter bar (ควบคุมเองได้ ไม่ต้องรอ navigation)
+  // ✅ state สำหรับ filter bar
   const [currentRange, setCurrentRange] = useState(range || "today");
   const [customFrom, setCustomFrom] = useState(from || "");
   const [customTo, setCustomTo] = useState(to || "");
   const [showCustom, setShowCustom] = useState(currentRange === "custom");
+
+  const [loadingPart, setLoadingPart] = useState({
+    cards: !initialData,
+    students: false,
+    lists: false,
+    program: false,
+  });
+
+  // กันยิง students ซ้ำถี่ ๆ
+  const loadedStudentsKeyRef = useRef("");
 
   const totals = data?.totals || {
     totalClasses: 0,
@@ -306,47 +434,123 @@ export default function ClassroomDashboardClient({
     const nextFrom = nextParams?.from ?? customFrom;
     const nextTo = nextParams?.to ?? customTo;
 
+    const include = nextParams?.include || "cards";
+    const mode = nextParams?.mode || "";
+    const silent = !!nextParams?.silent;
+
+    const includeList = String(include || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const wantsCards = includeList.includes("cards");
+    const wantsStudents = includeList.includes("students");
+    const wantsLists = includeList.includes("lists");
+    const wantsProgram = includeList.includes("program");
+
     setErrorMsg("");
-    setLoading(true);
+    if (!silent) setLoading(true);
+
+    // ✅ set skeleton loading per section
+    setLoadingPart((p) => ({
+      ...p,
+      ...(wantsCards ? { cards: true } : null),
+      ...(wantsStudents ? { students: true } : null),
+      ...(wantsLists ? { lists: true } : null),
+      ...(wantsProgram ? { program: true } : null),
+    }));
 
     const qs = buildQs(nextRange, nextFrom, nextTo);
-    const res = await fetch(`/api/admin/classroom/dashboard?${qs}`, {
-      cache: "no-store",
-    }).catch(() => null);
+    const url =
+      `/api/admin/classroom/dashboard?${qs}` +
+      `&include=${encodeURIComponent(include)}` +
+      (mode ? `&mode=${encodeURIComponent(mode)}` : "");
 
-    const json = res ? await res.json().catch(() => null) : null;
+    try {
+      const res = await fetch(url, { cache: "no-store" }).catch(() => null);
+      const json = res ? await res.json().catch(() => null) : null;
 
-    if (json?.ok) {
-      setData(json);
-      setLastUpdatedAt(new Date().toISOString());
-    } else {
-      const msg =
-        json?.error ||
-        json?.message ||
-        (!res ? "network_error" : `request_failed (${res.status})`);
-      setErrorMsg(String(msg));
+      if (json?.ok) {
+        setData((prev) => ({ ...(prev || {}), ...json }));
+        setLastUpdatedAt(new Date().toISOString());
+      } else {
+        const msg =
+          json?.error ||
+          json?.message ||
+          (!res ? "network_error" : `request_failed (${res.status})`);
+        setErrorMsg(String(msg));
+      }
+    } finally {
+      if (!silent) setLoading(false);
+
+      // ✅ unset skeleton loading per section
+      setLoadingPart((p) => ({
+        ...p,
+        ...(wantsCards ? { cards: false } : null),
+        ...(wantsStudents ? { students: false } : null),
+        ...(wantsLists ? { lists: false } : null),
+        ...(wantsProgram ? { program: false } : null),
+      }));
     }
-
-    setLoading(false);
   }
 
-  // ✅ กด filter แล้ว refresh อัตโนมัติ + update url (ไม่ reload หน้า)
+  // โหลดเริ่มต้น (ถ้าไม่มี initialData)
+  useEffect(() => {
+    if (!initialData) {
+      refresh({ include: "cards,lists" });
+    }
+    // เติม program/icons แบบ background (ไม่ทำให้หน้า "ช้า")
+    refresh({ include: "cards,program", silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ✅ sync state ถ้า props range/from/to เปลี่ยน
+  useEffect(() => {
+    setCurrentRange(range || "today");
+    setShowCustom((range || "today") === "custom");
+    setCustomFrom(from || "");
+    setCustomTo(to || "");
+    loadedStudentsKeyRef.current = ""; // reset
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, from, to]);
+
+  // ✅ เวลาเปลี่ยนโหมดเป็นรายชื่อ ให้โหลด students อัตโนมัติ
+  useEffect(() => {
+    if (!isStudentMode(active)) return;
+
+    const key = `${currentRange}|${customFrom}|${customTo}|${active}`;
+    if (loadedStudentsKeyRef.current === key) return;
+
+    loadedStudentsKeyRef.current = key;
+    refresh({ include: "students", mode: active, silent: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
   async function handlePickRange(nextRange) {
     setCurrentRange(nextRange);
     setShowCustom(nextRange === "custom");
+    loadedStudentsKeyRef.current = "";
 
-    // update url
     const qs = buildQs(nextRange, customFrom, customTo);
     router.replace(`/a1exqwvCqTXP7s0/admin/classroom?${qs}`);
 
-    // auto refresh (ยกเว้น custom ให้รอ Apply)
     if (nextRange !== "custom") {
-      await refresh({ range: nextRange });
+      await refresh({ range: nextRange, include: "cards,lists" });
+      refresh({ range: nextRange, include: "cards,program", silent: true });
+
+      // ถ้าอยู่โหมดรายชื่อ ให้โหลดรายชื่อของโหมดนั้นต่อทันที
+      if (isStudentMode(active)) {
+        refresh({
+          range: nextRange,
+          include: "students",
+          mode: active,
+          silent: true,
+        });
+      }
     }
   }
 
   async function applyCustom() {
-    // validate เบื้องต้น
     if (!customFrom || !customTo) {
       setErrorMsg("กรุณาเลือกวันที่เริ่มและวันที่สิ้นสุด");
       return;
@@ -356,20 +560,57 @@ export default function ClassroomDashboardClient({
       return;
     }
 
+    loadedStudentsKeyRef.current = "";
+
     const qs = buildQs("custom", customFrom, customTo);
     router.replace(`/a1exqwvCqTXP7s0/admin/classroom?${qs}`);
-    await refresh({ range: "custom", from: customFrom, to: customTo });
+
+    await refresh({
+      range: "custom",
+      from: customFrom,
+      to: customTo,
+      include: "cards,lists",
+    });
+
+    refresh({
+      range: "custom",
+      from: customFrom,
+      to: customTo,
+      include: "cards,program",
+      silent: true,
+    });
+
+    if (isStudentMode(active)) {
+      refresh({
+        range: "custom",
+        from: customFrom,
+        to: customTo,
+        include: "students",
+        mode: active,
+        silent: true,
+      });
+    }
   }
 
-  // ✅ ถ้าคุณยังใช้ SSR initialData อยู่: ไม่ต้อง refresh ตอน mount
-  // แต่ถ้า props range/from/to เปลี่ยน (กรณี navigate) ให้ sync state ตาม
-  useEffect(() => {
-    setCurrentRange(range || "today");
-    setShowCustom((range || "today") === "custom");
-    setCustomFrom(from || "");
-    setCustomTo(to || "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, from, to]);
+  const RANGE_LABEL_MAP = {
+    today: "วันนี้",
+    week: "7 วันล่าสุด",
+    month: "เดือนนี้",
+    custom: "ช่วงวันที่กำหนดเอง",
+  };
+  const computedRangeLabel = RANGE_LABEL_MAP[currentRange] || rangeLabel || "";
+
+  const expectedStudentMode = active === "classes" ? "" : active;
+  const studentReady =
+    active === "classes"
+      ? true
+      : String(data?.studentMode || "") === String(expectedStudentMode);
+
+  const showStudentSkeleton =
+    active !== "classes" && (loadingPart.students || !studentReady);
+
+  const showCardsSkeleton =
+    active === "classes" && loadingPart.cards && !data?.classCards?.length;
 
   return (
     <div className="space-y-6">
@@ -378,7 +619,8 @@ export default function ClassroomDashboardClient({
           <h1 className="text-xl font-semibold">Classroom Dashboard</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="text-sm text-admin-textMuted">
-              ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา {rangeLabel}
+              ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา{" "}
+              {computedRangeLabel}
               {loading ? " • กำลังโหลด..." : ""}
             </p>
 
@@ -397,10 +639,15 @@ export default function ClassroomDashboardClient({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* ✅ ปุ่ม Refresh manual */}
           <button
             type="button"
-            onClick={() => refresh()}
+            onClick={() => {
+              loadedStudentsKeyRef.current = "";
+              refresh({ include: "cards,lists" });
+              refresh({ include: "cards,program", silent: true });
+              if (isStudentMode(active))
+                refresh({ include: "students", mode: active, silent: true });
+            }}
             disabled={loading}
             className={cx(
               "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition",
@@ -416,7 +663,6 @@ export default function ClassroomDashboardClient({
             Refresh
           </button>
 
-          {/* ✅ Filter bar: กดแล้ว refresh อัตโนมัติ */}
           <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
             {RANGE_OPTIONS.map((opt) => (
               <button
@@ -437,7 +683,6 @@ export default function ClassroomDashboardClient({
         </div>
       </div>
 
-      {/* ✅ Custom date range UI */}
       {showCustom ? (
         <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-card">
           <div className="flex flex-wrap items-end gap-3">
@@ -535,9 +780,12 @@ export default function ClassroomDashboardClient({
           </div>
 
           {active === "classes" ? (
-            data?.classCards?.length ? (
+            showCardsSkeleton ? (
+              <SkeletonClassCards />
+            ) : data?.classCards?.length ? (
               <ul className="mt-4 space-y-3">
                 {data.classCards.map((c) => (
+                  /* ✅ ของเดิมคุณ */
                   <li
                     key={c.id}
                     className="rounded-2xl border border-admin-border bg-admin-surface p-4"
@@ -599,6 +847,8 @@ export default function ClassroomDashboardClient({
                 ยังไม่มีคลาสในช่วงเวลาที่เลือก
               </p>
             )
+          ) : showStudentSkeleton ? (
+            <SkeletonStudentGroups />
           ) : (
             <GroupedStudentTable
               groups={data?.studentGroups || []}
@@ -618,7 +868,9 @@ export default function ClassroomDashboardClient({
               </span>
             </div>
 
-            {!data?.fastest3?.length ? (
+            {loadingPart.lists ? (
+              <SkeletonAsideList count={3} />
+            ) : !data?.fastest3?.length ? (
               <p className="mt-4 text-sm text-admin-textMuted">
                 ยังไม่มีการเช็คอิน
               </p>
@@ -652,7 +904,9 @@ export default function ClassroomDashboardClient({
               แสดง 10 รายการล่าสุด
             </p>
 
-            {!data?.latest10?.length ? (
+            {loadingPart.lists ? (
+              <SkeletonAsideList count={6} />
+            ) : !data?.latest10?.length ? (
               <p className="mt-4 text-sm text-admin-textMuted">
                 ยังไม่มีการเช็คอิน
               </p>

@@ -1,4 +1,4 @@
-// src/app/admin/classroom/page.jsx
+// src/app/[adminKey]/admin/classroom/page.jsx
 import ClassroomDashboardClient from "./ClassroomDashboardClient";
 import { getClassroomDashboardData } from "@/lib/classroomDashboard.server";
 
