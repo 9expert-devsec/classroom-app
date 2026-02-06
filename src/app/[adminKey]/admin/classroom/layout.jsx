@@ -15,6 +15,8 @@ import {
   Soup,
   LogOut,
 } from "lucide-react";
+import { Toaster } from "sonner";
+import AdminNotifications from "@/components/admin/AdminNotifications";
 import { useMemo, useState } from "react";
 
 /** โครงสร้างเมนู (ใช้ path แบบ relative ภายใต้ /admin) */
@@ -289,6 +291,9 @@ export default function AdminClassroomLayout({ children }) {
       <main className="flex-1 flex flex-col overflow-hidden px-6 py-5 min-h-0">
         <div className="flex-1 min-h-0">{children}</div>
       </main>
+
+      <Toaster position="top-right" richColors closeButton />
+      <AdminNotifications />
     </div>
   );
 }

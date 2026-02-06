@@ -13,6 +13,16 @@ import Checkin from "@/models/Checkin";
  * - program  => เติม program/icon ผ่าน AI proxy (หนัก) — แยกจาก cards เพื่อไม่ให้ initial ช้า
  */
 
+/* ---------------- tiny helpers ---------------- */
+
+function clean(x) {
+  return String(x || "").trim();
+}
+
+function ymdOf(x) {
+  return clean(x).slice(0, 10);
+}
+
 /* ---------------- time helpers (TH timezone) ---------------- */
 
 const OFFSET_MIN = 7 * 60;
@@ -86,7 +96,9 @@ function isOverlapOpen(aStart, aEnd, bStart, bEnd) {
   return as < be && ae > bs;
 }
 
-// ถ้ามี days[] (YYYY-MM-DD) ให้ใช้เป็น source of truth
+// หมายเหตุ: days[] อาจเป็น "วันอบรมแบบกระโดด" (ไม่ต่อเนื่อง)
+// - ฟังก์ชันนี้ใช้เพื่อ "แสดงผล" (dateStart/dateEnd) และ sort
+// - ห้ามเอา first->last ไปใช้แทนการ filter ว่าวันนี้มีคลาสหรือไม่
 function computeClassRangeUTC(cls) {
   const days = Array.isArray(cls?.days) ? cls.days.filter(Boolean) : [];
   if (days.length > 0) {
@@ -134,6 +146,23 @@ function computeClassRangeUTC(cls) {
   );
 
   return { startUTC, endUTCExclusive };
+}
+
+function hasDays(cls) {
+  return Array.isArray(cls?.days) && cls.days.filter(Boolean).length > 0;
+}
+
+function anyDayInYmdRange(days, startYMD, endYMD) {
+  const s = clean(startYMD);
+  const e = clean(endYMD);
+  if (!s || !e) return false;
+
+  for (const d of days || []) {
+    const y = ymdOf(d);
+    if (!y) continue;
+    if (y >= s && y <= e) return true;
+  }
+  return false;
 }
 
 /* ---------------- internal fetch helpers (AI program) ---------------- */
@@ -296,8 +325,18 @@ function normalizeIncludeSet(include) {
 
   const set = new Set(parts.map((s) => String(s || "").trim()).filter(Boolean));
 
-  // default ถ้าไม่ส่งมาเลย
-  if (!set.size) set.add("cards");
+  // ✅ default ถ้าไม่ส่งมาเลย
+  if (!set.size) {
+    set.add("cards");
+    set.add("lists"); // ✅ ให้มี fastest/latest โดย default
+    return set;
+  }
+
+  // ✅ ถ้ามี cards แต่ไม่ส่ง lists มา -> เติมให้เอง (กัน dashboard ว่าง)
+  if (set.has("cards") && !set.has("lists")) {
+    set.add("lists");
+  }
+
   return set;
 }
 
@@ -318,11 +357,17 @@ async function loadClassesInRange({
   const probeStart = new Date(startUTC);
   probeStart.setDate(probeStart.getDate() - 45); // กันคลาสหลายวันเริ่มก่อนช่วง (ปรับได้)
 
+  // ✅ FIX: ถ้ามี days[] แล้ว "ห้าม" เอา date มาลากคลาสเข้า range
   const q = {
     $or: [
       // days เป็น string "YYYY-MM-DD"
       { days: { $elemMatch: { $gte: startYMD, $lte: endYMD } } },
-      { date: { $gte: probeStart, $lt: endUTCExclusive } },
+      {
+        $and: [
+          { $or: [{ days: { $exists: false } }, { days: { $size: 0 } }] },
+          { date: { $gte: probeStart, $lt: endUTCExclusive } },
+        ],
+      },
     ],
   };
 
@@ -330,8 +375,12 @@ async function loadClassesInRange({
     .select("_id title courseCode courseName room date duration dayCount days")
     .lean();
 
-  // กันหลุด: filter overlap แบบชัวร์
+  // ✅ FIX (กันหลุดชัวร์): ถ้ามี days[] ให้ถือเป็น set ของวันอบรม
+  // ไม่ตีความเป็นช่วง first->last สำหรับการ filter ว่าวันนี้มีคลาสหรือไม่
   return rows.filter((c) => {
+    if (hasDays(c)) {
+      return anyDayInYmdRange(c.days, startYMD, endYMD);
+    }
     const r = computeClassRangeUTC(c);
     return isOverlapOpen(
       r.startUTC,
@@ -500,7 +549,7 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
       totalStudents - (checkedStudentIds?.length || 0),
     );
 
-    // classCards (default fallback เพื่อให้เร็ว)
+    // classCards
     const classCards = classes.map((cls) => {
       const id = String(cls._id);
       const r = computeClassRangeUTC(cls);
@@ -542,14 +591,8 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
 
   /* ---------------- program (slow) ---------------- */
   if (includeSet.has("program")) {
-    // program จะไป augment ให้ classCards ถ้ามี
-    // (ถ้าไม่มี classCards ก็ไม่บังคับสร้าง — เพราะปกติ client เรียก cards มาก่อน)
     const debugCourseErrors = {};
-
-    const fetchOpts = {
-      origin,
-      cookieHeader,
-    };
+    const fetchOpts = { origin, cookieHeader };
 
     if (Array.isArray(out.classCards) && out.classCards.length) {
       await runPool(
@@ -561,7 +604,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
           const pc = await getPublicCourseByCourseId(courseId, fetchOpts);
           if (!pc) {
             debugCourseErrors[courseId] = { error: "public-course not found" };
-            // keep fallback icon
             return;
           }
 
@@ -570,8 +612,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
           let programColor = "";
           let programIconUrl = String(pc.programIconUrl || "");
 
-          // ส่วนใหญ่ public-course ให้ icon/name มาพอแล้ว → ไม่จำเป็นต้องยิง /program ซ้ำ
-          // ถ้าอนาคตต้องใช้สี/ข้อมูลเพิ่ม ค่อยเปิดท่อนนี้
           if (programId && !programColor) {
             const p = await getProgramById(programId, cookieHeader, origin);
             if (p) {
@@ -604,15 +644,13 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
 
   /* ---------------- students (heavy) ---------------- */
   if (hasInclude(includeSet, "students")) {
-    // โหลดนักเรียนเฉพาะฟิลด์ที่ต้องใช้
     const students =
       classIds.length > 0
         ? await Student.find({ classId: { $in: classIds } })
-            .select("_id classId thaiName engName company organization")
+            .select("_id classId name thaiName engName company")
             .lean()
         : [];
 
-    // latest checkin per student (aggregate) — ไม่ต้องดึง checkins ทั้งก้อน
     const latest =
       classIds.length > 0
         ? await Checkin.aggregate([
@@ -651,7 +689,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
       studentsByClass.get(k).push(s);
     }
 
-    // ✅ สำคัญ: เอา icon/program จาก classCards (ถ้ามี) หรือจาก cache (เพื่อให้โหมด students/checkins/late/absent มี icon เหมือน cards)
     const metaByClassId = new Map();
 
     if (Array.isArray(out.classCards)) {
@@ -666,7 +703,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
       }
     }
 
-    // ถ้ายังไม่มี meta (เช่น include=students อย่างเดียว) → ใช้ cache ที่ถูก warm จาก include=cards,program ในหน้า client
     for (const cls of classes) {
       const cid = String(cls._id);
       if (metaByClassId.has(cid)) continue;
@@ -698,8 +734,13 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
         const sid = String(s._id);
         const chk = latestCheckinByStudent.get(sid) || null;
 
-        const name = String(s.thaiName || s.engName || "ไม่พบชื่อผู้เรียน");
-        const company = String(s.company || s.organization || "");
+        const name =
+          clean(s.name) ||
+          clean(s.thaiName) ||
+          clean(s.engName) ||
+          "ไม่พบชื่อผู้เรียน";
+
+        const company = clean(s.company);
 
         return {
           id: sid,
@@ -710,7 +751,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
         };
       });
 
-      // sort: คนเช็คอินก่อนขึ้นก่อน / ไม่เช็คอินไว้ท้าย
       allItems.sort((a, b) => {
         const at = a.checkinTime
           ? new Date(a.checkinTime).getTime()
@@ -728,7 +768,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
         absent: allItems.filter((x) => !x.checkinTime).length,
       };
 
-      // ✅ ลด payload ตาม mode
       let items = allItems;
       if (wantsMode === "checkins")
         items = allItems.filter((x) => !!x.checkinTime);
@@ -743,7 +782,6 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
         courseCode: String(cls.courseCode || ""),
         room: String(cls.room || ""),
 
-        // ✅ icon/program ต้องติดมาด้วยเสมอ (อย่างน้อยจาก cache)
         programId: String(meta.programId || ""),
         programName: String(meta.programName || ""),
         programColor: String(meta.programColor || ""),
@@ -770,23 +808,28 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
     const fastestDocs = await Checkin.find(match)
       .sort({ time: 1 })
       .limit(3)
-      .populate("studentId", "thaiName engName")
+      .populate("studentId", "name thaiName engName")
       .populate("classId", "title courseCode")
       .lean();
 
     const latestDocs = await Checkin.find(match)
       .sort({ time: -1 })
       .limit(10)
-      .populate("studentId", "thaiName engName")
+      .populate("studentId", "name thaiName engName")
       .populate("classId", "title courseCode")
       .lean();
 
     out.fastest3 = fastestDocs.map((c) => {
       const name =
-        c.studentId?.thaiName || c.studentId?.engName || "ไม่พบชื่อผู้เรียน";
+        c.studentId?.name ||
+        c.studentId?.thaiName ||
+        c.studentId?.engName ||
+        "ไม่พบชื่อผู้เรียน";
+
       const classLabel = c.classId
         ? `${c.classId.courseCode || "-"} – ${c.classId.title || "-"}`
         : "-";
+
       return {
         id: String(c.studentId?._id || c._id),
         name,
@@ -797,10 +840,15 @@ export async function getClassroomDashboardData(range = "today", opts = {}) {
 
     out.latest10 = latestDocs.map((c) => {
       const name =
-        c.studentId?.thaiName || c.studentId?.engName || "ไม่พบชื่อผู้เรียน";
+        c.studentId?.name ||
+        c.studentId?.thaiName ||
+        c.studentId?.engName ||
+        "ไม่พบชื่อผู้เรียน";
+
       const classLabel = c.classId
         ? `${c.classId.courseCode || "-"} – ${c.classId.title || "-"}`
         : "-";
+
       return {
         id: String(c.studentId?._id || c._id),
         name,

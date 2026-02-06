@@ -5,8 +5,106 @@ import Student from "@/models/Student";
 import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
+import FoodEditLog from "@/models/FoodEditLog";
 
 export const dynamic = "force-dynamic";
+
+/* ---------------- helpers ---------------- */
+
+function clean(x) {
+  return String(x || "").trim();
+}
+
+function lower(x) {
+  return clean(x).toLowerCase();
+}
+
+function uniqStrArr(a) {
+  if (!Array.isArray(a)) return [];
+  return [
+    ...new Set(
+      a
+        .map(String)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function pickStudentName(st) {
+  return (
+    clean(st?.name) || clean(st?.thaiName) || clean(st?.engName) || "ผู้เรียน"
+  );
+}
+
+function normalizeChoiceType({
+  choiceType,
+  noFood,
+  coupon,
+  restaurantId,
+  menuId,
+}) {
+  // explicit flags มาก่อน
+  if (coupon === true || lower(choiceType) === "coupon") return "coupon";
+  if (noFood === true || lower(choiceType) === "nofood") return "noFood";
+
+  // ถ้าไม่มีเมนู/ร้าน ให้ถือว่าไม่รับอาหาร (กันพัง + UI บางหน้าส่งมาไม่ครบ)
+  if (!clean(restaurantId) && !clean(menuId)) return "noFood";
+
+  // default = food
+  return "food";
+}
+
+function normalizeFoodSnapshot(food) {
+  const f = food || {};
+  const addonIds = uniqStrArr(f.addonIds).sort();
+  return JSON.stringify({
+    noFood: !!f.noFood,
+    choiceType: clean(f.choiceType),
+    classId: clean(f.classId),
+    day: Number.isFinite(Number(f.day)) ? Number(f.day) : null,
+
+    restaurantId: clean(f.restaurantId),
+    menuId: clean(f.menuId),
+    addonIds,
+    drinkId: clean(f.drinkId),
+
+    // legacy (ไม่เอามาเทียบเยอะ เดี๋ยวต่างเพราะชื่อ)
+    note: clean(f.note),
+  });
+}
+
+async function writeFoodEditLog({ student, nextFood, prevFood, source = "" }) {
+  try {
+    const before = normalizeFoodSnapshot(prevFood);
+    const after = normalizeFoodSnapshot(nextFood);
+    if (before === after) return; // ไม่เปลี่ยนจริง → ไม่ยิง log
+
+    await FoodEditLog.create({
+      studentId: String(student?._id || ""),
+      classId: clean(nextFood?.classId),
+      day: Number.isFinite(Number(nextFood?.day)) ? Number(nextFood.day) : null,
+
+      choiceType: clean(nextFood?.choiceType),
+      restaurantId: clean(nextFood?.restaurantId),
+      menuId: clean(nextFood?.menuId),
+      addonIds: uniqStrArr(nextFood?.addonIds),
+      drinkId: clean(nextFood?.drinkId),
+
+      note: clean(nextFood?.note),
+
+      studentName: pickStudentName(student),
+      studentCompany: clean(student?.company),
+
+      source: clean(source),
+    });
+  } catch (e) {
+    // ไม่ให้พัง flow หลัก
+    console.warn("[food] writeFoodEditLog failed:", e?.message || e);
+  }
+}
+
+/* ---------------- route ---------------- */
 
 export async function POST(req) {
   await dbConnect();
@@ -14,7 +112,7 @@ export async function POST(req) {
   let body;
   try {
     body = await req.json();
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { ok: false, error: "Invalid JSON body" },
       { status: 400 },
@@ -26,10 +124,11 @@ export async function POST(req) {
     classId,
     day,
 
-    // flags
+    // flags / mode
     noFood,
     choiceType = "",
-    coupon, // ✅ NEW
+    coupon,
+    source = "", // optional: "edit-user" | "checkin" | ""
 
     // selections (legacy)
     restaurantId,
@@ -58,96 +157,78 @@ export async function POST(req) {
     );
   }
 
-  const safeNote = note ? String(note) : "";
-  const safeClassId = classId ? String(classId) : "";
-  const safeDay = Number.isFinite(Number(day)) ? Number(day) : undefined;
+  const safeClassId = clean(classId) || clean(student.food?.classId);
+  const safeDay = Number.isFinite(Number(day))
+    ? Number(day)
+    : student.food?.day;
 
-  const isCoupon =
-    coupon === true || String(choiceType || "").toLowerCase() === "coupon";
-  const isNoFood =
-    noFood === true || String(choiceType || "").toLowerCase() === "nofood";
+  const finalChoiceType = normalizeChoiceType({
+    choiceType,
+    noFood,
+    coupon,
+    restaurantId,
+    menuId,
+  });
 
-  // normalize ids
-  const safeAddonIds = Array.isArray(addonIds)
-    ? addonIds.map(String).filter(Boolean)
-    : [];
+  const safeNote = clean(note);
 
-  const safeDrinkId = drinkId ? String(drinkId) : "";
-
-  // legacy strings fallback (เผื่อบาง UI ยังส่งแบบเก่า)
+  // legacy strings fallback
   const safeAddonsLegacy = Array.isArray(addons)
-    ? addons.map(String).filter(Boolean)
+    ? addons
+        .map(String)
+        .map((s) => s.trim())
+        .filter(Boolean)
     : [];
-  const safeDrinkLegacy = drink ? String(drink) : "";
+  const safeDrinkLegacy = clean(drink);
 
-  /* ---------------- COUPON ----------------
-     coupon = เลือกคูปอง -> ไปเซ็นได้เลย
-     (ไม่ต้องมี restaurant/menu/addon/drink)
-  ---------------------------------------- */
-  if (isCoupon || isNoFood || (!restaurantId && !menuId)) {
-    const finalChoice = isCoupon ? "coupon" : "noFood";
-    student.food = {
+  // ids normalize
+  const safeAddonIds = uniqStrArr(addonIds);
+  const safeDrinkId = clean(drinkId);
+
+  const prevFood = student.food
+    ? JSON.parse(JSON.stringify(student.food))
+    : null;
+
+  /* ---------------- COUPON / NO FOOD ---------------- */
+  if (finalChoiceType === "coupon" || finalChoiceType === "noFood") {
+    const isCoupon = finalChoiceType === "coupon";
+
+    const nextFood = {
       noFood: true,
-      choiceType: finalChoice,
-      classId: safeClassId || student.food?.classId || "",
-      day: Number.isFinite(safeDay) ? safeDay : student.food?.day,
+      coupon: isCoupon, // เผื่อ compat
+      choiceType: finalChoiceType,
+
+      classId: safeClassId || "",
+      day: Number.isFinite(Number(safeDay)) ? Number(safeDay) : undefined,
 
       restaurantId: "",
       menuId: "",
 
       addonIds: [],
       drinkId: "",
+
+      // legacy
       addons: [],
       drink: "",
 
-      note: safeNote || (finalChoice === "coupon" ? "COUPON" : "ไม่รับอาหาร"),
+      note: safeNote || (isCoupon ? "COUPON" : "ไม่รับอาหาร"),
     };
+
+    student.food = nextFood;
+    student.markModified("food");
     await student.save();
+
+    await writeFoodEditLog({ student, nextFood, prevFood, source });
+
     return NextResponse.json({
       ok: true,
       noFood: true,
-      choiceType: finalChoice,
-    });
-  }
-
-  /* ---------------- NO FOOD ---------------- */
-  // ✅ ตัดสิน noFood เบื้องต้น
-  // - noFood === true -> no food
-  // - ถ้าไม่มี restaurantId/menuId เลย -> no food
-  const baseNoFood = noFood === true || (!restaurantId && !menuId);
-
-  if (baseNoFood) {
-    student.food = {
-      noFood: true,
-      coupon: false,
-      choiceType: "noFood",
-
-      classId: safeClassId || student.food?.classId || "",
-      day: Number.isFinite(safeDay) ? safeDay : student.food?.day,
-
-      restaurantId: "",
-      menuId: "",
-
-      // keep both new+legacy empty
-      addonIds: [],
-      drinkId: "",
-      addons: [],
-      drink: "",
-
-      note: safeNote || "ไม่รับอาหาร",
-    };
-
-    await student.save();
-    return NextResponse.json({
-      ok: true,
-      noFood: true,
-      coupon: false,
-      choiceType: "noFood",
+      coupon: isCoupon,
+      choiceType: finalChoiceType,
     });
   }
 
   /* ---------------- FOOD (menu validate) ---------------- */
-  // ✅ ถ้ามีเมนู -> validate ว่าตัวเลือก add-on/drink อยู่ในเมนูจริง
   const menuDoc = menuId
     ? await FoodMenu.findById(menuId)
         .select("restaurant addonIds drinkIds")
@@ -155,12 +236,13 @@ export async function POST(req) {
     : null;
 
   if (!menuDoc) {
-    // เมนูไม่ถูกต้อง → บันทึกเป็น noFood เพื่อกันพัง
-    student.food = {
+    // เมนูไม่ถูกต้อง → กันพังด้วย noFood
+    const nextFood = {
       noFood: true,
+      coupon: false,
       choiceType: "noFood",
-      classId: safeClassId || student.food?.classId || "",
-      day: Number.isFinite(safeDay) ? safeDay : student.food?.day,
+      classId: safeClassId || "",
+      day: Number.isFinite(Number(safeDay)) ? Number(safeDay) : undefined,
       restaurantId: "",
       menuId: "",
       addonIds: [],
@@ -169,14 +251,22 @@ export async function POST(req) {
       drink: "",
       note: safeNote || "ไม่รับอาหาร",
     };
+
+    student.food = nextFood;
+    student.markModified("food");
     await student.save();
+
+    await writeFoodEditLog({ student, nextFood, prevFood, source });
+
     return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
 
-  // ถ้า restaurantId ส่งมาไม่ตรงเมนู ให้ใช้ของเมนูเป็นหลัก
-  const finalRestaurantId = String(menuDoc.restaurant || restaurantId || "");
+  // restaurantId ยึดตามเมนู
+  const finalRestaurantId = String(
+    menuDoc.restaurant || restaurantId || "",
+  ).trim();
 
-  // allowed lists
+  // allow lists
   const allowedAddonIds = new Set(
     (menuDoc.addonIds || []).map((id) => String(id)),
   );
@@ -185,41 +275,39 @@ export async function POST(req) {
   );
 
   const finalAddonIds = safeAddonIds.filter((id) => allowedAddonIds.has(id));
+
+  // drinkId: ต้องอยู่ใน allowed
   let finalDrinkId =
     safeDrinkId && allowedDrinkIds.has(safeDrinkId) ? safeDrinkId : "";
 
-  // ✅ fallback: ถ้าไม่มี drinkId แต่มี drink (ชื่อ) ให้พยายาม map ชื่อ -> id (เฉพาะใน allowed list)
-  const safeDrinkName = String(safeDrinkLegacy || "").trim();
-  if (!finalDrinkId && safeDrinkName && allowedDrinkIds.size > 0) {
+  // fallback map drink name -> id (เฉพาะ allowed)
+  if (!finalDrinkId && safeDrinkLegacy && allowedDrinkIds.size > 0) {
     const allowedList = Array.from(allowedDrinkIds);
     const allowedDrinkDocs = await FoodDrink.find({ _id: { $in: allowedList } })
       .select("name")
       .lean();
 
     const hit = allowedDrinkDocs.find(
-      (d) => String(d?.name || "").trim() === safeDrinkName,
+      (d) => clean(d?.name) === safeDrinkLegacy,
     );
-
     if (hit?._id) finalDrinkId = String(hit._id);
   }
 
-  // ✅ กติกา: ลูกค้าเลือก drink ได้ 1 อย่าง
-  // ถ้าเมนูมี drink options -> ต้องเลือก 1
   const needDrink = (menuDoc.drinkIds || []).length > 0;
+
+  // ต้องมีเมนู + ร้าน + (ถ้าต้องเลือก drink -> ต้องมี drinkId)
   const hasCompleteFood =
-    !!finalRestaurantId && !!menuId && (needDrink ? !!finalDrinkId : true);
+    !!finalRestaurantId &&
+    !!clean(menuId) &&
+    (needDrink ? !!finalDrinkId : true);
 
-  const finalNoFood = !hasCompleteFood;
-
-  if (finalNoFood) {
-    student.food = {
+  if (!hasCompleteFood) {
+    const nextFood = {
       noFood: true,
       coupon: false,
       choiceType: "noFood",
-
-      classId: safeClassId || student.food?.classId || "",
-      day: Number.isFinite(safeDay) ? safeDay : student.food?.day,
-
+      classId: safeClassId || "",
+      day: Number.isFinite(Number(safeDay)) ? Number(safeDay) : undefined,
       restaurantId: "",
       menuId: "",
       addonIds: [],
@@ -229,16 +317,16 @@ export async function POST(req) {
       note: safeNote || "ไม่รับอาหาร",
     };
 
+    student.food = nextFood;
+    student.markModified("food");
     await student.save();
-    return NextResponse.json({
-      ok: true,
-      noFood: true,
-      coupon: false,
-      choiceType: "noFood",
-    });
+
+    await writeFoodEditLog({ student, nextFood, prevFood, source });
+
+    return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
 
-  // ✅ resolve names เพื่อเก็บ legacy string ให้ report เดิมใช้ได้
+  // resolve names (legacy)
   const [addonDocs, drinkDoc] = await Promise.all([
     finalAddonIds.length
       ? FoodAddon.find({ _id: { $in: finalAddonIds } })
@@ -253,11 +341,13 @@ export async function POST(req) {
   const finalAddonNames = addonDocs.map((x) => x.name).filter(Boolean);
   const finalDrinkName = drinkDoc?.name ? String(drinkDoc.name) : "";
 
-  student.food = {
+  const nextFood = {
     noFood: false,
+    coupon: false,
     choiceType: "food",
-    classId: safeClassId || student.food?.classId || "",
-    day: Number.isFinite(safeDay) ? safeDay : student.food?.day,
+
+    classId: safeClassId || "",
+    day: Number.isFinite(Number(safeDay)) ? Number(safeDay) : undefined,
 
     restaurantId: finalRestaurantId,
     menuId: String(menuId),
@@ -272,7 +362,12 @@ export async function POST(req) {
     note: safeNote,
   };
 
+  student.food = nextFood;
+  student.markModified("food");
   await student.save();
+
+  await writeFoodEditLog({ student, nextFood, prevFood, source });
+
   return NextResponse.json({
     ok: true,
     noFood: false,
