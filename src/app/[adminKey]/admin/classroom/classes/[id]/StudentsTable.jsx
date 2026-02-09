@@ -436,7 +436,8 @@ export default function StudentsTable({
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
-  const visible = filtered.slice(start, start + pageSize);
+  // const visible = filtered.slice(start, start + pageSize);
+  const visible = filtered;
 
   const visibleIds = useMemo(() => {
     return visible.map((s) => getStudentId(s)).filter(Boolean);
@@ -657,16 +658,35 @@ export default function StudentsTable({
     }
   }
 
+  const TH_BASE = "px-3 py-2";
+  const TD_BASE = "px-3 py-2";
+
+  const stickyLeft = "sticky left-0 z-30 bg-white";
+  const stickyLeftHead = "sticky left-0 z-40 bg-admin-surfaceMuted";
+
+  const stickyRight = "sticky right-0 z-30 bg-white";
+  const stickyRightHead = "sticky right-0 z-40 bg-admin-surfaceMuted";
+
   return (
     <>
       {/* search + summary + selection bar */}
       <div className="mb-3 flex flex-col gap-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-admin-textMuted">
-            รายชื่อนักเรียน {filtered.length} คน
-            {filtered.length !== mergedStudents.length && (
-              <span> (ทั้งหมด {mergedStudents.length} คน)</span>
-            )}
+          <div className="flex gap-2">
+            <div className="text-xs text-admin-textMuted">
+              รายชื่อนักเรียน {filtered.length} คน
+              {filtered.length !== mergedStudents.length && (
+                <span> (ทั้งหมด {mergedStudents.length} คน)</span>
+              )}
+            </div>
+
+            <div className="text-xs text-admin-textMuted">
+              เลือกแล้ว{" "}
+              <span className="font-semibold text-admin-text">
+                {sel.length}
+              </span>{" "}
+              คน
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -684,7 +704,7 @@ export default function StudentsTable({
         </div>
 
         {/* selection actions */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        {/* <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="text-admin-textMuted">
             เลือกแล้ว{" "}
             <span className="font-semibold text-admin-text">{sel.length}</span>{" "}
@@ -713,15 +733,21 @@ export default function StudentsTable({
               ล้างที่เลือก
             </button>
           </div>
-        </div>
+        </div> */}
       </div>
 
-      <div ref={viewportRef} className="overflow-auto h-[calc(100vh-470px)]">
-        <table ref={tableRef} className="min-w-full text-xs sm:text-sm">
+      <div
+        ref={viewportRef}
+        className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+      >
+        <table
+          ref={tableRef}
+          className="min-w-max border-separate border-spacing-0 text-xs sm:text-sm"
+        >
           <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
             <tr>
               {/* selection column */}
-              <th className="px-3 py-2 text-center w-[56px]">
+              <th className={cx(TH_BASE, "w-[50px]", stickyLeftHead, "left-0")}>
                 <input
                   type="checkbox"
                   checked={isAllVisibleSelected(visibleIds)}
@@ -731,36 +757,97 @@ export default function StudentsTable({
                 />
               </th>
 
-              <th className="px-3 py-2 text-left w-[240px]">ชื่อ - สกุล</th>
-              <th className="px-3 py-2 text-left w-[160px]">บริษัท</th>
-              <th className="px-3 py-2 text-left w-[130px]">เลขที่ QT/IV/RP</th>
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[150px] text-left",
+                  stickyLeftHead,
+                  "left-[50px]",
+                )}
+              >
+                ชื่อ - สกุล
+              </th>
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[160px] text-left",
+                  stickyLeftHead,
+                  "left-[200px]",
+                )}
+              >
+                บริษัท
+              </th>
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[130px] text-left",
+                  stickyLeftHead,
+                  "left-[360px]",
+                )}
+              >
+                เลขที่ QT/IV/RP
+              </th>
 
-              <th className="px-3 py-2 text-center w-[130px]">สถานะ</th>
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[100px] text-center",
+                  stickyLeftHead,
+                  "left-[490px]",
+                )}
+              >
+                สถานะ
+              </th>
 
-              <th className="px-3 py-2 text-center w-[150px]">
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[150px] text-center",
+                  stickyLeftHead,
+                  "left-[590px]",
+                  "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งกับส่วน scroll
+                )}
+              >
+                เอกสาร
+              </th>
+
+              {/* <th className="px-3 py-2 text-center w-[150px]">
                 ช่องทางรับเอกสาร
               </th>
               <th className="px-3 py-2 text-center w-[130px]">
                 วันที่รับเอกสาร
-              </th>
+              </th> */}
 
               {/* 3.1 */}
-              <th className="px-3 py-2 text-center w-[140px]">
+              {/* <th className="px-3 py-2 text-center w-[140px]">
                 ลายเซ็นรับเอกสาร (3.1)
-              </th>
+              </th> */}
 
               {/* 3.2 */}
-              <th className="px-3 py-2 text-center w-[220px]">
+              {/* <th className="px-3 py-2 text-center w-[220px]">
                 นำส่งเอกสาร (3.2)
-              </th>
+              </th> */}
 
               {days.map((d) => (
-                <th key={d} className="px-3 py-2 text-center min-w-[150px]">
+                <th
+                  key={d}
+                  className={cx(TH_BASE, "text-center min-w-[150px]")}
+                >
                   DAY {d}
                 </th>
               ))}
 
-              <th className="px-3 py-2 text-center w-[80px]">จัดการ</th>
+              <th
+                className={cx(
+                  TH_BASE,
+                  "w-[80px] text-center",
+                  stickyRightHead,
+                  "right-0",
+                  "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งด้านซ้ายของปุ่มจัดการ
+                )}
+              >
+                จัดการ
+              </th>
             </tr>
           </thead>
 
@@ -796,7 +883,7 @@ export default function StudentsTable({
                     checkedRow ? "bg-brand-primary/5" : "",
                   )}
                 >
-                  <td className="px-3 py-2 text-center">
+                  <td className={cx(TH_BASE, "text-center w-[50px]", stickyLeftHead, "left-0")}>
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-brand-primary"
@@ -807,7 +894,14 @@ export default function StudentsTable({
                     />
                   </td>
 
-                  <td className="px-3 py-2">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      " w-[56px]",
+                      stickyLeft,
+                      "left-[50px]",
+                    )}
+                  >
                     {displayName}
                     {shouldShowENLine(stu) && (
                       <div className="text-[11px] text-admin-textMuted">
@@ -816,16 +910,37 @@ export default function StudentsTable({
                     )}
                   </td>
 
-                  <td className="px-3 py-2 text-admin-textMuted">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "w-[160px] text-admin-textMuted",
+                      stickyLeft,
+                      "left-[200px]",
+                    )}
+                  >
                     {stu.company || "-"}
                   </td>
 
-                  <td className="px-3 py-2 text-admin-textMuted">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "w-[130px] text-admin-textMuted",
+                      stickyLeft,
+                      "left-[360px]",
+                    )}
+                  >
                     {stu.paymentRef || "-"}
                   </td>
 
                   {/* status */}
-                  <td className="px-3 py-2 text-center">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "w-[100px] text-center",
+                      stickyLeft,
+                      "left-[490px]",
+                    )}
+                  >
                     <span
                       className={cx(
                         "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold",
@@ -837,16 +952,28 @@ export default function StudentsTable({
                     </span>
                   </td>
 
-                  <td className="px-3 py-2 text-admin-textMuted text-center">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "w-[150px] text-center",
+                      stickyLeft,
+                      "left-[590px]",
+                      "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]",
+                    )}
+                  >
+                    {/* เอกสาร (สรุป) */}
+                  </td>
+
+                  {/* <td className="px-3 py-2 text-admin-textMuted text-center">
                     {receiveTypeText}
                   </td>
 
                   <td className="px-3 py-2 text-center text-admin-textMuted">
                     {receivedAt ? formatDateTH(receivedAt) : "-"}
-                  </td>
+                  </td> */}
 
                   {/* 3.1 */}
-                  <td className="px-3 py-2 text-center">
+                  {/* <td className="px-3 py-2 text-center">
                     {receiveSigUrl ? (
                       <button
                         type="button"
@@ -858,10 +985,10 @@ export default function StudentsTable({
                     ) : (
                       <span className="text-admin-textMuted">-</span>
                     )}
-                  </td>
+                  </td> */}
 
                   {/* 3.2 */}
-                  <td className="px-3 py-2 text-center">
+                  {/* <td className="px-3 py-2 text-center">
                     {staffDone ? (
                       <div className="flex flex-col items-center gap-1">
                         <div className="flex flex-wrap items-center justify-center gap-2">
@@ -921,7 +1048,7 @@ export default function StudentsTable({
                         ยังไม่บันทึก
                       </span>
                     )}
-                  </td>
+                  </td> */}
 
                   {days.map((d) => {
                     const checked = getCheckinChecked(stu, d);
@@ -1011,7 +1138,15 @@ export default function StudentsTable({
                   })}
 
                   {/* actions */}
-                  <td className="px-3 py-2 text-center">
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "w-[80px] text-center",
+                      stickyRight,
+                      "right-0",
+                      "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]",
+                    )}
+                  >
                     <div className="relative inline-flex">
                       <button
                         type="button"
@@ -1068,7 +1203,7 @@ export default function StudentsTable({
       </div>
 
       {/* pagination */}
-      {filtered.length > pageSize && (
+      {/* {filtered.length > pageSize && (
         <div className="mt-3 flex items-center justify-end gap-2 text-xs">
           <button
             type="button"
@@ -1090,7 +1225,7 @@ export default function StudentsTable({
             ถัดไป
           </button>
         </div>
-      )}
+      )} */}
 
       {/* Preview Modal */}
       {preview && preview.url && (

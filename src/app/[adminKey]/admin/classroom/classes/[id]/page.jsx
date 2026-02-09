@@ -479,145 +479,183 @@ export default function ClassDetailPage() {
   /* ===== render ===== */
 
   return (
-    <div className="space-y-4 ">
-      <div className="flex justify-between">
-        <button
-          type="button"
-          onClick={() => router.replace("/a1exqwvCqTXP7s0/admin/classroom/classes")}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full
-               border border-admin-border bg-white text-admin-text
-               hover:bg-admin-surfaceMuted"
-          aria-label="ย้อนกลับ"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="h-dvh flex flex-col gap-4">
+      <div className="shrink-0 space-y-4">
+        <div className="flex justify-between">
           <button
             type="button"
-            onClick={openReceiveHome}
-            className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-2 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
-            title="เปิดหน้า รับเอกสาร (เลือกโหมด 3.1 / 3.2)"
+            onClick={() =>
+              router.replace("/a1exqwvCqTXP7s0/admin/classroom/classes")
+            }
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full
+               border border-admin-border bg-white text-admin-text
+               hover:bg-admin-surfaceMuted"
+            aria-label="ย้อนกลับ"
           >
-            <FileSignature className="h-4 w-4" />
-            รับเอกสาร
+            <ChevronLeft className="h-4 w-4" />
           </button>
 
-          <SyncStudentsButton classId={id} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openReceiveHome}
+              className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-2 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
+              title="เปิดหน้า รับเอกสาร (เลือกโหมด 3.1 / 3.2)"
+            >
+              <FileSignature className="h-4 w-4" />
+              รับเอกสาร
+            </button>
 
-          {/* ✅ sync selection -> report: ถ้าเลือกไว้ ใช้เฉพาะที่เลือก, ถ้าไม่เลือก ใช้ตาม filter */}
-          <ReportPreviewButton
-            students={reportStudents}
-            dayCount={dayCount}
-            classInfo={classData}
-            selectedStudentIds={selectedIds}
-          />
+            <SyncStudentsButton classId={id} />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full
+            {/* ✅ sync selection -> report: ถ้าเลือกไว้ ใช้เฉพาะที่เลือก, ถ้าไม่เลือก ใช้ตาม filter */}
+            <ReportPreviewButton
+              students={reportStudents}
+              dayCount={dayCount}
+              classInfo={classData}
+              selectedStudentIds={selectedIds}
+            />
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full
                  border border-admin-border bg-white text-admin-text
                  hover:bg-admin-surfaceMuted"
-                aria-label="เมนูการจัดการ Class"
+                  aria-label="เมนูการจัดการ Class"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
               >
-                <MoreVertical className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
+                <DropdownMenuItem onSelect={openEditModal}>
+                  แก้ไขข้อมูล Class
+                </DropdownMenuItem>
 
-            <DropdownMenuContent
-              align="end"
-              sideOffset={8}
-              className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
-            >
-              <DropdownMenuItem onSelect={openEditModal}>
-                แก้ไขข้อมูล Class
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                className="text-red-600 focus:text-red-600"
-                onSelect={handleDeleteClass}
-                disabled={deleting}
-              >
-                {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between bg-white p-4 rounded-2xl border border-admin-border">
-        <div>
-          <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
-            CLASS DETAIL
+                <DropdownMenuItem
+                  className="text-red-600 focus:text-red-600"
+                  onSelect={handleDeleteClass}
+                  disabled={deleting}
+                >
+                  {deleting ? "กำลังลบ..." : "ลบ Class นี้"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <h1 className="text-lg font-semibold text-admin-text">
-            {courseTitle}
-          </h1>
-
-          <div className="mt-0.5 text-xs text-admin-textMuted">
-            {courseCode && (
-              <>
-                รหัสคอร์ส: <span className="font-medium">{courseCode}</span>
-              </>
-            )}
-            {classCode && (
-              <>
-                {" "}
-                • รอบที่: <span className="font-medium">{classCode}</span>
-              </>
-            )}
-          </div>
-
-          <div className="mt-0.5 text-xs text-admin-textMuted">
-            ห้อง {roomName || "-"}
-            {dateRangeText && <> • {dateRangeText}</>}
-          </div>
-
-          {timeRangeText && (
-            <div className="mt-0.5 text-xs text-admin-textMuted">
-              เวลาอบรม: {timeRangeText}
-            </div>
-          )}
-
-          {!timeRangeText && (startDate || endDate) && (
-            <div className="mt-0.5 text-xs text-admin-textMuted">
-              ช่วงเวลา: {startDate && formatDateTH(startDate)}
-              {endDate && ` - ${formatDateTH(endDate)}`}
-            </div>
-          )}
-
-          {trainerName && (
-            <div className="mt-0.5 text-xs text-admin-textMuted">
-              วิทยากร: {trainerName}
-            </div>
-          )}
         </div>
 
-        {(createdAt || updatedAt) && (
-          <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 text-[11px] text-admin-textMuted">
-            {createdAt && (
-              <div>
-                สร้างเมื่อ: {formatDateTH(createdAt)}{" "}
-                {formatTimeTH(createdAt) &&
-                  `เวลา ${formatTimeTH(createdAt)} น.`}
+        {/* Header */}
+        <div className="flex flex-col gap-3 md:flex-row  md:justify-between bg-white p-4 rounded-2xl border border-admin-border">
+          <div className="flex flex-col gap-1">
+            <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
+              CLASS DETAIL
+            </div>
+            <h1 className="text-lg font-semibold text-admin-text">
+              {courseTitle}
+            </h1>
+
+            <div className=" text-base text-admin-textMuted">
+              {courseCode && (
+                <>
+                  รหัสคอร์ส: <span className="font-medium">{courseCode}</span>
+                </>
+              )}
+              {classCode && (
+                <>
+                  {" "}
+                  • รอบที่: <span className="font-medium">{classCode}</span>
+                </>
+              )}
+            </div>
+
+            <div className=" text-base text-admin-textMuted">
+              ห้อง {roomName || "-"}
+              {dateRangeText && <> • {dateRangeText}</>}
+            </div>
+
+            {timeRangeText && (
+              <div className=" text-base text-admin-textMuted">
+                เวลาอบรม: {timeRangeText}
               </div>
             )}
-            {updatedAt && (
-              <div>
-                แก้ไขล่าสุด: {formatDateTH(updatedAt)}{" "}
-                {formatTimeTH(updatedAt) &&
-                  `เวลา ${formatTimeTH(updatedAt)} น.`}
+
+            {!timeRangeText && (startDate || endDate) && (
+              <div className=" text-base text-admin-textMuted">
+                ช่วงเวลา : {startDate && formatDateTH(startDate)}
+                {endDate && ` - ${formatDateTH(endDate)}`}
+              </div>
+            )}
+
+            {trainerName && (
+              <div className=" text-base text-admin-textMuted">
+                วิทยากร : {trainerName}
               </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* stats */}
-      <div className="grid gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-admin-text md:grid-cols-6">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
+                <div className="text-xs text-admin-textMuted">จำนวนวันอบรม</div>
+                <div className="mt-1 text-base font-semibold">
+                  {dayCount} วัน
+                </div>
+              </div>
+              <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
+                <div className="text-xs text-admin-textMuted">
+                  จำนวนนักเรียนทั้งหมด
+                </div>
+                <div className="mt-1 text-base font-semibold">
+                  {studentsCount} คน
+                </div>
+              </div>
+              <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
+                <div className="text-xs text-admin-textMuted">
+                  รับเอกสารแล้ว
+                </div>
+                <div className="mt-1 text-base font-semibold text-emerald-600">
+                  {receivedCount} คน
+                </div>
+              </div>
+              <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
+                <div className="text-xs text-admin-textMuted">
+                  ยังไม่รับเอกสาร
+                </div>
+                <div className="mt-1 text-base font-semibold">
+                  {notReceivedCount} คน
+                </div>
+              </div>
+            </div>
+
+            {(createdAt || updatedAt) && (
+              <div className="flex flex-col items-end bg-admin-surface  text-[11px] text-admin-textMuted">
+                {createdAt && (
+                  <div>
+                    สร้างเมื่อ : {formatDateTH(createdAt)}{" "}
+                    {formatTimeTH(createdAt) &&
+                      `เวลา ${formatTimeTH(createdAt)} น.`}
+                  </div>
+                )}
+                {updatedAt && (
+                  <div>
+                    แก้ไขล่าสุด : {formatDateTH(updatedAt)}{" "}
+                    {formatTimeTH(updatedAt) &&
+                      `เวลา ${formatTimeTH(updatedAt)} น.`}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* stats */}
+        {/* <div className="grid gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-admin-text md:grid-cols-6">
         <div>
           <div className="text-[11px] text-admin-textMuted">จำนวนวันอบรม</div>
           <div className="mt-1 text-base font-semibold">{dayCount} วัน</div>
@@ -657,48 +695,53 @@ export default function ClassDetailPage() {
             {notReceivedCount} คน
           </div>
         </div>
-      </div>
+      </div> */}
 
-      {/* ✅ Filter bar */}
-      <div className="rounded-2xl border border-admin-border bg-white p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="text-xs text-admin-textMuted mr-2">Filter:</div>
-          {FILTERS.map((f) => {
-            const active = filterKey === f.key;
-            return (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setFilterKey(f.key)}
-                className={[
-                  "rounded-full px-3 py-1.5 text-xs border",
-                  active
-                    ? "bg-brand-primary text-white border-brand-primary"
-                    : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted",
-                ].join(" ")}
-              >
-                {f.label}
-              </button>
-            );
-          })}
+        {/* ✅ Filter bar */}
+        <div className="rounded-2xl border border-admin-border bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-xs text-admin-textMuted mr-2">Filter:</div>
+            {FILTERS.map((f) => {
+              const active = filterKey === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setFilterKey(f.key)}
+                  className={[
+                    "rounded-full px-3 py-1.5 text-xs border",
+                    active
+                      ? "bg-brand-primary text-white border-brand-primary"
+                      : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted",
+                  ].join(" ")}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
 
-          <div className="ml-auto text-xs text-admin-textMuted">
-            แสดง {filteredStudents.length} / {students.length} คน
-            {selectedIds.length ? ` • เลือกแล้ว ${selectedIds.length} คน` : ""}
+            <div className="ml-auto text-xs text-admin-textMuted">
+              แสดง {filteredStudents.length} / {students.length} คน
+              {selectedIds.length
+                ? ` • เลือกแล้ว ${selectedIds.length} คน`
+                : ""}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* table */}
-      <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm">
-        <StudentsTable
-          classId={id}
-          students={filteredStudents} // ✅ แสดงตาม filter
-          dayCount={dayCount}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          onReloadRequested={reloadClass}
-        />
+      <div className="flex-1 min-h-0">
+        {/* table */}
+        <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-auto">
+          <StudentsTable
+            classId={id}
+            students={filteredStudents} // ✅ แสดงตาม filter
+            dayCount={dayCount}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+            onReloadRequested={reloadClass}
+          />
+        </div>
       </div>
 
       {/* edit modal */}
