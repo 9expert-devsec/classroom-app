@@ -155,7 +155,7 @@ export default function CheckinClient({ searchParams = {} }) {
           </PrimaryButton>
         </form>
 
-        <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 pb-2">
+        <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
           {keyword && !loading && results.length === 0 && (
             <p className="text-front-textMuted">
               ไม่พบชื่อในรอบอบรมของวันนี้ (ตรวจสอบการสะกดชื่อหรืออีเมลอีกครั้ง)
