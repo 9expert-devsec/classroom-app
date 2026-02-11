@@ -223,7 +223,7 @@ export default function NewClassManualPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto flex h-full max-w-3xl flex-col">
       <h1 className="text-2xl font-semibold">สร้าง Class (manual)</h1>
       <p className="mt-1 text-sm text-admin-textMuted">
         เลือกคอร์ส, เลือกวันอบรมเองหลายวัน, ตั้งชื่อ Class เองได้
@@ -232,7 +232,7 @@ export default function NewClassManualPage() {
 
       <form
         onSubmit={handleSubmit}
-        className="mt-6 space-y-4 rounded-3xl bg-admin-surface p-6 shadow-card"
+        className="mt-6 flex-1 min-h-0 space-y-4 overflow-y-auto rounded-3xl bg-admin-surface p-6 shadow-card "
       >
         {/* เลือกคอร์ส */}
         <div>
@@ -291,86 +291,6 @@ export default function NewClassManualPage() {
           </p>
         </div>
 
-        {/* เลือกวันเอง + จำนวนวันอัตโนมัติ */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium text-admin-text">
-              วันอบรม (เลือกวันเอง)
-            </label>
-
-            <div className="mt-2 rounded-2xl border border-admin-border bg-white p-3">
-              <Calendar
-                mode="multiple"
-                numberOfMonths={2}
-                selected={selectedDates}
-                onSelect={(v) => setSelectedDates(Array.isArray(v) ? v : [])}
-                // ทำให้ selected เป็นวงขอบ (ไม่ใช่ range)
-                classNames={{
-                  day_selected:
-                    "bg-transparent text-admin-text ring-2 ring-brand-primary hover:bg-transparent",
-                }}
-              />
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                {daysYMD.length ? (
-                  daysYMD.map((d) => (
-                    <span
-                      key={d}
-                      className="rounded-full bg-admin-surfaceMuted px-3 py-1 text-xs text-admin-text"
-                    >
-                      {d}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-admin-textMuted">
-                    ยังไม่ได้เลือกวัน (คลิกวันที่เพื่อเลือกหลายวันได้)
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-admin-text">
-              จำนวนวันอบรม (คำนวณอัตโนมัติ)
-            </label>
-            <input
-              readOnly
-              className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm"
-              value={dayCount || 0}
-            />
-            <p className="mt-1 text-[11px] text-admin-textMuted">
-              จำนวนวัน = จำนวน “วันที่เลือก” (เลือกเว้นวันได้)
-            </p>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-1">
-              <div>
-                <label className="block text-sm font-medium text-admin-text">
-                  เวลาเริ่ม
-                </label>
-                <input
-                  type="time"
-                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-admin-text">
-                  เวลาสิ้นสุด
-                </label>
-                <input
-                  type="time"
-                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* ห้อง */}
         <div>
           <label className="block text-sm font-medium text-admin-text">
@@ -415,6 +335,93 @@ export default function NewClassManualPage() {
           <p className="mt-1 text-[11px] text-admin-textMuted">
             ถ้าไม่เลือก ระบบจะสร้าง Class โดยไม่มีชื่อผู้สอน (ไปกำหนดทีหลังได้)
           </p>
+        </div>
+
+        {/* เลือกวันเอง + จำนวนวันอัตโนมัติ */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium text-admin-text">
+              วันอบรม (เลือกวันเอง)
+            </label>
+
+            <div className="mt-2 rounded-2xl border border-admin-border bg-white p-3">
+              <Calendar
+                mode="multiple"
+                numberOfMonths={1}
+                selected={selectedDates}
+                onSelect={(v) => setSelectedDates(Array.isArray(v) ? v : [])}
+                // ทำให้ selected เป็นวงขอบ (ไม่ใช่ range)
+                classNames={{
+                  day_selected:
+                    "bg-transparent text-admin-text ring-2 ring-brand-primary hover:bg-transparent",
+                }}
+              />
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {daysYMD.length ? (
+                  daysYMD.map((d) => (
+                    <span
+                      key={d}
+                      className="rounded-full bg-admin-surfaceMuted px-3 py-1 text-xs text-admin-text"
+                    >
+                      {d}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-admin-textMuted">
+                    ยังไม่ได้เลือกวัน (คลิกวันที่เพื่อเลือกหลายวันได้)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
+              <label className="block text-sm font-medium text-admin-text">
+                จำนวนวันอบรม (คำนวณอัตโนมัติ)
+              </label>
+              <div >
+                <div className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm cursor-not-allowed">
+                {dayCount || 0}
+                </div>
+                {/* <input
+                  readOnly
+                  className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm"
+                  value={dayCount || 0}
+                /> */}
+                <p className="mt-1 text-[11px] text-admin-textMuted">
+                  จำนวนวัน = จำนวน “วันที่เลือก” (เลือกเว้นวันได้)
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-1">
+              <div className="flex flex-col gap-2">
+                <label className="block text-sm font-medium text-admin-text">
+                  เวลาเริ่ม
+                </label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="block text-sm font-medium text-admin-text">
+                  เวลาสิ้นสุด
+                </label>
+                <input
+                  type="time"
+                  className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         <PrimaryButton

@@ -2,24 +2,55 @@
 "use client";
 
 import * as React from "react";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, useNavigation } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 
 import { cn } from "@/lib/utils";
+
+function BottomNav() {
+  const { previousMonth, nextMonth, goToMonth } = useNavigation();
+
+  return (
+    <div className="mt-2 flex items-center justify-center gap-2">
+      <button
+        type="button"
+        disabled={!previousMonth}
+        onClick={() => previousMonth && goToMonth(previousMonth)}
+        className="h-7 w-7 rounded-lg border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-40"
+        aria-label="Previous month"
+      >
+        ‹
+      </button>
+
+      <button
+        type="button"
+        disabled={!nextMonth}
+        onClick={() => nextMonth && goToMonth(nextMonth)}
+        className="h-7 w-7 rounded-lg border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-40"
+        aria-label="Next month"
+      >
+        ›
+      </button>
+    </div>
+  );
+}
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }) {
   return (
     <div className={cn("rounded-2xl bg-white p-2", className)}>
       <DayPicker
         showOutsideDays={showOutsideDays}
+        footer={<BottomNav />}
         classNames={{
           months: "flex flex-col sm:flex-row gap-4",
-          month: "space-y-3",
-          caption: "flex items-center justify-between px-2",
-          caption_label: "text-sm font-semibold text-admin-text",
-          nav: "flex items-center gap-2",
-          nav_button:
-            "h-8 w-8 rounded-lg border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted",
+          month: "space-y-1",
+          caption: "flex items-center justify-center h-7 px-0 py-0 leading-none ",
+          caption_label: "text-sm font-semibold leading-none text-admin-text",
+          nav: "hidden",
+          nav_button: "hidden",
+          // nav: "flex items-center gap-2",
+          // nav_button:
+          //   "h-8 w-8 rounded-lg border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted",
           table: "w-full border-collapse",
           head_row: "flex",
           head_cell:
