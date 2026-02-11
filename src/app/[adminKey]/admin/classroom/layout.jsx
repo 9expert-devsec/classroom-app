@@ -256,7 +256,7 @@ export default function AdminClassroomLayout({ children }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-admin-bg text-admin-text">
+    <div className="flex h-dvh overflow-hidden bg-admin-bg text-admin-text">
       <aside className="flex w-72 flex-col bg-admin-sidebarBg text-admin-sidebarText">
         {/* top logo / title */}
         <div className="flex items-center gap-3 px-5 py-4">
