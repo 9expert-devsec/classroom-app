@@ -4,6 +4,15 @@
 import { useMemo, useState } from "react";
 import SecondaryButton from "@/components/ui/SecondaryButton";
 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 /* ================= helpers ================= */
 
 function clean(s) {
@@ -288,7 +297,8 @@ export default function ReportPreviewButton({
   classInfo,
 }) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("checkin"); // "checkin" | "signature"
+  //const [mode, setMode] = useState("checkin"); // "checkin" | "signature"
+  const [tab, setTab] = useState("checkin"); // "checkin" | "signature"
 
   const days = useMemo(
     () => Array.from({ length: dayCount || 1 }, (_, i) => i + 1),
@@ -316,13 +326,18 @@ export default function ReportPreviewButton({
 
   const studentsCount = students.length;
 
-  function openCheckinReport() {
-    setMode("checkin");
-    setOpen(true);
-  }
+  // function openCheckinReport() {
+  //   setMode("checkin");
+  //   setOpen(true);
+  // }
 
-  function openSignatureReport() {
-    setMode("signature");
+  // function openSignatureReport() {
+  //   setMode("signature");
+  //   setOpen(true);
+  // }
+
+  function openReport() {
+    setTab("checkin");
     setOpen(true);
   }
 
@@ -339,8 +354,8 @@ export default function ReportPreviewButton({
       "ชื่อ-สกุล",
       "บริษัท",
       "เลขที่ QT/IV/RP",
-      "เช็กอิน(วัน)",
-      "มาสาย(วัน)",
+      "เช็กอิน (วัน)",
+      "มาสาย (วัน)",
       ...days.map((d) => `DAY ${d} เวลา`),
       ...days.map((d) => `ลายเซ็น DAY ${d} (URL)`),
     ];
@@ -455,7 +470,7 @@ export default function ReportPreviewButton({
   }
 
   function handleExportCsv() {
-    if (mode === "signature") exportSignatureCsv();
+    if (tab === "signature") exportSignatureCsv();
     else exportCheckinCsv();
   }
 
@@ -542,11 +557,9 @@ export default function ReportPreviewButton({
         <th style="width:24px;">ลำดับ</th>
         <th style="text-align:left;">ชื่อ-สกุล</th>
         <th style="text-align:left;">บริษัท</th>
-        <th class="nowrap">เลขที่ QT/IV/RP</th>
-        <th class="nowrap">เช็กอิน(วัน)</th>
-        <th class="nowrap">มาสาย(วัน)</th>
+        <th class="nowrap">เช็กอิน (วัน)</th>
+        <th class="nowrap">มาสาย (วัน)</th>
         ${days.map((d) => `<th class="nowrap">DAY ${d}</th>`).join("")}
-        ${days.map((d) => `<th class="nowrap">ลายเซ็น DAY ${d}</th>`).join("")}
       </tr>
     `;
 
@@ -557,31 +570,55 @@ export default function ReportPreviewButton({
         const checkedDays = countCheckedDays(stu, dayCount);
         const lateDays = countLateDays(stu, dayCount);
 
-        const dayCells = days
+        // const dayCells = days
+        //   .map((d) => {
+        //     if (!getCheckinChecked(stu, d)) {
+        //       return `<td class="center muted">-</td>`;
+        //     }
+        //     const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+        //     const isLate = getIsLateForDay(stu, d);
+        //     const mark = isLate ? "⏰" : "✓";
+        //     const cls = isLate ? "badgeLate" : "badgeOk";
+        //     return `<td class="center"><span class="${cls}">${mark}</span>${
+        //       t ? ` ${escapeHtml(t)}` : ""
+        //     }</td>`;
+        //   })
+        //   .join("");
+
+        // const sigCells = days
+        //   .map((d) => {
+        //     if (!getCheckinChecked(stu, d)) {
+        //       return `<td class="center muted">-</td>`;
+        //     }
+        //     const url = getCheckinSignatureUrl(stu, d);
+        //     if (!url) return `<td class="center muted">-</td>`;
+        //     return `<td class="center"><img class="sigImgSm" src="${escapeHtml(
+        //       url,
+        //     )}" alt="sig"/></td>`;
+        //   })
+        //   .join("");
+
+        const dayCellsCombined = days
           .map((d) => {
-            if (!getCheckinChecked(stu, d)) {
+            if (!getCheckinChecked(stu, d))
               return `<td class="center muted">-</td>`;
-            }
             const t = formatTimeTH(getCheckinTimeRaw(stu, d));
             const isLate = getIsLateForDay(stu, d);
+            const url = getCheckinSignatureUrl(stu, d);
             const mark = isLate ? "⏰" : "✓";
             const cls = isLate ? "badgeLate" : "badgeOk";
-            return `<td class="center"><span class="${cls}">${mark}</span>${
-              t ? ` ${escapeHtml(t)}` : ""
-            }</td>`;
-          })
-          .join("");
-
-        const sigCells = days
-          .map((d) => {
-            if (!getCheckinChecked(stu, d)) {
-              return `<td class="center muted">-</td>`;
-            }
-            const url = getCheckinSignatureUrl(stu, d);
-            if (!url) return `<td class="center muted">-</td>`;
-            return `<td class="center"><img class="sigImgSm" src="${escapeHtml(
-              url,
-            )}" alt="sig"/></td>`;
+            return `
+     <td class="center">
+       <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+         <div><span class="${cls}">${mark}</span>${t ? ` ${escapeHtml(t)}` : ""}</div>
+         ${
+           url
+             ? `<img class="sigImgSm" src="${escapeHtml(url)}" alt="sig"/>`
+             : `<span class="muted">-</span>`
+         }
+       </div>
+     </td>
+   `;
           })
           .join("");
 
@@ -599,11 +636,9 @@ export default function ReportPreviewButton({
               }
             </td>
             <td>${escapeHtml(stu.company || "")}</td>
-            <td class="center">${escapeHtml(stu.paymentRef || "")}</td>
             <td class="center">${checkedDays}</td>
             <td class="center">${lateDays}</td>
-            ${dayCells}
-            ${sigCells}
+            ${dayCellsCombined}
           </tr>
         `;
       })
@@ -659,14 +694,13 @@ export default function ReportPreviewButton({
         <th style="text-align:left;">บริษัท</th>
         <th class="nowrap">เลขที่ QT/IV/RP</th>
 
-        <th class="nowrap">ช่องทางรับเอกสาร (3.1)</th>
-        <th class="nowrap">วัน-เวลา (3.1)</th>
-        <th class="nowrap">ลายเซ็นรับเอกสาร (3.1)</th>
+        <th class="nowrap">ช่องทางรับเอกสาร</th>
+        <th class="nowrap">ลายเซ็นรับเอกสาร</th>
 
-        <th class="nowrap">บันทึกเมื่อ (3.2)</th>
-        <th class="nowrap">รายการ (3.2)</th>
-        <th class="nowrap">ลายเซ็นลูกค้า (3.2)</th>
-        <th class="nowrap">ลายเซ็นจนท. (3.2)</th>
+        <th class="nowrap">นำส่งเอกสารเมื่อ</th>
+        <th class="nowrap">รายการนำส่ง</th>
+        <th class="nowrap">ลายเซ็นลูกค้า</th>
+        <th class="nowrap">ลายเซ็นจนท.</th>
       </tr>
     `;
 
@@ -701,16 +735,24 @@ export default function ReportPreviewButton({
             <td class="center">${escapeHtml(stu.paymentRef || "")}</td>
 
             <td class="center">${escapeHtml(receiveTypeText || "-")}</td>
-            <td class="center">${
-              receivedAt ? escapeHtml(formatDateTimeTH(receivedAt)) : "-"
-            }</td>
-            <td class="center">${
-              receiveSigUrl
-                ? `<img class="sigImg" src="${escapeHtml(
-                    receiveSigUrl,
-                  )}" alt="sig"/>`
-                : `<span class="muted">-</span>`
-            }</td>
+
+            <td class="center">
+              <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+                  ${
+                    receiveSigUrl
+                      ? `<img class="sigImg" src="${escapeHtml(receiveSigUrl)}" alt="sig"/>`
+                      : `<span class="muted">-</span>`
+                  }
+
+                  ${
+                    receivedAt
+                      ? `<div class="muted nowrap">${escapeHtml(
+                          formatDateTimeTH(receivedAt),
+                        )}</div>`
+                      : ""
+                  }
+              </div>
+            </td>
 
             <td class="center">${
               staffUpdatedAt
@@ -767,19 +809,15 @@ export default function ReportPreviewButton({
   }
 
   function handlePrint() {
-    if (mode === "signature") printSignatureReport();
+    if (tab === "signature") printSignatureReport();
     else printCheckinReport();
   }
 
   /* ================= UI (preview table in modal) ================= */
 
-  const modalTitle =
-    mode === "signature" ? "รายงานลายเซ็น / รับ-ส่งเอกสาร" : "รายงานเช็กอิน";
+  const modalTitle = "รายงาน / Export";
 
-  const modalTag =
-    mode === "signature"
-      ? "PREVIEW • รายงานลายเซ็น"
-      : "PREVIEW • รายงานเช็กอิน";
+  const modalTag = "PREVIEW • รายงาน";
 
   const colSpanCheckin = 6 + days.length + days.length; // base 6 + time days + sig days
   const colSpanSignature = 11;
@@ -787,7 +825,7 @@ export default function ReportPreviewButton({
   return (
     <>
       {/* ✅ แยกปุ่ม preview เป็น 2 ส่วน */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* <div className="flex flex-wrap items-center gap-2">
         <SecondaryButton
           type="button"
           className="px-3 py-1.5"
@@ -803,9 +841,19 @@ export default function ReportPreviewButton({
         >
           ดูรายงานลายเซ็น / Export
         </SecondaryButton>
+      </div> */}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <SecondaryButton
+          type="button"
+          className="px3 py-1.5"
+          onClick={openReport}
+        >
+          ดูรายงาน / Export
+        </SecondaryButton>
       </div>
 
-      {open && (
+      {/* {open && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
           onClick={() => setOpen(false)}
@@ -814,7 +862,7 @@ export default function ReportPreviewButton({
             className="max-h-[90vh] w-[95vw] max-w-6xl overflow-auto rounded-2xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* header */}
+            //header
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-admin-textMuted">
@@ -856,7 +904,7 @@ export default function ReportPreviewButton({
               </div>
             </div>
 
-            {/* table preview */}
+            //table preview
             <div className="overflow-auto rounded-xl border border-admin-border">
               {mode === "checkin" ? (
                 <table className="min-w-full border-collapse text-xs">
@@ -890,7 +938,7 @@ export default function ReportPreviewButton({
                         </th>
                       ))}
 
-                      {/* ✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน */}
+                      //✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน
                       {days.map((d) => (
                         <th
                           key={`sig-${d}`}
@@ -938,7 +986,7 @@ export default function ReportPreviewButton({
                             {lateDays}
                           </td>
 
-                          {/* DAY time */}
+                          //DAY time
                           {days.map((d) => {
                             const checked = getCheckinChecked(stu, d);
                             if (!checked) {
@@ -974,7 +1022,7 @@ export default function ReportPreviewButton({
                             );
                           })}
 
-                          {/* ✅ DAY signature image */}
+                          //✅ DAY signature image
                           {days.map((d) => {
                             const checked = getCheckinChecked(stu, d);
                             if (!checked) {
@@ -1194,7 +1242,449 @@ export default function ReportPreviewButton({
             )}
           </div>
         </div>
-      )}
+      )} */}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {modalTag}
+                </div>
+
+                <DialogTitle className="text-base">
+                  {courseTitle || courseCode || modalTitle}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด{" "}
+                  {studentsCount} คน
+                </DialogDescription>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-4">
+                <SecondaryButton
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCsv}
+                >
+                  Export CSV (Excel)
+                </SecondaryButton>
+                <SecondaryButton
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrint}
+                >
+                  สั่ง Print (มีรูป)
+                </SecondaryButton>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <Tabs
+            value={tab}
+            onValueChange={setTab}
+            className="flex w-full flex-col"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="checkin">เช็คอิน</TabsTrigger>
+                <TabsTrigger value="signature">รับเอกสาร</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="max-h-[65vh] overflow-auto rounded-xl border border-admin-border">
+              <TabsContent value="checkin" className="m-0">
+                <table className="min-w-full border-collapse text-xs">
+                  <colgroup>
+                    <col style={{ width: 50 }} /> {/* ลำดับ */}
+                    <col style={{ width: 150 }} /> {/* ชื่อ */}
+                    <col style={{ width: 150 }} /> {/* บริษัท */}
+                    {/* <col style={{ width: 140 }} /> */}
+                    <col style={{ width: 90 }} /> {/* เช็กอิน(วัน) */}
+                    <col style={{ width: 90 }} /> {/* มาสาย(วัน) */}
+                    {/* {days.map((d) => (
+                      <col key={`c-day-${d}`} style={{ width: 120 }} />
+                    ))} */}
+                    {days.map((d) => (
+                      <col key={`c-sig-${d}`} style={{ width: 140 }} />
+                    ))}
+                  </colgroup>
+                  <thead className="sticky top-0 z-20 bg-[#0a1f33] text-es text-white h-8">
+                    <tr>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลำดับ
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        ชื่อ-สกุล
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        บริษัท
+                      </th>
+                      {/* <th className="border border-admin-border px-2 py-1 text-center">
+                        เลขที่ QT/IV/RP
+                      </th> */}
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        เช็กอิน (วัน)
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        มาสาย (วัน)
+                      </th>
+
+                      {/* {days.map((d) => (
+                        <th
+                          key={`t-${d}`}
+                          className="border border-admin-border px-2 py-1 text-center"
+                        >
+                          DAY {d}
+                        </th>
+                      ))} */}
+
+                      {/* ✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน */}
+                      {days.map((d) => (
+                        <th
+                          key={`sig-${d}`}
+                          className="border border-admin-border px-2 py-1 text-center"
+                        >
+                          DAY {d}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {students.map((stu, idx) => {
+                      const checkedDays = countCheckedDays(stu, dayCount);
+                      const lateDays = countLateDays(stu, dayCount);
+
+                      return (
+                        <tr key={stu._id || idx}>
+                          <td className="border border-admin-border p-2 text-center">
+                            {idx + 1}
+                          </td>
+
+                          <td className="border border-admin-border p-2">
+                            {getStudentName(stu)}
+                            {shouldShowENLine(stu) && (
+                              <div className="text-[10px] text-admin-textMuted">
+                                {getStudentNameEN(stu)}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border p-2">
+                            {stu.company || ""}
+                          </td>
+
+                          {/* <td className="border border-admin-border px-2 py-1 text-center">
+                            {stu.paymentRef || ""}
+                          </td> */}
+
+                          <td className="border border-admin-border p-2 text-center">
+                            {checkedDays}
+                          </td>
+
+                          <td className="border border-admin-border p-2 text-center">
+                            {lateDays}
+                          </td>
+
+                          {/* DAY time */}
+                          {/* {days.map((d) => {
+                            const checked = getCheckinChecked(stu, d);
+                            if (!checked) {
+                              return (
+                                <td
+                                  key={`t-${d}`}
+                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
+                                >
+                                  -
+                                </td>
+                              );
+                            }
+
+                            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+                            const isLate = getIsLateForDay(stu, d);
+
+                            return (
+                              <td
+                                key={`t-${d}`}
+                                className="border border-admin-border px-2 py-1 text-center"
+                              >
+                                <span
+                                  className={
+                                    isLate
+                                      ? "font-semibold text-red-600"
+                                      : "font-semibold text-emerald-700"
+                                  }
+                                >
+                                  {isLate ? "⏰" : "✓"}
+                                </span>
+                                {t ? ` ${t}` : ""}
+                              </td>
+                            );
+                          })} */}
+
+                          {/* ✅ DAY signature image */}
+                          {days.map((d) => {
+                            const checked = getCheckinChecked(stu, d);
+                            if (!checked) {
+                              return (
+                                <td
+                                  key={`sig-${d}`}
+                                  className="border border-admin-border p-2 text-center text-admin-textMuted"
+                                >
+                                  -
+                                </td>
+                              );
+                            }
+
+                            const url = getCheckinSignatureUrl(stu, d);
+                            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
+                            const isLate = getIsLateForDay(stu, d);
+
+                            return (
+                              <td
+                                key={`sig-${d}`}
+                                className="border border-admin-border p-2 text-center"
+                              >
+                                <div className="flex flex-col gap-2">
+                                  <div>
+                                    <span
+                                      className={
+                                        isLate
+                                          ? "font-semibold text-red-600"
+                                          : "font-semibold text-emerald-700"
+                                      }
+                                    >
+                                      {isLate ? "⏰" : "✓"}
+                                    </span>
+                                    {t ? ` ${t}` : ""}
+                                  </div>
+                                  {url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={url}
+                                      alt={`signature day ${d}`}
+                                      className="mx-auto h-9 w-[110px] object-contain"
+                                    />
+                                  ) : (
+                                    <span className="text-admin-textMuted">
+                                      -
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+
+                    {students.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={colSpanCheckin}
+                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
+                        >
+                          ยังไม่มีรายชื่อนักเรียน
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </TabsContent>
+
+              <TabsContent value="signature" className="m-0">
+                <table className="min-w-full border-collapse text-xs">
+                  <colgroup>
+                    {/* base */}
+                    <col style={{ width: 50 }} /> {/* ลำดับ */}
+                    <col style={{ width: 150 }} /> {/* ชื่อ-สกุล */}
+                    <col style={{ width: 150 }} /> {/* บริษัท */}
+                    <col style={{ width: 140 }} /> {/* เลขที่ QT/IV/RP */}
+                    {/* 3.1 */}
+                    <col style={{ width: 160 }} />{" "}
+                    {/* ช่องทางรับเอกสาร (3.1) */}
+                    {/* <col style={{ width: 160 }} /> วัน-เวลา (3.1) */}
+                    <col style={{ width: 180 }} />{" "}
+                    {/* ลายเซ็นรับเอกสาร (3.1) */}
+                    {/* 3.2 */}
+                    <col style={{ width: 160 }} /> {/* บันทึกเมื่อ (3.2) */}
+                    <col style={{ width: 180 }} /> {/* รายการ (3.2) */}
+                    <col style={{ width: 180 }} /> {/* ลายเซ็นลูกค้า (3.2) */}
+                    <col style={{ width: 180 }} /> {/* ลายเซ็นจนท. (3.2) */}
+                  </colgroup>
+                  <thead className="sticky top-0 z-20 bg-[#0a1f33] text-xs text-white h-8">
+                    <tr>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลำดับ
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        ชื่อ-สกุล
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-left">
+                        บริษัท
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        เลขที่ QT/IV/RP
+                      </th>
+
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ช่องทางรับเอกสาร
+                      </th>
+                      {/* <th className="border border-admin-border px-2 py-1 text-center">
+                        วัน-เวลา (3.1)
+                      </th> */}
+                      <th className="border border-admin-border px-2 py-1 text-center">
+                        ลายเซ็นรับเอกสาร
+                      </th>
+
+                      <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
+                        นำส่งเอกสารเมื่อ
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
+                        รายการนำส่ง
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
+                        ลายเซ็นลูกค้า
+                      </th>
+                      <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
+                        ลายเซ็นจนท.
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {students.map((stu, idx) => {
+                      const receiveTypeText = receiveTypeLabel(
+                        getReceiveTypeRaw(stu),
+                      );
+                      const receivedAt = getReceivedAt(stu);
+                      const receiveSigUrl = getReceiveSignatureUrl(stu);
+
+                      const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
+                      const staffItemsText = staffItemsLabel(
+                        getStaffReceiveItems(stu),
+                      );
+                      const staffCustomerUrl =
+                        getStaffReceiveCustomerSigUrl(stu);
+                      const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
+
+                      return (
+                        <tr key={stu._id || idx}>
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {idx + 1}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {getStudentName(stu)}
+                            {shouldShowENLine(stu) && (
+                              <div className="text-[10px] text-admin-textMuted">
+                                {getStudentNameEN(stu)}
+                              </div>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1">
+                            {stu.company || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {stu.paymentRef || ""}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {receiveTypeText || "-"}
+                          </td>
+
+                          {/* <td className="border border-admin-border px-2 py-1 text-center">
+                            {receivedAt ? formatDateTimeTH(receivedAt) : "-"}
+                          </td> */}
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            <div className="flex flex-col gap-1">
+                              {receiveSigUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={receiveSigUrl}
+                                  alt="receive sig"
+                                  className="mx-auto h-10 w-[120px] object-contain"
+                                />
+                              ) : (
+                                <span className="text-admin-textMuted">-</span>
+                              )}
+
+                              {receivedAt ? formatDateTimeTH(receivedAt) : ""}
+                            </div>
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffUpdatedAt
+                              ? formatDateTimeTH(staffUpdatedAt)
+                              : "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffItemsText || "-"}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffCustomerUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={staffCustomerUrl}
+                                alt="customer sig"
+                                className="mx-auto h-10 w-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-admin-textMuted">-</span>
+                            )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffStaffUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={staffStaffUrl}
+                                alt="staff sig"
+                                className="mx-auto h-10 w-[120px] object-contain"
+                              />
+                            ) : (
+                              <span className="text-admin-textMuted">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {students.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={colSpanSignature}
+                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
+                        >
+                          ยังไม่มีรายชื่อนักเรียน
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </TabsContent>
+            </div>
+
+            {/* {tab === "checkin" ? (
+              <div className="mt-2 text-[11px] text-admin-textMuted">
+                หมายเหตุ: ลายเซ็นจะแสดงใน Print
+                (รอโหลดรูปก่อนสั่งพิมพ์อัตโนมัติ)
+              </div>
+            ) : (
+              <div className="mt-2 text-[11px] text-admin-textMuted">
+                หมายเหตุ: รายงานนี้แสดงลายเซ็น (3.1) และ (3.2) พร้อมรูปใน Print
+              </div>
+            )} */}
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
