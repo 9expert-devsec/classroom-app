@@ -567,7 +567,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 />
               </div>
 
-              <div className="mt-6 flex gap-3">
+              {/* <div className="mt-6 flex gap-3">
                 <button
                   type="button"
                   onClick={() => router.push(backHref)}
@@ -583,7 +583,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 >
                   {primaryLabel}
                 </PrimaryButton>
-              </div>
+              </div> */}
             </div>
           ) : (
             <>
