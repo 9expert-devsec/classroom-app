@@ -136,6 +136,106 @@ function useAutoPageSize({
 
 /* ================= Receive helpers (3.1 customer_receive) ================= */
 
+function ReceiveDocModal({ open, stu, onClose, onPreview }) {
+  if (!open) return null;
+
+  const sig = getReceiveSignatureUrl(stu);
+  const receivedAt = getReceivedAt(stu);
+  const typeRaw = getReceiveTypeRaw(stu);
+  const qtNo = stu?.paymentRef || "-";
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold text-admin-text">
+              เอกสาร: รับเอกสาร
+            </div>
+            <div className="mt-0.5 text-sm text-admin-textMuted">
+              {getStudentName(stu)}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-admin-border px-3 py-1 text-xs hover:bg-admin-surfaceMuted"
+          >
+            ปิด
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3 text-base">
+          <div className="rounded-xl border border-admin-border p-3 flex flex-col gap-1">
+            <div>
+              <div className="text-sm text-admin-textMuted">
+                เลขที่ QT/IV/RP
+              </div>
+              <div className="mt-0.5">{qtNo}</div>
+            </div>
+
+            <div>
+              <div className="text-sm text-admin-textMuted">สถานะ</div>
+              <div className="mt-1 font-semibold">
+                {sig ? (
+                  <span className="text-emerald-700 ">รับเอกสารแล้ว</span>
+                ) : (
+                  <span className="text-zinc-700 ">ยังไม่รับเอกสาร</span>
+                )}
+              </div>
+            </div>
+
+            <div className=" grid gap-2 sm:grid-cols-2">
+              <div>
+                <div className="text-sm text-admin-textMuted">
+                  ช่องทางรับเอกสาร
+                </div>
+                <div className="mt-0.5 ">{receiveTypeLabel(typeRaw)}</div>
+              </div>
+
+              <div>
+                <div className="text-sm text-admin-textMuted">
+                  วันที่รับเอกสาร
+                </div>
+                <div className="mt-0.5">
+                  {receivedAt ? formatDateTH(receivedAt) : "-"}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ลายเซ็นรับเอกสาร */}
+          <div className="mt-3 rounded-2xl border border-admin-border bg-white p-4">
+            <div className="text-sm text-admin-textMuted">ลายเซ็นรับเอกสาร</div>
+
+            {sig ? (
+              <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 ">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={sig}
+                  alt="ลายเซ็นรับเอกสาร"
+                  className="max-h-[240px] w-auto max-w-full object-contain"
+                />
+              </div>
+            ) : (
+              <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-admin-textMuted">
+                ยังไม่มีลายเซ็นรับเอกสาร
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function getReceiveTypeRaw(stu) {
   return clean(stu?.documentReceiveType) || clean(stu?.receiveType) || "";
 }
@@ -168,6 +268,146 @@ function getReceiveSignatureUrl(stu) {
 }
 
 /* ================= Staff receive helpers (3.2 staff_receive) ================= */
+
+function StaffDeliverModal({
+  open,
+  stu,
+  onClose,
+  onPreviewCustomer,
+  onPreviewStaff,
+}) {
+  if (!open) return null;
+
+  const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
+  const items = getStaffReceiveItems(stu);
+  const itemsText = staffItemsLabel(items);
+
+  const customerUrl = getStaffReceiveCustomerSigUrl(stu);
+  const staffUrl = getStaffReceiveStaffSigUrl(stu);
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold text-admin-text">
+              เอกสาร: เอกสารนำส่ง
+            </div>
+            <div className="mt-0.5 text-sm text-admin-textMuted">
+              {getStudentName(stu)}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-admin-border px-3 py-1 text-xs hover:bg-admin-surfaceMuted"
+          >
+            ปิด
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3 text-xs">
+          <div className="rounded-xl border border-admin-border p-3">
+            <div className="text-sm text-admin-textMuted">สถานะ</div>
+            <div className="mt-1 text-base font-semibold text-blue-700">
+              นำส่งเอกสารแล้ว
+            </div>
+
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div>
+                <div className="text-sm text-admin-textMuted">บันทึกเมื่อ</div>
+                <div className="mt-0.5 text-base">
+                  {staffUpdatedAt ? formatDateTimeTH(staffUpdatedAt) : "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-admin-textMuted">รายการ</div>
+                <div className="mt-0.5 text-base">{itemsText || "-"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-admin-border bg-white p-4">
+              <div className="text-sm text-admin-textMuted">
+                ลายเซ็นผู้ส่งเอกสาร (ลูกค้า)
+              </div>
+              {customerUrl ? (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40">
+                  <img
+                    src={customerUrl}
+                    alt="ลายเซ็นลูกค้า"
+                    className="max-h-[220px] w-auto max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-xs text-admin-textMuted">
+                  ไม่มีลายเซ็นลูกค้า
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-admin-border bg-white p-4">
+              <div className="text-sm text-admin-textMuted">
+                ลายเซ็นเจ้าหน้าที่รับเอกสาร
+              </div>
+              {staffUrl ? (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40">
+                  <img
+                    src={staffUrl}
+                    alt="ลายเซ็นเจ้าหน้าที่"
+                    className="max-h-[220px] w-auto max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-sm text-admin-textMuted">
+                  ไม่มีลายเซ็นเจ้าหน้าที่
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-admin-border p-3">
+            {customerUrl ? (
+              <button
+                type="button"
+                onClick={onPreviewCustomer}
+                className="rounded-full border border-blue-200 bg-white px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+              >
+                ลายเซ็นลูกค้า
+              </button>
+            ) : (
+              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] text-zinc-600">
+                ลายเซ็นลูกค้า -
+              </span>
+            )}
+
+            {staffUrl ? (
+              <button
+                type="button"
+                onClick={onPreviewStaff}
+                className="rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-50"
+              >
+                ลายเซ็นเจ้าหน้าที่
+              </button>
+            ) : (
+              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] text-zinc-600">
+                ลายเซ็นเจ้าหน้าที่ -
+              </span>
+            )}
+          </div> */}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function getStaffReceiveUpdatedAt(stu) {
   return (
@@ -306,8 +546,8 @@ export default function StudentsTable({
   // ✅ callbacks (optional)
   onReloadRequested,
 }) {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  // const [search, setSearch] = useState("");
+  // const [page, setPage] = useState(1);
 
   // preview: { url, title, subtitle }
   const [preview, setPreview] = useState(null);
@@ -401,51 +641,51 @@ export default function StudentsTable({
   }, [students, overridesById]);
 
   // ----- search filter -----
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return mergedStudents;
+  // const filtered = useMemo(() => {
+  //   const q = search.trim().toLowerCase();
+  //   if (!q) return mergedStudents;
 
-    return mergedStudents.filter((s) => {
-      const staffItems = getStaffReceiveItems(s);
-      const staffLabel = staffItemsLabel(staffItems);
-      const st = studentStatusMeta(getStudentStatusRaw(s));
+  //   return mergedStudents.filter((s) => {
+  //     const staffItems = getStaffReceiveItems(s);
+  //     const staffLabel = staffItemsLabel(staffItems);
+  //     const st = studentStatusMeta(getStudentStatusRaw(s));
 
-      const pieces = [
-        getStudentName(s),
-        getStudentNameEN(s),
-        s.company,
-        s.paymentRef,
+  //     const pieces = [
+  //       getStudentName(s),
+  //       getStudentNameEN(s),
+  //       s.company,
+  //       s.paymentRef,
 
-        // status
-        st.label,
-        st.key,
+  //       // status
+  //       st.label,
+  //       st.key,
 
-        // 3.1
-        getReceiveTypeRaw(s),
-        receiveTypeLabel(getReceiveTypeRaw(s)),
-        formatDateTH(getReceivedAt(s)),
+  //       // 3.1
+  //       getReceiveTypeRaw(s),
+  //       receiveTypeLabel(getReceiveTypeRaw(s)),
+  //       formatDateTH(getReceivedAt(s)),
 
-        // 3.2
-        staffLabel,
-        formatDateTimeTH(getStaffReceiveUpdatedAt(s)),
-      ];
-      return pieces.some((p) => (p || "").toString().toLowerCase().includes(q));
-    });
-  }, [mergedStudents, search]);
+  //       // 3.2
+  //       staffLabel,
+  //       formatDateTimeTH(getStaffReceiveUpdatedAt(s)),
+  //     ];
+  //     return pieces.some((p) => (p || "").toString().toLowerCase().includes(q));
+  //   });
+  // }, [mergedStudents, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const start = (currentPage - 1) * pageSize;
+  // const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // const currentPage = Math.min(page, totalPages);
+  // const start = (currentPage - 1) * pageSize;
   // const visible = filtered.slice(start, start + pageSize);
-  const visible = filtered;
+  const visible = mergedStudents; // parent ส่งมาแล้ว
 
   const visibleIds = useMemo(() => {
     return visible.map((s) => getStudentId(s)).filter(Boolean);
   }, [visible]);
 
-  useEffect(() => {
-    setPage((p) => Math.min(p, totalPages));
-  }, [totalPages]);
+  // useEffect(() => {
+  //   setPage((p) => Math.min(p, totalPages));
+  // }, [totalPages]);
 
   function goPrev() {
     setPage((p) => Math.max(1, p - 1));
@@ -658,19 +898,50 @@ export default function StudentsTable({
     }
   }
 
-  const TH_BASE = "px-3 py-2";
-  const TD_BASE = "px-3 py-2";
+  const TH_BASE = "box-border px-3 py-2";
+  const TD_BASE = "box-border px-3 py-2";
 
-  const stickyLeft = "sticky left-0 z-30 bg-white";
-  const stickyLeftHead = "sticky left-0 z-40 bg-admin-surfaceMuted";
+  const stickyTopHead = "sticky top-0 z-30 ";
 
-  const stickyRight = "sticky right-0 z-30 bg-white";
-  const stickyRightHead = "sticky right-0 z-40 bg-admin-surfaceMuted";
+  const stickyLeft =
+    "sticky left-0 z-10 bg-white group-hover/row:bg-admin-surfaceMuted";
+  const stickyLeftHead = "sticky left-0 z-50 bg-[#0a1f33] text-white";
+
+  const stickyRight =
+    "sticky right-0 z-10 bg-white group-hover/row:bg-admin-surfaceMuted";
+  const stickyRightHead = "sticky right-0 z-50 bg-[#0a1f33] text-white";
+
+  const [menuOpen, setMenuOpen] = useState(null);
+
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onScroll = () => setMenuOpen(null);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const [receiveModal, setReceiveModal] = useState({ open: false, stu: null });
+  const [staffModal, setStaffModal] = useState({ open: false, stu: null });
+
+  function openReceiveModal(stu) {
+    setReceiveModal({ open: true, stu });
+  }
+  function closeReceiveModal() {
+    setReceiveModal({ open: false, stu: null });
+  }
+
+  function openStaffModal(stu) {
+    setStaffModal({ open: true, stu });
+  }
+  function closeStaffModal() {
+    setStaffModal({ open: false, stu: null });
+  }
 
   return (
     <>
       {/* search + summary + selection bar */}
-      <div className="mb-3 flex flex-col gap-2">
+      {/* <div className="mb-3 flex flex-col gap-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             <div className="text-xs text-admin-textMuted">
@@ -703,8 +974,8 @@ export default function StudentsTable({
           </div>
         </div>
 
-        {/* selection actions */}
-        {/* <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="text-admin-textMuted">
             เลือกแล้ว{" "}
             <span className="font-semibold text-admin-text">{sel.length}</span>{" "}
@@ -733,21 +1004,43 @@ export default function StudentsTable({
               ล้างที่เลือก
             </button>
           </div>
-        </div> */}
-      </div>
+        </div>
+      </div> */}
 
       <div
         ref={viewportRef}
-        className="min-h-0 flex-1 overflow-x-auto overflow-y-auto"
+        className="min-h-0 flex-1  overflow-auto rounded-xl"
       >
         <table
           ref={tableRef}
-          className="min-w-max border-separate border-spacing-0 text-xs sm:text-sm"
+          className="min-w-full w-max table-fixed border-separate border-spacing-0 text-xs sm:text-sm "
         >
-          <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-admin-textMuted uppercase text-[11px]">
+          <colgroup>
+            <col className="w-[50px]" />
+            <col className="w-[150px]" />
+            <col className="w-[160px]" />
+            <col className="w-[130px]" />
+            <col className="w-[100px]" />
+            <col className="w-[150px]" />
+
+            {days.map((d) => (
+              <col key={`col-day-${d}`} className="w-[150px]" />
+            ))}
+
+            <col className="w-[80px]" />
+          </colgroup>
+          <thead className=" text-[#0a1f33] uppercase text-[11px]">
             <tr>
               {/* selection column */}
-              <th className={cx(TH_BASE, "w-[50px]", stickyLeftHead, "left-0")}>
+              <th
+                className={cx(
+                  TH_BASE,
+
+                  stickyTopHead,
+                  stickyLeftHead,
+                  "left-0",
+                )}
+              >
                 <input
                   type="checkbox"
                   checked={isAllVisibleSelected(visibleIds)}
@@ -760,7 +1053,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[150px] text-left",
+                  "text-left",
+                  stickyTopHead,
                   stickyLeftHead,
                   "left-[50px]",
                 )}
@@ -770,7 +1064,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[160px] text-left",
+                  "text-left",
+                  stickyTopHead,
                   stickyLeftHead,
                   "left-[200px]",
                 )}
@@ -780,7 +1075,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[130px] text-left",
+                  "text-left",
+                  stickyTopHead,
                   stickyLeftHead,
                   "left-[360px]",
                 )}
@@ -791,7 +1087,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[100px] text-center",
+                  "text-center",
+                  stickyTopHead,
                   stickyLeftHead,
                   "left-[490px]",
                 )}
@@ -802,7 +1099,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[150px] text-center",
+                  "text-center",
+                  stickyTopHead,
                   stickyLeftHead,
                   "left-[590px]",
                   "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งกับส่วน scroll
@@ -831,7 +1129,11 @@ export default function StudentsTable({
               {days.map((d) => (
                 <th
                   key={d}
-                  className={cx(TH_BASE, "text-center min-w-[150px]")}
+                  className={cx(
+                    TH_BASE,
+                    "text-center bg-[#66ccff]",
+                    stickyTopHead,
+                  )}
                 >
                   DAY {d}
                 </th>
@@ -840,7 +1142,8 @@ export default function StudentsTable({
               <th
                 className={cx(
                   TH_BASE,
-                  "w-[80px] text-center",
+                  "text-center ",
+                  stickyTopHead,
                   stickyRightHead,
                   "right-0",
                   "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งด้านซ้ายของปุ่มจัดการ
@@ -879,11 +1182,13 @@ export default function StudentsTable({
                 <tr
                   key={stuId || i}
                   className={cx(
-                    "h-16 border-t border-admin-border hover:bg-admin-surfaceMuted/60",
+                    "group/row h-16 border-t border-admin-border ",
                     checkedRow ? "bg-brand-primary/5" : "",
                   )}
                 >
-                  <td className={cx(TH_BASE, "text-center w-[50px]", stickyLeftHead, "left-0")}>
+                  <td
+                    className={cx(TD_BASE, "text-center", stickyLeft, "left-0")}
+                  >
                     <input
                       type="checkbox"
                       className="h-4 w-4 accent-brand-primary"
@@ -897,7 +1202,7 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      " w-[56px]",
+
                       stickyLeft,
                       "left-[50px]",
                     )}
@@ -913,7 +1218,7 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      "w-[160px] text-admin-textMuted",
+                      "whitespace-normal break-all text-admin-textMuted text-wrap ",
                       stickyLeft,
                       "left-[200px]",
                     )}
@@ -924,7 +1229,7 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      "w-[130px] text-admin-textMuted",
+                      "text-admin-textMuted",
                       stickyLeft,
                       "left-[360px]",
                     )}
@@ -936,7 +1241,7 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      "w-[100px] text-center",
+                      "text-center",
                       stickyLeft,
                       "left-[490px]",
                     )}
@@ -955,13 +1260,44 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      "w-[150px] text-center",
+                      "align-middle",
                       stickyLeft,
                       "left-[590px]",
                       "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]",
                     )}
                   >
                     {/* เอกสาร (สรุป) */}
+                    <div className="flex flex-col items-center gap-2">
+                      {/* ปุ่มรับเอกสาร: แสดงเสมอ */}
+                      {receiveSigUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => openReceiveModal(stu)}
+                          className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          รับเอกสารแล้ว
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openReceiveModal(stu)}
+                          className="inline-flex items-center justify-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-semibold text-zinc-700 hover:bg-zinc-100"
+                        >
+                          ยังไม่รับเอกสาร
+                        </button>
+                      )}
+
+                      {/* ปุ่มนำส่งเอกสาร: แสดงเฉพาะเมื่อมีข้อมูล */}
+                      {staffDone ? (
+                        <button
+                          type="button"
+                          onClick={() => openStaffModal(stu)}
+                          className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                        >
+                          เอกสารนำส่ง
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
 
                   {/* <td className="px-3 py-2 text-admin-textMuted text-center">
@@ -1059,9 +1395,13 @@ export default function StudentsTable({
                       return (
                         <td
                           key={d}
-                          className="px-3 py-2 h-[90px] text-center text-admin-textMuted"
+                          className="px-3 py-2 text-admin-textMuted group-hover/row:bg-admin-surfaceMuted/70"
                         >
-                          -
+                          <div className="flex items-center justify-center">
+                            <div className="inline-flex items-center justify-center px-2 py-1 text-xs border border-slate-300 bg-slate-50 text-slate-400 rounded-full cursor-not-allowed">
+                              ยังไม่เช็กอิน
+                            </div>
+                          </div>
                         </td>
                       );
                     }
@@ -1073,7 +1413,7 @@ export default function StudentsTable({
                     const statusText = isLateThisDay ? "สาย" : "ตรงเวลา";
 
                     const boxBase =
-                      "group relative inline-flex flex-col items-center justify-center rounded-xl px-7 py-1 text-[11px] transition";
+                      "group/btn relative inline-flex flex-col items-center justify-center rounded-xl px-7 py-1 text-[11px] transition";
                     const lateBox = hasSignature
                       ? "border border-red-200 bg-red-50 cursor-pointer hover:bg-red-100"
                       : "border border-red-200 bg-red-50 cursor-default";
@@ -1086,7 +1426,10 @@ export default function StudentsTable({
                       : "bg-emerald-600/90";
 
                     return (
-                      <td key={d} className="px-3 py-2 h-[90px] text-center">
+                      <td
+                        key={d}
+                        className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                      >
                         <button
                           type="button"
                           aria-label={
@@ -1103,7 +1446,7 @@ export default function StudentsTable({
                         >
                           <div
                             className={`flex flex-col items-center justify-center transition-opacity duration-150 ${
-                              hasSignature ? "group-hover:opacity-0" : ""
+                              hasSignature ? "group-hover/btn:opacity-0" : ""
                             }`}
                           >
                             <span className="text-base leading-none">✔</span>
@@ -1127,7 +1470,7 @@ export default function StudentsTable({
 
                           {hasSignature && (
                             <div
-                              className={`pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl ${overlayClass} text-[14px] font-medium text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100`}
+                              className={`pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl ${overlayClass} text-[14px] font-medium text-white opacity-0 transition-opacity duration-150 group-hover/btn:opacity-100`}
                             >
                               ดูลายเซ็น
                             </div>
@@ -1143,15 +1486,36 @@ export default function StudentsTable({
                       TD_BASE,
                       "w-[80px] text-center",
                       stickyRight,
+                      "relative",
                       "right-0",
+                      menuOpenId === stuId ? "z-[200]" : "z-10",
                       "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]",
                     )}
                   >
                     <div className="relative inline-flex">
                       <button
                         type="button"
-                        onClick={() =>
-                          setMenuOpenId(menuOpenId === stuId ? "" : stuId)
+                        onClick={
+                          (e) => {
+                            e.stopPropagation();
+                            const id = stuId;
+
+                            // toggle ปิด
+                            if (menuOpen?.id === id) {
+                              setMenuOpen(null);
+                              return;
+                            }
+
+                            const btnRect =
+                              e.currentTarget.getBoundingClientRect();
+
+                            // ให้เมนูออกด้านล่างปุ่ม
+                            const top = btnRect.bottom + 8;
+                            const left = btnRect.right; // ใช้เป็น anchor ขวา
+
+                            setMenuOpen({ id, top, left, stu });
+                          }
+                          // setMenuOpenId(menuOpenId === stuId ? "" : stuId)
                         }
                         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted"
                         aria-label="เมนูนักเรียน"
@@ -1159,29 +1523,6 @@ export default function StudentsTable({
                       >
                         ⋮
                       </button>
-
-                      {menuOpenId === stuId && (
-                        <div
-                          className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-xl border border-admin-border bg-white text-xs shadow-lg"
-                          onMouseLeave={() => setMenuOpenId("")}
-                        >
-                          <button
-                            type="button"
-                            className="w-full px-3 py-2 text-left hover:bg-admin-surfaceMuted"
-                            onClick={() => openEdit(stu)}
-                          >
-                            แก้ไข / เปลี่ยนสถานะ
-                          </button>
-
-                          <button
-                            type="button"
-                            className="w-full px-3 py-2 text-left text-red-600 hover:bg-admin-surfaceMuted"
-                            onClick={() => openEdit(stu)}
-                          >
-                            ลบออกจาก Class
-                          </button>
-                        </div>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -1191,7 +1532,7 @@ export default function StudentsTable({
             {visible.length === 0 && (
               <tr>
                 <td
-                  className="px-3 py-4 text-center text-admin-textMuted"
+                  className="px-3 py-10 text-center text-admin-textMuted"
                   colSpan={10 + days.length}
                 >
                   ยังไม่มีรายชื่อนักเรียน
@@ -1227,6 +1568,36 @@ export default function StudentsTable({
         </div>
       )} */}
 
+      {menuOpen?.id && (
+        <div
+          className="fixed z-[9999]"
+          style={{
+            top: menuOpen.top,
+            left: menuOpen.left,
+            transform: "translateX(-100%)", // ชิดขวาของปุ่ม
+          }}
+          onMouseLeave={() => setMenuOpen(null)}
+        >
+          <div className="w-40 overflow-hidden rounded-xl border border-admin-border bg-white text-xs shadow-lg">
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left hover:bg-admin-surfaceMuted"
+              onClick={() => openEdit(menuOpen.stu)}
+            >
+              แก้ไข / เปลี่ยนสถานะ
+            </button>
+
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left text-red-600 hover:bg-admin-surfaceMuted"
+              onClick={() => openEdit(menuOpen.stu)}
+            >
+              ลบออกจาก Class
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Preview Modal */}
       {preview && preview.url && (
         <div
@@ -1234,7 +1605,7 @@ export default function StudentsTable({
           onClick={closePreview}
         >
           <div
-            className="max-h-[80vh] w-[90vw] max-w-md rounded-2xl bg-white p-4 shadow-xl"
+            className=" max-w-2xl rounded-2xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 text-sm font-semibold text-admin-text">
@@ -1267,6 +1638,33 @@ export default function StudentsTable({
           </div>
         </div>
       )}
+
+      <ReceiveDocModal
+        open={receiveModal.open}
+        stu={receiveModal.stu}
+        onClose={closeReceiveModal}
+        onPreview={() => {
+          const s = receiveModal.stu;
+          closeReceiveModal();
+          openReceivePreview(s);
+        }}
+      />
+
+      <StaffDeliverModal
+        open={staffModal.open}
+        stu={staffModal.stu}
+        onClose={closeStaffModal}
+        onPreviewCustomer={() => {
+          const s = staffModal.stu;
+          closeStaffModal();
+          openStaffReceivePreview(s, "customer");
+        }}
+        onPreviewStaff={() => {
+          const s = staffModal.stu;
+          closeStaffModal();
+          openStaffReceivePreview(s, "staff");
+        }}
+      />
 
       {/* Edit Modal */}
       {editOpen && (
@@ -1406,10 +1804,10 @@ export default function StudentsTable({
               </div>
 
               {/* หมายเหตุ */}
-              <div className="pt-1 text-[11px] text-admin-textMuted">
+              {/* <div className="pt-1 text-[11px] text-admin-textMuted">
                 * ถ้า API โหลด class ยังไม่ส่ง <code>studentStatus</code> กลับมา
                 UI จะยึดค่า override จากการแก้ล่าสุดเพื่อให้แสดงถูก
-              </div>
+              </div> */}
             </form>
           </div>
         </div>

@@ -6,7 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
-import { ChevronLeft, MoreVertical, FileSignature } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  MoreVertical,
+  FileSignature,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -115,6 +120,23 @@ function countLateAllDays(students) {
   return n;
 }
 
+function norm(s) {
+  return String(s ?? "")
+    .toLowerCase()
+    .trim();
+}
+
+function getStudentNameAny(stu) {
+  return (
+    stu?.name ||
+    stu?.thaiName ||
+    stu?.engName ||
+    stu?.nameTH ||
+    stu?.nameEN ||
+    ""
+  );
+}
+
 /* ===== Filter options ===== */
 
 const FILTERS = [
@@ -138,6 +160,8 @@ export default function ClassDetailPage() {
 
   // ✅ filter (default: all)
   const [filterKey, setFilterKey] = useState("all");
+
+  const [search, setSearch] = useState("");
 
   // ===== state สำหรับ edit/delete class =====
   const [editOpen, setEditOpen] = useState(false);
@@ -279,6 +303,26 @@ export default function ClassDetailPage() {
     }
   }, [students, filterKey]);
 
+  const finalStudents = useMemo(() => {
+    const q = norm(search);
+    if (!q) return filteredStudents;
+
+    return (filteredStudents || []).filter((s) => {
+      const parts = [
+        getStudentNameAny(s),
+        s?.nameEN,
+        s?.engName,
+        s?.company,
+        s?.paymentRef,
+        s?.studentStatus,
+      ]
+        .filter(Boolean)
+        .map((x) => norm(x));
+
+      return parts.some((p) => p.includes(q));
+    });
+  }, [filteredStudents, search]);
+
   // ✅ present: เช็กอินอย่างน้อย 1 วัน
   const presentCount = useMemo(() => {
     return students.filter((s) => hasAnyCheckin(s)).length;
@@ -305,8 +349,8 @@ export default function ClassDetailPage() {
 
   const reportStudents = useMemo(() => {
     if (selectedIds?.length) return selectedStudents;
-    return filteredStudents;
-  }, [selectedIds, selectedStudents, filteredStudents]);
+    return finalStudents;
+  }, [selectedIds, selectedStudents, finalStudents]);
 
   /* ===== loading / not found ===== */
 
@@ -479,7 +523,7 @@ export default function ClassDetailPage() {
   /* ===== render ===== */
 
   return (
-    <div className="h-dvh flex flex-col gap-4">
+    <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
       <div className="shrink-0 space-y-4">
         <div className="flex justify-between">
           <button
@@ -496,7 +540,7 @@ export default function ClassDetailPage() {
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            {/* <button
               type="button"
               onClick={openReceiveHome}
               className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-2 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
@@ -504,7 +548,7 @@ export default function ClassDetailPage() {
             >
               <FileSignature className="h-4 w-4" />
               รับเอกสาร
-            </button>
+            </button> */}
 
             <SyncStudentsButton classId={id} />
 
@@ -698,7 +742,7 @@ export default function ClassDetailPage() {
       </div> */}
 
         {/* ✅ Filter bar */}
-        <div className="rounded-2xl border border-admin-border bg-white p-3">
+        {/* <div className="rounded-2xl border border-admin-border bg-white p-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-xs text-admin-textMuted mr-2">Filter:</div>
             {FILTERS.map((f) => {
@@ -727,21 +771,94 @@ export default function ClassDetailPage() {
                 : ""}
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       <div className="flex-1 min-h-0">
-        {/* table */}
-        <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-auto">
-          <StudentsTable
+        {/* ✅ Search + Filter (shadcn) */}
+        <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-hidden flex flex-col gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-admin-textMuted">
+                รายชื่อนักเรียน {finalStudents.length} คน • เลือกแล้ว{" "}
+                <span className="font-semibold text-admin-text">
+                  {selectedIds.length}
+                </span>{" "}
+                คน
+              </div>
+            </div>
+
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              {/* Filter dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs text-admin-text shadow-sm hover:bg-admin-surfaceMuted"
+                    aria-label="เลือกตัวกรอง"
+                  >
+                    <span className="text-admin-textMuted">Filter:</span>
+                    <span className="font-medium">
+                      {FILTERS.find((f) => f.key === filterKey)?.label ||
+                        "ทั้งหมด"}
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  className="w-44 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+                >
+                  {FILTERS.map((f) => {
+                    const active = filterKey === f.key;
+                    return (
+                      <DropdownMenuItem
+                        key={f.key}
+                        onSelect={() => setFilterKey(f.key)}
+                        className={active ? "font-semibold" : ""}
+                      >
+                        {f.label}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Search */}
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อ / บริษัท / เลข QT/IV/RP ..."
+                className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary sm:w-80"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+           <StudentsTable
             classId={id}
-            students={filteredStudents} // ✅ แสดงตาม filter
+            students={finalStudents} // ✅ แสดงตาม filter  ใช้ตัวที่ filter+search แล้ว
             dayCount={dayCount}
             selectedIds={selectedIds}
             onSelectedIdsChange={setSelectedIds}
             onReloadRequested={reloadClass}
           />
         </div>
+       
+
+        {/* table */}
+        {/* <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-hidden flex flex-col">
+          <StudentsTable
+            classId={id}
+            students={finalStudents} // ✅ แสดงตาม filter  ใช้ตัวที่ filter+search แล้ว
+            dayCount={dayCount}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+            onReloadRequested={reloadClass}
+          />
+        </div> */}
       </div>
 
       {/* edit modal */}
