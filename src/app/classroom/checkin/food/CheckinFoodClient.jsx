@@ -587,7 +587,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
             </div>
           ) : (
             <>
-              <h3 className="mt-4 mb-2 text-sm font-medium text-front-textMuted">
+              <h3 className="mb-2 text-sm font-medium text-front-textMuted">
                 เลือกร้านอาหาร
               </h3>
 

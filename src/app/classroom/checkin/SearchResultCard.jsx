@@ -49,32 +49,32 @@ export default function SearchResultCard({ student, onClick }) {
       type="button"
       onClick={onClick}
       className="w-full text-left rounded-2xl px-4 py-3 shadow-sm transition
-                 bg-white ring-1 ring-front-border/40 hover:bg-front-bgSoft/80"
+                 bg-white ring-1 ring-[#48B0FF] hover:bg-front-bgSoft/80"
     >
-      <div className="text-sm font-semibold text-front-text">{thaiName}</div>
+      <div className="text-base font-semibold text-[#0D1B2A]">{thaiName}</div>
 
       {engName && (
         <div className="text-xs text-front-textMuted">{engName}</div>
       )}
 
       {company && (
-        <div className="mt-1 text-xs text-front-textMuted">{company}</div>
+        <div className="mt-1 text-sm text-front-textMuted">{company}</div>
       )}
 
       {classTitle && (
-        <div className="mt-2 rounded-xl bg-front-bgSoft px-3 py-2 text-xs text-front-text">
-          <div className="font-medium">
-            Class: <span className="font-semibold">{classTitle}</span>
+        <div className="mt-2 rounded-xl bg-[#48B0FF]/20 px-3 py-2 text-base text-[#0D1B2A]">
+          <div className="font-bold">
+            Class: <span className="font-normal">{classTitle}</span>
           </div>
 
-          <div className="mt-0.5 text-[11px] text-front-textMuted">
+          <div className="mt-0.5 text-sm text-[#0D1B2A]">
             {dateLabel && <>วันที่อบรม: {dateLabel}</>}
             {room && <> • ห้อง: {room}</>}
           </div>
 
           {/* แสดง Day */}
           {dayNumber && (
-            <div className="mt-1 text-[11px] text-brand-primary font-semibold">
+            <div className="mt-1 text-sm text-[#005CFF] font-bold">
               {dayLabel}
             </div>
           )}

@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react';
+
 const steps = [
   { id: 1, label: "ค้นหาชื่อ" },
   { id: 2, label: "เลือกเมนูอาหาร" },
@@ -7,7 +9,7 @@ const steps = [
 
 export default function StepHeader({ currentStep }) {
   return (
-    <div className="flex gap-3 border-b border-brand-border px-6 py-4">
+    <div className="flex gap-4 border-b border-brand-border px-6 py-4">
       {steps.map((step) => {
         const isActive = step.id === currentStep;
         const isDone = step.id < currentStep;
@@ -16,12 +18,12 @@ export default function StepHeader({ currentStep }) {
           return (
             <div
               key={step.id}
-              className="flex flex-1 items-center gap-2 rounded-full bg-gradient-to-r from-front-stepGradientFrom to-front-stepGradientTo px-4 py-2 text-white shadow-md"
+              className="relative z-10 flex flex-1 items-center gap-2 rounded-2xl bg-gradient-to-r from-[#005CFF] to-[#FFB020] px-4 py-2 text-white shadow-md transform scale-[1.1] transition-transform duration-200 ease-out"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-sm font-semibold">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-base font-semibold">
                 {step.id}
               </span>
-              <span className="text-sm font-medium">{step.label}</span>
+              <span className="text-base font-medium">{step.label}</span>
             </div>
           );
 
@@ -29,12 +31,14 @@ export default function StepHeader({ currentStep }) {
           return (
             <div
               key={step.id}
-              className="flex flex-1 items-center gap-2 rounded-full border border-front-stepDoneBorder bg-front-stepBg px-4 py-2"
+              className="flex flex-1 items-center gap-2 rounded-2xl  bg-slate-100 px-4 py-2"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-brand-primary">
-                {step.id}
+              
+              <span className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-[#F8FAFD] bg-[#005CFF]">
+                {/* {step.id} */}
+                <Check size={18}/>
               </span>
-              <span className="text-xs font-medium text-front-text">
+              <span className="text-sm font-medium text-[#0D1B2A]">
                 {step.label}
               </span>
             </div>
@@ -43,12 +47,12 @@ export default function StepHeader({ currentStep }) {
         return (
           <div
             key={step.id}
-            className="flex flex-1 items-center gap-2 rounded-full bg-front-stepFuture px-4 py-2"
+            className="flex flex-1 items-center gap-2 rounded-2xl border bg-front-stepFuture px-4 py-2"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium text-front-textMuted">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium text-slate-300">
               {step.id}
             </span>
-            <span className="text-xs text-front-textMuted">{step.label}</span>
+            <span className="text-sm text-slate-300">{step.label}</span>
           </div>
         );
       })}

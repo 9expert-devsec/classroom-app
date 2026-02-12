@@ -121,7 +121,7 @@ export default function SignPage({ searchParams = {} }) {
   const food = preview?.food;
 
   return (
-    <div className="relative flex flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {(submitting || loadingPreview) && (
         <div className="absolute inset-0 z-[50] flex items-center justify-center bg-black/20 backdrop-blur-sm">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
@@ -130,117 +130,119 @@ export default function SignPage({ searchParams = {} }) {
 
       <StepHeader currentStep={3} />
 
-      <div className="px-6 py-6">
+      <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
         <h2 className="text-lg font-semibold">Step 3: เซ็นลายเซ็น</h2>
-        <p className="mt-2 text-sm text-front-textMuted">
+        <p className="mt-1 text-sm text-front-textMuted">
           กรุณาเซ็นชื่อของท่านในพื้นที่ด้านล่าง
         </p>
 
-        {/* --------- กล่องสรุปข้อมูลผู้เรียน & อาหาร --------- */}
-        <div className="mt-4 rounded-2xl border border-brand-border bg-white px-4 py-3 text-sm shadow-sm">
-          <h3 className="mb-2 text-[13px] font-semibold">
-            สรุปข้อมูลผู้เรียน &amp; เมนูอาหาร
-          </h3>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
+          {/* --------- กล่องสรุปข้อมูลผู้เรียน & อาหาร --------- */}
+          <div className="mt-2 rounded-2xl border border-brand-border bg-white px-4 py-3 text-sm shadow-sm">
+            <h3 className="mb-2 text-base font-semibold">
+              สรุปข้อมูลผู้เรียน &amp; เมนูอาหาร
+            </h3>
 
-          {/* ผู้เรียน */}
-          <div className="border-b border-dashed border-brand-border/60 pb-2 mb-2">
-            <div className="text-[12px] font-semibold text-front-textMuted">
-              ผู้เรียน
-            </div>
-            <div className="mt-1 text-[13px] leading-snug">
-              <div>
-                ชื่อผู้เรียน:{" "}
-                <span className="font-medium">
-                  {user?.studentName || user?.engName || "-"}
-                </span>
+            {/* ผู้เรียน */}
+            <div className="border-b border-dashed border-brand-border/60 pb-2 mb-2">
+              <div className="text-sm font-semibold text-front-textMuted">
+                ผู้เรียน
               </div>
-              <div>
-                องค์กร:{" "}
-                <span className="font-medium">{user?.company || "-"}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ข้อมูลคลาส */}
-          <div className="border-b border-dashed border-brand-border/60 pb-2 mb-2">
-            <div className="text-[12px] font-semibold text-front-textMuted">
-              ข้อมูลคลาส
-            </div>
-            {classInfo ? (
-              <div className="mt-1 text-[13px] leading-snug">
+              <div className="mt-1 text-sm leading-snug">
                 <div>
-                  วิชา:{" "}
+                  ชื่อผู้เรียน:{" "}
                   <span className="font-medium">
-                    {classInfo.courseName || "-"}
+                    {user?.studentName || user?.engName || "-"}
                   </span>
                 </div>
                 <div>
-                  วันนี้คือ:{" "}
-                  <span className="font-medium">
-                    {classInfo.dayLabel || ""}{" "}
-                    {classInfo.dayDate ? `(${classInfo.dayDate})` : ""}
-                  </span>
-                </div>
-                <div>
-                  ห้องอบรม:{" "}
-                  <span className="font-medium">{classInfo.room || "-"}</span>
+                  องค์กร:{" "}
+                  <span className="font-medium">{user?.company || "-"}</span>
                 </div>
               </div>
-            ) : (
-              <div className="mt-1 text-[13px] text-front-textMuted">
-                ยังไม่มีข้อมูลคลาสสำหรับการเช็คอินนี้
-              </div>
-            )}
-          </div>
-
-          {/* เมนูอาหารที่เลือก */}
-          <div>
-            <div className="text-[12px] font-semibold text-front-textMuted">
-              เมนูอาหารที่เลือก
             </div>
-            {food ? (
-              <div className="mt-1 text-[13px] leading-snug">
-                <div>
-                  ร้าน:{" "}
-                  <span className="font-medium">
-                    {food.restaurantName || "-"}
-                  </span>
-                </div>
-                <div>
-                  เมนู:{" "}
-                  <span className="font-medium">{food.menuName || "-"}</span>
-                </div>
-                {food.addons?.length > 0 && (
+
+            {/* ข้อมูลคลาส */}
+            <div className="border-b border-dashed border-brand-border/60 pb-2 mb-2">
+              <div className="text-sm font-semibold text-front-textMuted">
+                ข้อมูลคลาส
+              </div>
+              {classInfo ? (
+                <div className="mt-1 text-sm leading-snug">
                   <div>
-                    Add-on:{" "}
+                    วิชา:{" "}
                     <span className="font-medium">
-                      {food.addons.join(", ")}
+                      {classInfo.courseName || "-"}
                     </span>
                   </div>
-                )}
-                {food.drink && (
                   <div>
-                    เครื่องดื่ม:{" "}
-                    <span className="font-medium">{food.drink}</span>
+                    วันนี้คือ:{" "}
+                    <span className="font-medium">
+                      {classInfo.dayLabel || ""}{" "}
+                      {classInfo.dayDate ? `(${classInfo.dayDate})` : ""}
+                    </span>
                   </div>
-                )}
-                {food.note && (
                   <div>
-                    หมายเหตุ: <span className="font-medium">{food.note}</span>
+                    ห้องอบรม:{" "}
+                    <span className="font-medium">{classInfo.room || "-"}</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="mt-1 text-[13px] text-front-textMuted">
-                ยังไม่พบข้อมูลเมนูอาหารที่เลือกสำหรับวันนี้
-              </div>
-            )}
-          </div>
-        </div>
+                </div>
+              ) : (
+                <div className="mt-1 text-[13px] text-front-textMuted">
+                  ยังไม่มีข้อมูลคลาสสำหรับการเช็คอินนี้
+                </div>
+              )}
+            </div>
 
-        {/* พื้นที่เซ็นลายเซ็น */}
-        <div className="mt-4">
-          <SignaturePad onChange={handleSignatureChange} />
+            {/* เมนูอาหารที่เลือก */}
+            <div>
+              <div className="text-sm font-semibold text-front-textMuted">
+                เมนูอาหารที่เลือก
+              </div>
+              {food ? (
+                <div className="mt-1 text-sm leading-snug">
+                  <div>
+                    ร้าน:{" "}
+                    <span className="font-medium">
+                      {food.restaurantName || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    เมนู:{" "}
+                    <span className="font-medium">{food.menuName || "-"}</span>
+                  </div>
+                  {food.addons?.length > 0 && (
+                    <div>
+                      Add-on:{" "}
+                      <span className="font-medium">
+                        {food.addons.join(", ")}
+                      </span>
+                    </div>
+                  )}
+                  {food.drink && (
+                    <div>
+                      เครื่องดื่ม:{" "}
+                      <span className="font-medium">{food.drink}</span>
+                    </div>
+                  )}
+                  {food.note && (
+                    <div>
+                      หมายเหตุ: <span className="font-medium">{food.note}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-1 text-[13px] text-front-textMuted">
+                  ยังไม่พบข้อมูลเมนูอาหารที่เลือกสำหรับวันนี้
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* พื้นที่เซ็นลายเซ็น */}
+          <div className="mt-4">
+            <SignaturePad onChange={handleSignatureChange} />
+          </div>
         </div>
 
         {/* ปุ่ม Back & ยืนยัน */}
