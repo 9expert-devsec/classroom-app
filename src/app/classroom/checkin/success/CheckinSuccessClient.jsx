@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import StepHeader from "../StepHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import AnimatedCheck from "@/components/icons/check-success";
 
 function pick(sp, key) {
   const v = sp?.[key];
-  return Array.isArray(v) ? (v[0] || "") : (v || "");
+  return Array.isArray(v) ? v[0] || "" : v || "";
 }
 
 export default function CheckinSuccessPage({ searchParams = {} }) {
@@ -44,8 +45,11 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
       <StepHeader currentStep={4} />
 
       <div className="px-6 py-10 flex flex-col items-center text-center gap-6">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10">
+        {/* <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10">
           <span className="text-4xl text-green-500">✔</span>
+        </div> */}
+        <div className="p-6">
+          <AnimatedCheck size={140} className="mx-auto" />
         </div>
 
         <div>
@@ -53,15 +57,15 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
             เช็คอินสำเร็จ
           </h2>
 
-          <p className="mt-2 text-sm text-front-textMuted">{message}</p>
+          <p className="mt-2 text-base text-front-textMuted">{message}</p>
 
-          {sid && (
+          {/* {sid && (
             <p className="mt-1 text-[11px] text-front-textMuted">
               (รหัสผู้เรียน: {sid})
             </p>
-          )}
+          )} */}
 
-          <p className="mt-4 text-xs text-front-textMuted">
+          <p className="mt-4 text-sm text-front-textMuted">
             ระบบจะพากลับไปหน้าเช็คอินอัตโนมัติใน {countdown} วินาที...
           </p>
         </div>
