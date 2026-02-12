@@ -141,11 +141,11 @@ export default function CheckinClient({ searchParams = {} }) {
       <StepHeader currentStep={1} />
 
       <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
-        <h2 className="text-lg font-semibold">Step 1: ค้นหาชื่อ</h2>
+        <h2 className="text-lg font-semibold">Step 1 : ค้นหาชื่อ</h2>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4 shrink-0">
           <TextInput
-            placeholder="ค้นหาชื่อหรืออีเมล (เช่น Pir, Sungsuwan, gmail)"
+            placeholder="ค้นหาชื่อ.........."
             value={keyword}
             onChange={handleKeywordChange}
           />
@@ -158,7 +158,7 @@ export default function CheckinClient({ searchParams = {} }) {
         <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
           {keyword && !loading && results.length === 0 && (
             <p className="text-front-textMuted">
-              ไม่พบชื่อในรอบอบรมของวันนี้ (ตรวจสอบการสะกดชื่อหรืออีเมลอีกครั้ง)
+              ไม่พบชื่อในรอบอบรมของวันนี้ (ตรวจสอบการสะกดชื่ออีกครั้ง)
             </p>
           )}
 
