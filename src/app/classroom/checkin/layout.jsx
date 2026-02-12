@@ -1,4 +1,6 @@
 import localFont from "next/font/local";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 
 const lineSeedSansTH = localFont({
   src: [
@@ -30,18 +32,32 @@ const lineSeedSansTH = localFont({
 
 export default function CheckinLayout({ children }) {
   return (
-    <div className={`${lineSeedSansTH.className} h-screen bg-[#F8FAFD] text-front-text`}>
+    <div
+      className={`${lineSeedSansTH.className} h-screen bg-[#F8FAFD] text-front-text`}
+    >
       <div className="mx-auto flex h-screen max-w-4xl flex-col px-4 py-6">
-        <header className="mb-6 shrink-0">
-          <h1 className="text-2xl font-semibold">9Expert Classroom Check-in</h1>
-          <p className="text-sm text-front-textMuted">
-            กรุณาทำตามขั้นตอนเพื่อเช็คอินเข้าห้องเรียน
-          </p>
+        <header className="mb-6 shrink-0 flex flex-row items-center gap-3">
+          <Link
+              href="/classroom"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted"
+              aria-label="ย้อนกลับ"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+
+          <div>
+            <h1 className="text-2xl font-semibold">
+              9Expert Classroom Check-in
+            </h1>
+            <p className="text-sm text-front-textMuted">
+              กรุณาทำตามขั้นตอนเพื่อเช็คอินเข้าห้องเรียน
+            </p>
+          </div>
         </header>
 
         {/* ✅ เลื่อนเฉพาะ main */}
-        <main className="min-h-0 flex-1 overflow-hidden">
-          <div className="h-full min-h-0 rounded-3xl bg-front-surface shadow-card">
+        <main className="min-h-0 flex-1 overflow-hidden rounded-3xl shadow-md">
+          <div className="h-full min-h-0 rounded-3xl bg-front-surface ">
             {children}
           </div>
         </main>
