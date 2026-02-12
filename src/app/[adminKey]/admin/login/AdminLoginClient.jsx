@@ -3,6 +3,35 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import localFont from "next/font/local";
+
+const lineSeedSansTH = localFont({
+    src: [
+      {
+        // path: "../../../../public/fonts/LINESeedSansTH_W_Rg.woff2",
+        path: "../../../../../public/fonts/GoogleSans-Regular.ttf",
+        weight: "400",
+      },
+      {
+        // path: "../../../../public/fonts/LINESeedSansTH_W_Bd.woff2",
+        path: "../../../../../public/fonts/GoogleSans-Bold.ttf",
+        weight: "700",
+      },
+      // {
+      //   path: "../../../../public/fonts/LINESeedSansTH_W_XBd.woff2",
+      //   weight: "800",
+      // },
+      // {
+      //   path: "../../../../public/fonts/LINESeedSansTH_W_He.woff2",
+      //   weight: "900",
+      // },
+      // {
+      //   path: "../../../../public/fonts/LINESeedSansTH_W_Th.woff2",
+      //   weight: "200",
+      // },
+    ],
+    display: "swap",
+  });
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -35,6 +64,8 @@ export default function AdminLoginClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -63,7 +94,7 @@ export default function AdminLoginClient({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-admin-bg">
+    <div className={`${lineSeedSansTH.className} flex min-h-screen items-center justify-center bg-admin-bg`}>
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
         <h1 className="text-lg font-semibold">9Expert Admin Login</h1>
         <p className="mt-1 text-sm text-gray-500">
