@@ -613,252 +613,256 @@ export default function ClassroomDashboardClient({
     active === "classes" && loadingPart.cards && !data?.classCards?.length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Classroom Dashboard</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="text-sm text-admin-textMuted">
-              ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา{" "}
-              {computedRangeLabel}
-              {loading ? " • กำลังโหลด..." : ""}
-            </p>
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
+      <div className="shrink-0 min-h-0 flex flex-col gap-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold">Classroom Dashboard</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <p className="text-sm text-admin-textMuted">
+                ภาพรวม Class / ผู้เรียน / การเช็คอิน ในช่วงเวลา{" "}
+                {computedRangeLabel}
+                {loading ? " • กำลังโหลด..." : ""}
+              </p>
 
-            {lastUpdatedAt ? (
-              <span className="inline-flex items-center rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] text-admin-textMuted">
-                อัปเดตล่าสุด {fmtDateTimeTH(lastUpdatedAt)}
-              </span>
-            ) : null}
+              {lastUpdatedAt ? (
+                <span className="inline-flex items-center rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] text-admin-textMuted">
+                  อัปเดตล่าสุด {fmtDateTimeTH(lastUpdatedAt)}
+                </span>
+              ) : null}
 
-            {errorMsg ? (
-              <span className="inline-flex items-center rounded-full border border-brand-danger/30 bg-brand-danger/10 px-2 py-0.5 text-[11px] font-semibold text-brand-danger">
-                {errorMsg}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              loadedStudentsKeyRef.current = "";
-              refresh({ include: "cards,lists" });
-              refresh({ include: "cards,program", silent: true });
-              if (isStudentMode(active))
-                refresh({ include: "students", mode: active, silent: true });
-            }}
-            disabled={loading}
-            className={cx(
-              "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition",
-              loading
-                ? "border-admin-border bg-admin-surface text-admin-textMuted opacity-70"
-                : "border-admin-border bg-admin-surface text-admin-textMuted hover:bg-admin-surfaceMuted",
-            )}
-            title="Refresh ข้อมูล"
-          >
-            <RefreshCw
-              className={cx("h-4 w-4", loading ? "animate-spin" : "")}
-            />
-            Refresh
-          </button>
-
-          <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => handlePickRange(opt.key)}
-                className={cx(
-                  "px-3 py-1 rounded-full transition",
-                  currentRange === opt.key
-                    ? "bg-brand-primary text-white"
-                    : "text-admin-textMuted hover:bg-admin-surfaceMuted",
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showCustom ? (
-        <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-card">
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="block text-[11px] text-admin-textMuted mb-1">
-                วันที่เริ่ม
-              </label>
-              <input
-                type="date"
-                className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-              />
+              {errorMsg ? (
+                <span className="inline-flex items-center rounded-full border border-brand-danger/30 bg-brand-danger/10 px-2 py-0.5 text-[11px] font-semibold text-brand-danger">
+                  {errorMsg}
+                </span>
+              ) : null}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-[11px] text-admin-textMuted mb-1">
-                วันที่สิ้นสุด
-              </label>
-              <input
-                type="date"
-                className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-              />
-            </div>
-
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={applyCustom}
+              onClick={() => {
+                loadedStudentsKeyRef.current = "";
+                refresh({ include: "cards,lists" });
+                refresh({ include: "cards,program", silent: true });
+                if (isStudentMode(active))
+                  refresh({ include: "students", mode: active, silent: true });
+              }}
               disabled={loading}
               className={cx(
-                "rounded-lg px-4 py-2 text-sm font-semibold",
+                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition",
                 loading
-                  ? "bg-admin-surfaceMuted text-admin-textMuted opacity-70"
-                  : "bg-brand-primary text-white hover:opacity-95",
+                  ? "border-admin-border bg-admin-surface text-admin-textMuted opacity-70"
+                  : "border-admin-border bg-admin-surface text-admin-textMuted hover:bg-admin-surfaceMuted",
               )}
+              title="Refresh ข้อมูล"
             >
-              ใช้ช่วงวันที่นี้
+              <RefreshCw
+                className={cx("h-4 w-4", loading ? "animate-spin" : "")}
+              />
+              Refresh
             </button>
+
+            <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
+              {RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => handlePickRange(opt.key)}
+                  className={cx(
+                    "px-3 py-1 rounded-full transition",
+                    currentRange === opt.key
+                      ? "bg-brand-primary text-white"
+                      : "text-admin-textMuted hover:bg-admin-surfaceMuted",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
-
-          <p className="mt-2 text-[11px] text-admin-textMuted">
-            * เลือกช่วงวันแล้วกด “ใช้ช่วงวันที่นี้” เพื่อโหลดข้อมูล
-          </p>
         </div>
-      ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          active={active === "classes"}
-          label="จำนวนคลาสในช่วงนี้"
-          value={totals.totalClasses}
-          sub="คลาสที่ทับซ้อนช่วงเวลา"
-          onClick={() => setActive("classes")}
-        />
-        <StatCard
-          active={active === "students"}
-          label="จำนวนนักเรียน"
-          value={totals.totalStudents}
-          sub="รวมทุกคลาสในช่วงที่เลือก"
-          onClick={() => setActive("students")}
-        />
-        <StatCard
-          active={active === "checkins"}
-          label="จำนวนเช็คอิน"
-          value={totals.totalCheckins}
-          sub="นับจาก collection checkins"
-          onClick={() => setActive("checkins")}
-        />
-        <StatCard
-          active={active === "late"}
-          label="เช็คอินสาย"
-          value={totals.lateCount}
-          sub="ตรวจจาก isLate"
-          onClick={() => setActive("late")}
-          tone="danger"
-        />
-        <StatCard
-          active={active === "absent"}
-          label="ไม่มาเช็คอิน"
-          value={totals.absentCount}
-          sub="นักเรียนที่ไม่มี checkin"
-          onClick={() => setActive("absent")}
-        />
+        {showCustom ? (
+          <div className="rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-card">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-[11px] text-admin-textMuted mb-1">
+                  วันที่เริ่ม
+                </label>
+                <input
+                  type="date"
+                  className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-admin-textMuted mb-1">
+                  วันที่สิ้นสุด
+                </label>
+                <input
+                  type="date"
+                  className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={applyCustom}
+                disabled={loading}
+                className={cx(
+                  "rounded-lg px-4 py-2 text-sm font-semibold",
+                  loading
+                    ? "bg-admin-surfaceMuted text-admin-textMuted opacity-70"
+                    : "bg-brand-primary text-white hover:opacity-95",
+                )}
+              >
+                ใช้ช่วงวันที่นี้
+              </button>
+            </div>
+
+            <p className="mt-2 text-[11px] text-admin-textMuted">
+              * เลือกช่วงวันแล้วกด “ใช้ช่วงวันที่นี้” เพื่อโหลดข้อมูล
+            </p>
+          </div>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard
+            active={active === "classes"}
+            label="จำนวนคลาสในช่วงนี้"
+            value={totals.totalClasses}
+            sub="คลาสที่ทับซ้อนช่วงเวลา"
+            onClick={() => setActive("classes")}
+          />
+          <StatCard
+            active={active === "students"}
+            label="จำนวนนักเรียน"
+            value={totals.totalStudents}
+            sub="รวมทุกคลาสในช่วงที่เลือก"
+            onClick={() => setActive("students")}
+          />
+          <StatCard
+            active={active === "checkins"}
+            label="จำนวนเช็คอิน"
+            value={totals.totalCheckins}
+            sub="นับจาก collection checkins"
+            onClick={() => setActive("checkins")}
+          />
+          <StatCard
+            active={active === "late"}
+            label="เช็คอินสาย"
+            value={totals.lateCount}
+            sub="ตรวจจาก isLate"
+            onClick={() => setActive("late")}
+            tone="danger"
+          />
+          <StatCard
+            active={active === "absent"}
+            label="ไม่มาเช็คอิน"
+            value={totals.absentCount}
+            sub="นักเรียนที่ไม่มี checkin"
+            onClick={() => setActive("absent")}
+          />
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
-        <div className="rounded-2xl bg-admin-surface p-5 shadow-card">
-          <div className="flex items-center justify-between">
+      <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[2fr,1fr] p-1">
+        <div className="flex h-full min-h-0 flex-col rounded-2xl bg-admin-surface p-5 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between shrink-0">
             <h2 className="text-sm font-semibold">ภาพรวม</h2>
             <span className="text-[11px] text-admin-textMuted">
               โหมด: {ModeLabel(active)}
             </span>
           </div>
 
-          {active === "classes" ? (
-            showCardsSkeleton ? (
-              <SkeletonClassCards />
-            ) : data?.classCards?.length ? (
-              <ul className="mt-4 space-y-3">
-                {data.classCards.map((c) => (
-                  /* ✅ ของเดิมคุณ */
-                  <li
-                    key={c.id}
-                    className="rounded-2xl border border-admin-border bg-admin-surface p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <IconBubble
-                          icon={c.icon}
-                          programIconUrl={c.programIconUrl}
-                          classCode={c.courseCode}
-                          title={c.title}
-                        />
-                        <div className="flex flex-col">
-                          <div className="font-semibold">
-                            {c.courseCode ? `${c.courseCode} – ` : ""}
-                            {c.title}
-                          </div>
-                          <div className="text-[11px] text-admin-textMuted">
-                            ห้อง {c.room}
-                            {c.programName
-                              ? ` • Program: ${c.programName}`
-                              : ""}
+          <div className="mt-2 flex-1 min-h-0 overflow-auto">
+            {active === "classes" ? (
+              showCardsSkeleton ? (
+                <SkeletonClassCards />
+              ) : data?.classCards?.length ? (
+                <ul className="space-y-3">
+                  {data.classCards.map((c) => (
+                    /* ✅ ของเดิมคุณ */
+                    <li
+                      key={c.id}
+                      className="rounded-2xl border border-admin-border bg-admin-surface p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <IconBubble
+                            icon={c.icon}
+                            programIconUrl={c.programIconUrl}
+                            classCode={c.courseCode}
+                            title={c.title}
+                          />
+                          <div className="flex flex-col">
+                            <div className="font-semibold">
+                              {c.courseCode ? `${c.courseCode} – ` : ""}
+                              {c.title}
+                            </div>
+                            <div className="text-[11px] text-admin-textMuted">
+                              ห้อง {c.room}
+                              {c.programName
+                                ? ` • Program: ${c.programName}`
+                                : ""}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex gap-3">
-                        <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
-                          <div className="text-[11px] text-admin-textMuted">
-                            นักเรียน
+                        <div className="flex gap-3">
+                          <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
+                            <div className="text-[11px] text-admin-textMuted">
+                              นักเรียน
+                            </div>
+                            <div className="text-lg font-semibold">
+                              {c.students}
+                            </div>
                           </div>
-                          <div className="text-lg font-semibold">
-                            {c.students}
+                          <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
+                            <div className="text-[11px] text-admin-textMuted">
+                              เช็คอิน
+                            </div>
+                            <div className="text-lg font-semibold">
+                              {c.checkins}
+                            </div>
                           </div>
-                        </div>
-                        <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
-                          <div className="text-[11px] text-admin-textMuted">
-                            เช็คอิน
-                          </div>
-                          <div className="text-lg font-semibold">
-                            {c.checkins}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
-                          <div className="text-[11px] text-admin-textMuted">
-                            สาย
-                          </div>
-                          <div className="text-lg font-semibold text-brand-danger">
-                            {c.late}
+                          <div className="rounded-xl border border-admin-border px-3 py-2 text-center min-w-[90px]">
+                            <div className="text-[11px] text-admin-textMuted">
+                              สาย
+                            </div>
+                            <div className="text-lg font-semibold text-brand-danger">
+                              {c.late}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-admin-textMuted">
+                  ยังไม่มีคลาสในช่วงเวลาที่เลือก
+                </p>
+              )
+            ) : showStudentSkeleton ? (
+              <SkeletonStudentGroups />
             ) : (
-              <p className="mt-4 text-sm text-admin-textMuted">
-                ยังไม่มีคลาสในช่วงเวลาที่เลือก
-              </p>
-            )
-          ) : showStudentSkeleton ? (
-            <SkeletonStudentGroups />
-          ) : (
-            <GroupedStudentTable
-              groups={data?.studentGroups || []}
-              mode={active}
-            />
-          )}
+              <GroupedStudentTable
+                groups={data?.studentGroups || []}
+                mode={active}
+              />
+            )}
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-2xl bg-admin-surface p-5 shadow-card">
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <div className="rounded-2xl bg-admin-surface p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">
                 เช็คอินเร็วที่สุดของวัน (TOP 3)
@@ -898,50 +902,54 @@ export default function ClassroomDashboardClient({
             )}
           </div>
 
-          <div className="rounded-2xl bg-admin-surface p-5 shadow-card">
-            <h2 className="text-sm font-semibold">เช็คอินล่าสุด</h2>
-            <p className="text-[11px] text-admin-textMuted">
-              แสดง 10 รายการล่าสุด
-            </p>
-
-            {loadingPart.lists ? (
-              <SkeletonAsideList count={6} />
-            ) : !data?.latest10?.length ? (
-              <p className="mt-4 text-sm text-admin-textMuted">
-                ยังไม่มีการเช็คอิน
+          <div className="flex h-full min-h-0 flex-col rounded-2xl bg-admin-surface p-5 shadow-sm overflow-hidden">
+            <div className="shrink-0">
+              <h2 className="text-sm font-semibold">เช็คอินล่าสุด</h2>
+              <p className="text-[11px] text-admin-textMuted">
+                แสดง 10 รายการล่าสุด
               </p>
-            ) : (
-              <ul className="mt-4 space-y-2 max-h-72 overflow-y-auto text-sm">
-                {data.latest10.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex items-center justify-between rounded-xl border border-admin-border px-3 py-2"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-[11px] text-admin-textMuted">
-                        {c.classLabel}
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[11px] text-admin-textMuted">
-                        {fmtTime(c.time)}
+            </div>
+
+            <div className="mt-4 flex-1 min-h-0 overflow-auto">
+              {loadingPart.lists ? (
+                <SkeletonAsideList count={6} />
+              ) : !data?.latest10?.length ? (
+                <p className="mt-4 text-sm text-admin-textMuted">
+                  ยังไม่มีการเช็คอิน
+                </p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {data.latest10.map((c) => (
+                    <li
+                      key={c.id}
+                      className="flex items-center justify-between rounded-xl border border-admin-border px-3 py-2"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{c.name}</span>
+                        <span className="text-[11px] text-admin-textMuted">
+                          {c.classLabel}
+                        </span>
                       </div>
-                      <span
-                        className={cx(
-                          "inline-block mt-1 rounded-full px-2 py-0.5 text-[11px]",
-                          c.isLate
-                            ? "bg-brand-danger/10 text-brand-danger"
-                            : "bg-brand-success/10 text-brand-success",
-                        )}
-                      >
-                        {c.isLate ? "สาย" : "ปกติ"}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                      <div className="text-right">
+                        <div className="text-[11px] text-admin-textMuted">
+                          {fmtTime(c.time)}
+                        </div>
+                        <span
+                          className={cx(
+                            "inline-block mt-1 rounded-full px-2 py-0.5 text-[11px]",
+                            c.isLate
+                              ? "bg-brand-danger/10 text-brand-danger"
+                              : "bg-brand-success/10 text-brand-success",
+                          )}
+                        >
+                          {c.isLate ? "สาย" : "ปกติ"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </div>
