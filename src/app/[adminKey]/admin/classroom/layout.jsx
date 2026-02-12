@@ -18,6 +18,7 @@ import {
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
 import { useMemo, useState } from "react";
+import localFont from "next/font/local";
 
 /** โครงสร้างเมนู (ใช้ path แบบ relative ภายใต้ /admin) */
 const NAV = [
@@ -237,6 +238,33 @@ function SectionItem({ item, adminBase }) {
   );
 }
 
+const lineSeedSansTH = localFont({
+  src: [
+    {
+      // path: "../../../../public/fonts/LINESeedSansTH_W_Rg.woff2",
+      path: "../../../../../public/fonts/GoogleSans-Regular.ttf",
+      weight: "400",
+    },
+    {
+      // path: "../../../../public/fonts/LINESeedSansTH_W_Bd.woff2",
+      path: "../../../../../public/fonts/GoogleSans-Bold.ttf",
+      weight: "700",
+    },
+    // {
+    //   path: "../../../../public/fonts/LINESeedSansTH_W_XBd.woff2",
+    //   weight: "800",
+    // },
+    // {
+    //   path: "../../../../public/fonts/LINESeedSansTH_W_He.woff2",
+    //   weight: "900",
+    // },
+    // {
+    //   path: "../../../../public/fonts/LINESeedSansTH_W_Th.woff2",
+    //   weight: "200",
+    // },
+  ],
+  display: "swap",
+});
 export default function AdminClassroomLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -256,7 +284,7 @@ export default function AdminClassroomLayout({ children }) {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-admin-bg text-admin-text">
+    <div className={`${lineSeedSansTH.className} flex h-dvh overflow-hidden bg-admin-bg text-admin-text`}>
       <aside className="flex w-72 flex-col bg-admin-sidebarBg text-admin-sidebarText">
         {/* top logo / title */}
         <div className="flex items-center gap-3 px-5 py-4">
