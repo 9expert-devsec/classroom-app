@@ -14,6 +14,8 @@ import {
   ChevronDown,
   Soup,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -124,7 +126,7 @@ function getAdminBaseFromPathname(pathname) {
   return `/${adminKey}/admin`;
 }
 
-function SectionItem({ item, adminBase }) {
+function SectionItem({ item, adminBase, collapsed }) {
   const pathname = usePathname();
 
   const hasChildren = item.children && item.children.length > 0;
@@ -144,27 +146,31 @@ function SectionItem({ item, adminBase }) {
       <div className="mb-2">
         <Link
           href={itemHref}
+          title={item.label}
           className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
-          ${
-            isActiveSection
-              ? "bg-[#66ccff] text-admin-text shadow-sm"
-              : "text-admin-sidebarText hover:bg-white/10"
-          }`}
+  ${collapsed ? "justify-center" : ""}
+  ${
+    isActiveSection
+      ? "bg-[#66ccff] text-admin-text shadow-sm"
+      : "text-admin-sidebarText hover:bg-white/10"
+  }`}
         >
           {Icon && (
             <div
               className={`flex h-7 w-7 items-center justify-center rounded-xl border text-xs
-              ${
-                isActiveSection
-                  ? "border-admin-border/60 bg-admin-bg"
-                  : "border-white/10 bg-admin-sidebarBg"
-              }`}
+      ${
+        isActiveSection
+          ? "border-admin-border/60 bg-admin-bg"
+          : "border-white/10 bg-admin-sidebarBg"
+      }`}
             >
               <Icon className="h-4 w-4" />
             </div>
           )}
 
-          <span className="flex-1 truncate text-left">{item.label}</span>
+          {!collapsed && (
+            <span className="flex-1 truncate text-left">{item.label}</span>
+          )}
         </Link>
       </div>
     );
@@ -175,37 +181,46 @@ function SectionItem({ item, adminBase }) {
     <div className="mb-2">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        title={item.label}
+        onClick={() => {
+          if (collapsed) return; // ตอนย่อ ไม่ต้องกาง submenu
+          setOpen((o) => !o);
+        }}
         className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
-        ${
-          isActiveSection
-            ? "bg-[#66ccff] text-admin-text shadow-sm"
-            : "text-admin-sidebarText hover:bg-white/10"
-        }`}
+  ${collapsed ? "justify-center" : ""}
+  ${
+    isActiveSection
+      ? "bg-[#66ccff] text-admin-text shadow-sm"
+      : "text-admin-sidebarText hover:bg-white/10"
+  }`}
       >
         {Icon && (
           <div
             className={`flex h-7 w-7 items-center justify-center rounded-xl border text-xs
-            ${
-              isActiveSection
-                ? "border-admin-border/60 bg-admin-bg"
-                : "border-white/10 bg-admin-sidebarBg"
-            }`}
+      ${
+        isActiveSection
+          ? "border-admin-border/60 bg-admin-bg"
+          : "border-white/10 bg-admin-sidebarBg"
+      }`}
           >
             <Icon className="h-4 w-4" />
           </div>
         )}
 
-        <span className="flex-1 truncate text-left">{item.label}</span>
+        {!collapsed && (
+          <span className="flex-1 truncate text-left">{item.label}</span>
+        )}
 
-        <ChevronDown
-          className={`h-4 w-4 transition-transform ${
-            open ? "rotate-180" : "rotate-0"
-          }`}
-        />
+        {!collapsed && (
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${
+              open ? "rotate-180" : "rotate-0"
+            }`}
+          />
+        )}
       </button>
 
-      {open && (
+      {!collapsed && open && (
         <div className="mt-2 pl-6">
           <div className="relative">
             <div className="absolute left-[10px] top-0 bottom-0 w-px bg-white/15" />
@@ -269,6 +284,8 @@ export default function AdminClassroomLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const [collapsed, setCollapsed] = useState(false);
+
   const adminBase = useMemo(
     () => getAdminBaseFromPathname(pathname),
     [pathname],
@@ -284,34 +301,108 @@ export default function AdminClassroomLayout({ children }) {
   }
 
   return (
-    <div className={`${lineSeedSansTH.className} flex h-dvh overflow-hidden bg-admin-bg text-admin-text`}>
-      <aside className="flex w-72 flex-col bg-admin-sidebarBg text-admin-sidebarText">
+    <div
+      className={`${lineSeedSansTH.className} flex h-dvh overflow-hidden bg-admin-bg text-admin-text`}
+    >
+      <aside
+        className={[
+          "flex flex-col bg-admin-sidebarBg text-admin-sidebarText transition-all duration-200",
+          collapsed ? "w-[86px]" : "w-72",
+        ].join(" ")}
+      >
         {/* top logo / title */}
         <div className="flex items-center gap-3 px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-sm font-semibold">
-            <img src="/logo-9expert-app.png" alt="9Expert Logo" className="h-6 w-6" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sm font-semibold">
+            <img
+              src="/logo-9expert-app.png"
+              alt="9Expert Logo"
+              className="h-6 w-6"
+            />
           </div>
-          <div className="text-base font-semibold">9Expert Classroom Operations</div>
+
+          {!collapsed && (
+            <div className="text-base font-semibold truncate">
+              9Expert Classroom <br /> Operations
+            </div>
+          )}
         </div>
 
         {/* nav */}
-        <div className="mx-3 flex-1 rounded-3xl bg-white/5 p-3">
-          <nav className="space-y-1 text-sm">
+        <div
+          className={[
+            collapsed ? "mx-2 p-2" : "mx-3 p-3",
+            "flex-1 rounded-3xl bg-white/5 flex flex-col min-h-0",
+          ].join(" ")}
+        >
+          <nav
+            className={[
+              collapsed ? "space-y-1" : "space-y-1 text-sm",
+              "min-h-0",
+            ].join(" ")}
+          >
             {NAV.map((item) => (
-              <SectionItem key={item.label} item={item} adminBase={adminBase} />
+              <SectionItem
+                key={item.label}
+                item={item}
+                adminBase={adminBase}
+                collapsed={collapsed}
+              />
             ))}
           </nav>
+
+          {/* Collapse button (bottom of same box) */}
+          <div className="mt-auto pt-3">
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              className={[
+                "flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium hover:bg-white/10",
+                collapsed ? "justify-center" : "justify-start",
+              ].join(" ")}
+              aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
+              title={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+              {!collapsed && <span>{collapsed ? "ขยายเมนู" : "ย่อเมนู"}</span>}
+            </button>
+          </div>
         </div>
 
         {/* ปุ่ม Logout ด้านล่าง sidebar */}
-        <div className="mx-3 mb-4 mt-3">
+        <div className={collapsed ? "mx-2 mb-4 mt-3" : "mx-3 mb-4 mt-3"}>
+          {/* <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className={[
+              "flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium hover:bg-white/10",
+              collapsed ? "justify-center" : "justify-start",
+            ].join(" ")}
+            aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
+            title={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
+          >
+            {collapsed ? (
+              <PanelLeftOpen className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+            {!collapsed && <span>{collapsed ? "ขยายเมนู" : "ย่อเมนู"}</span>}
+          </button> */}
+
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/90 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-500"
+            className={[
+              "flex w-full items-center gap-2 rounded-2xl bg-red-500/90 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-500",
+              collapsed ? "justify-center" : "justify-center",
+            ].join(" ")}
+            title="ออกจากระบบ"
           >
             <LogOut className="h-4 w-4" />
-            <span>ออกจากระบบ</span>
+            {!collapsed && <span>ออกจากระบบ</span>}
           </button>
         </div>
       </aside>
