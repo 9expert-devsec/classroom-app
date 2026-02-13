@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import SignaturePad from "@/components/shared/SignaturePad";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -44,6 +52,9 @@ export default function ReceiveCustomerPage() {
   const [saving, setSaving] = useState(false);
 
   const [sigDataUrl, setSigDataUrl] = useState("");
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
 
   const hintText = useMemo(() => {
     return todayYMD
@@ -130,6 +141,52 @@ export default function ReceiveCustomerPage() {
     }
   }
 
+  function openConfirmDialog() {
+    if (!selected) return;
+    setErr("");
+
+    if (!sigDataUrl) {
+      setErr("กรุณาเซ็นชื่อในกรอบด้านบน");
+      return;
+    }
+
+    setConfirmOpen(true);
+  }
+
+  async function doConfirmReceive() {
+    if (!selected) return;
+
+    setSaving(true);
+    setErr("");
+
+    try {
+      const res = await fetch("/api/classroom/receive/customer/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          classId: selected.classId,
+          docId: selected.docIdNormalized || selected.docId,
+          receiverIndex: Number(selected.receiverIndex || 0),
+          signatureDataUrl: sigDataUrl,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        setErr(data?.error || "บันทึกไม่สำเร็จ");
+        return;
+      }
+
+      // ปิด confirm แล้วเปิด success
+      setConfirmOpen(false);
+      setSuccessOpen(true);
+    } catch (e) {
+      setErr("เกิดข้อผิดพลาดขณะบันทึก");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const hasSearched = useMemo(() => {
     // ถือว่า searched เมื่อมี todayYMD หรือ loading/err หลังจากกดค้นหา
     return !!todayYMD || loading || !!err || items.length > 0 || !!selected;
@@ -203,7 +260,7 @@ export default function ReceiveCustomerPage() {
         {selected ? (
           <div className="space-y-3">
             <div
-            className="w-full text-left rounded-2xl border p-4 border-brand-primary bg-brand-primary/5"
+              className="w-full text-left rounded-2xl border p-4 border-brand-primary bg-brand-primary/5"
               // className={cx(
               //   "w-full text-left rounded-2xl border p-4",
               //   "border-brand-primary bg-brand-primary/5",
@@ -405,7 +462,7 @@ export default function ReceiveCustomerPage() {
             <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
-                onClick={confirmReceive}
+                onClick={openConfirmDialog}
                 disabled={saving}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-600/90 disabled:opacity-60"
               >
@@ -433,6 +490,64 @@ export default function ReceiveCustomerPage() {
         Notes: หน้านี้จะแสดงเฉพาะ “รอบอบรมวันนี้” และ
         “ผู้ที่เช็คอินแล้วในวันนี้”
       </div>
+
+            {/* Confirm Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>ยืนยันการรับเอกสาร</DialogTitle>
+            <DialogDescription>
+              ยืนยันการรับเอกสาร และบันทึกลายเซ็นใช่หรือไม่?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(false)}
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-admin-border bg-white px-4 text-sm font-medium text-admin-text hover:bg-admin-surfaceMuted"
+              disabled={saving}
+            >
+              ยกเลิก
+            </button>
+
+            <button
+              type="button"
+              onClick={doConfirmReceive}
+              disabled={saving}
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-600/90 disabled:opacity-60"
+            >
+              {saving ? "กำลังบันทึก..." : "ตกลง"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Dialog */}
+      <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>บันทึกสำเร็จ</DialogTitle>
+            <DialogDescription>
+              บันทึกการรับเอกสารเรียบร้อยแล้ว
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => {
+                setSuccessOpen(false);
+                window.location.reload();
+              }}
+              className="inline-flex h-10 items-center justify-center rounded-xl bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary/90"
+            >
+              ปิด
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
