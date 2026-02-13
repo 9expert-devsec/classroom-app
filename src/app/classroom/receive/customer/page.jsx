@@ -203,10 +203,11 @@ export default function ReceiveCustomerPage() {
         {selected ? (
           <div className="space-y-3">
             <div
-              className={cx(
-                "w-full text-left rounded-2xl border p-4",
-                "border-brand-primary bg-brand-primary/5",
-              )}
+            className="w-full text-left rounded-2xl border p-4 border-brand-primary bg-brand-primary/5"
+              // className={cx(
+              //   "w-full text-left rounded-2xl border p-4",
+              //   "border-brand-primary bg-brand-primary/5",
+              // )}
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -295,7 +296,7 @@ export default function ReceiveCustomerPage() {
                       }}
                       className={cx(
                         "w-full text-left rounded-2xl border p-4 transition",
-                        "border-admin-border bg-white hover:bg-admin-surfaceMuted/40",
+                        "border-[#48B0FF] bg-white hover:bg-admin-surfaceMuted/40",
                         signed ? "opacity-90" : "",
                       )}
                     >
@@ -317,7 +318,7 @@ export default function ReceiveCustomerPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 rounded-2xl bg-admin-surface p-3 text-sm text-admin-text">
+                      <div className="mt-3 rounded-2xl bg-[#48B0FF]/20 p-3 text-sm text-admin-text">
                         <div className="font-medium">
                           Class: {it.classInfo?.title || "-"}
                         </div>

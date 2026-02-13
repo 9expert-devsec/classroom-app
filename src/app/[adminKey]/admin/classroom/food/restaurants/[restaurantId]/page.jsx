@@ -21,8 +21,9 @@ function Modal({ open, title, children, onClose }) {
         onClick={onClose}
         aria-label="close overlay"
       />
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white p-4 shadow-2xl">
-        <div className="mb-3 flex items-center justify-between">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white p-4 shadow-2xl max-h-[calc(100svh-2rem)] flex flex-col">
+        <div className="p-4 pb-3 border-b border-admin-border/60">
+        <div className="flex items-center justify-between">
           <div className="text-base font-semibold text-admin-text">{title}</div>
           <button
             type="button"
@@ -33,7 +34,11 @@ function Modal({ open, title, children, onClose }) {
             ✕
           </button>
         </div>
-        {children}
+        </div>
+        
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 overscroll-contain">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -734,13 +739,15 @@ export default function RestaurantDetailPage({ params }) {
 
   /* ---------------- render ---------------- */
   return (
-    <div className="flex h-[calc(100vh-64px)] min-h-0 flex-col gap-6">
+    <div className="flex h-[calc(100svh-64px)] min-h-0 flex-col gap-6">
       {/* Top bar */}
       <div className="flex items-start justify-between gap-3">
         <div>
           <button
             type="button"
-            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/food/restaurants")}
+            onClick={() =>
+              router.push("/a1exqwvCqTXP7s0/admin/classroom/food/restaurants")
+            }
             className="text-xs text-admin-textMuted hover:underline"
           >
             ← กลับไปร้านทั้งหมด
@@ -768,9 +775,9 @@ export default function RestaurantDetailPage({ params }) {
       </div>
 
       {/* TOP: Set + Menu */}
-      <div className="grid flex-1 min-h-0 gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <div className="grid flex-1 min-h-0 gap-6 lg:grid-cols-2 lg:grid-rows-2">
         {/* LEFT: MENU SET */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col">
+        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">MENU SET</h2>
             <div className="flex items-center gap-2">
@@ -789,7 +796,7 @@ export default function RestaurantDetailPage({ params }) {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
             {sets.map((s) => {
               const menuNames =
                 (s.menuIds || [])
@@ -846,7 +853,7 @@ export default function RestaurantDetailPage({ params }) {
         </div>
 
         {/* RIGHT: MENU LIST */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col">
+        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-base font-semibold">MENU LIST</h2>
 
@@ -923,12 +930,9 @@ export default function RestaurantDetailPage({ params }) {
             )}
           </div>
         </div>
-      </div>
 
-      {/* BOTTOM: Add-on + Drink */}
-      <div className="grid min-h-0 gap-6 lg:grid-cols-2">
         {/* ADD-ON */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col">
+        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold">ADD-ON</h2>
@@ -959,7 +963,7 @@ export default function RestaurantDetailPage({ params }) {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
             {filteredAddons.map((a) => (
               <div
                 key={a._id}
@@ -1025,7 +1029,7 @@ export default function RestaurantDetailPage({ params }) {
         </div>
 
         {/* DRINK */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col">
+        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="text-base font-semibold">DRINK</h2>
@@ -1056,7 +1060,7 @@ export default function RestaurantDetailPage({ params }) {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
             {filteredDrinks.map((d) => (
               <div
                 key={d._id}
