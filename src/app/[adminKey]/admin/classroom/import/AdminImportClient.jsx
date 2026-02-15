@@ -140,55 +140,59 @@ export default function ImportPage({ searchParams = {} }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="text-2xl font-semibold">นำเข้ารายชื่อนักเรียน (CSV)</h1>
+    <div className="mx-auto max-w-3xl h-full min-h-0  flex flex-col overflow-hidden">
+      <div className="shrink-0">
+        <h1 className="text-2xl font-semibold">นำเข้ารายชื่อนักเรียน (CSV)</h1>
 
-      <p className="mt-2 text-front-textMuted">
-        เลือก Class ที่ต้องการ และอัปโหลดไฟล์ CSV ตามรูปแบบที่ระบบกำหนด
-      </p>
+        <p className="mt-2 text-front-textMuted">
+          เลือก Class ที่ต้องการ และอัปโหลดไฟล์ CSV ตามรูปแบบที่ระบบกำหนด
+        </p>
 
-      {/* เลือก Class */}
-      <div className="mt-4">
-        <label className="block text-sm">
-          <span className="text-admin-text">เลือก Class ที่ต้องการนำเข้า</span>
-          <select
-            className="mt-1 w-full rounded-lg border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-            value={classId}
-            onChange={(e) => setClassId(e.target.value)}
-          >
-            <option value="">-- กรุณาเลือก Class --</option>
-            {classes.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.title} (
-                {c.date
-                  ? new Date(c.date).toLocaleDateString("th-TH", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      timeZone: "Asia/Bangkok",
-                    })
-                  : "-"}
-                )
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        {/* เลือก Class */}
+        <div className="mt-4">
+          <label className="block text-sm">
+            <span className="text-admin-text">
+              เลือก Class ที่ต้องการนำเข้า
+            </span>
+            <select
+              className="mt-1 w-full rounded-lg border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+            >
+              <option value="">-- กรุณาเลือก Class --</option>
+              {classes.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.title} (
+                  {c.date
+                    ? new Date(c.date).toLocaleDateString("th-TH", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                        timeZone: "Asia/Bangkok",
+                      })
+                    : "-"}
+                  )
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
-      <a
-        href="/templates/student-template-example.csv"
-        download
-        className="mt-3 inline-block text-brand-primary underline text-sm"
-      >
-        ดาวน์โหลด CSV Template
-      </a>
+        <a
+          href="/templates/student-template-example.csv"
+          download
+          className="mt-3 inline-block text-brand-primary underline text-sm"
+        >
+          ดาวน์โหลด CSV Template
+        </a>
 
-      <div className="mt-6">
-        <UploadBox onParsed={setCsvData} />
+        <div className="mt-4">
+          <UploadBox onParsed={setCsvData} />
+        </div>
       </div>
 
       {csvData && (
-        <div className="mt-6 border rounded-xl bg-front-bgSoft p-4 shadow">
+        <div className="mt-4 border rounded-xl bg-white p-4 shadow flex flex-col flex-1 min-h-0 overflow-hidden gap-2">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold">พรีวิวข้อมูล</h2>
@@ -213,15 +217,24 @@ export default function ImportPage({ searchParams = {} }) {
             </div>
           </div>
 
-          <div className="mt-3 max-h-64 overflow-y-auto">
+          <div className="mt-3 flex-1 min-h-0 overflow-y-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-1 text-left">name</th>
-                  <th className="py-1 text-left">company</th>
-                  <th className="py-1 text-left">paymentRef</th>
-                  <th className="py-1 text-left">receiveType</th>
-                  <th className="py-1 text-left">receiveDate</th>
+                  {[
+                    "name",
+                    "company",
+                    "paymentRef",
+                    "receiveType",
+                    "receiveDate",
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="sticky top-0 z-10 bg-[#0D1B2A] p-2 text-left text-xs font-semibold text-white border-b"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
 
@@ -236,7 +249,7 @@ export default function ImportPage({ searchParams = {} }) {
                         missing ? "แถวนี้ชื่อว่าง จะถูกข้ามตอน import" : ""
                       }
                     >
-                      <td className="py-1">
+                      <td className="p-2">
                         <div className="flex items-center gap-2">
                           <span>{row.name || "-"}</span>
                           {missing && (
@@ -246,10 +259,10 @@ export default function ImportPage({ searchParams = {} }) {
                           )}
                         </div>
                       </td>
-                      <td className="py-1">{row.company || "-"}</td>
-                      <td className="py-1">{row.paymentRef || "-"}</td>
-                      <td className="py-1">{row.receiveType || "-"}</td>
-                      <td className="py-1">{row.receiveDate || "-"}</td>
+                      <td className="p-2">{row.company || "-"}</td>
+                      <td className="p-2">{row.paymentRef || "-"}</td>
+                      <td className="p-2">{row.receiveType || "-"}</td>
+                      <td className="p-2">{row.receiveDate || "-"}</td>
                     </tr>
                   );
                 })}
