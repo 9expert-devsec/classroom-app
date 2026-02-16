@@ -484,7 +484,7 @@ export default function FromScheduleClient() {
         : "";
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">
@@ -539,7 +539,7 @@ export default function FromScheduleClient() {
       </div>
 
       {/* ส่วนค้นหา + filter */}
-      <div className="rounded-2xl bg-admin-surface p-4 shadow-card mb-2">
+      <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
         <div className="flex flex-wrap gap-3 items-center text-xs sm:text-sm">
           <div className="flex-1 min-w-[220px]">
             <label className="block text-admin-textMuted mb-1">
@@ -591,80 +591,80 @@ export default function FromScheduleClient() {
         </div>
       </div>
 
-      <div className="rounded-2xl bg-admin-surface p-4 shadow-card relative">
-        <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[240px]">
-          <table className="min-w-full text-xs sm:text-sm">
-            <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
-              <tr>
-                <th className="px-3 py-2 text-left text-sm">Course</th>
-                <th className="px-3 py-2 text-left text-sm">วัน/เวลาเริ่ม</th>
-                <th className="px-3 py-2 text-center text-sm">สร้าง Class</th>
-              </tr>
-            </thead>
+      <div className="rounded-2xl bg-admin-surface p-4 shadow-card relative flex flex-col flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+            <table className="w-full table-fixed text-xs sm:text-sm">
+              <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
+                <tr>
+                  <th className="px-3 py-2 text-left text-sm w-auto">Course</th>
+                  <th className="px-3 py-2 text-left text-sm w-[180px]">วัน/เวลาเริ่ม</th>
+                  <th className="px-3 py-2 text-center text-sm w-[160px]">สร้าง Class</th>
+                </tr>
+              </thead>
 
-            <tbody>
-              {filteredItems.map((s, idx) => {
-                const key = s._id || s.id || s.schedule_id || idx;
+              <tbody>
+                {filteredItems.map((s, idx) => {
+                  const key = s._id || s.id || s.schedule_id || idx;
 
-                const courseName =
-                  s.course?.course_name ||
-                  s.course_name ||
-                  s.title ||
-                  "ไม่ทราบชื่อคอร์ส";
+                  const courseName =
+                    s.course?.course_name ||
+                    s.course_name ||
+                    s.title ||
+                    "ไม่ทราบชื่อคอร์ส";
 
-                const courseCode =
-                  s.course?.course_id || s.course_id || s.courseCode || "";
+                  const courseCode =
+                    s.course?.course_id || s.course_id || s.courseCode || "";
 
-                const firstDate = getFirstDateRaw(s);
+                  const firstDate = getFirstDateRaw(s);
 
-                return (
-                  <tr
-                    key={key}
-                    className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-                  >
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{courseName}</div>
-                      <div className="text-[11px] text-admin-textMuted">
-                        {courseCode}{" "}
-                        {s?.type ? (
-                          <span className="ml-1 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px]">
-                            {String(s.type).toUpperCase()}
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
+                  return (
+                    <tr
+                      key={key}
+                      className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                    >
+                      <td className="px-3 py-2">
+                        <div className="font-medium truncate">{courseName}</div>
+                        <div className="text-[11px] text-admin-textMuted">
+                          {courseCode}{" "}
+                          {s?.type ? (
+                            <span className="ml-1 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px]">
+                              {String(s.type).toUpperCase()}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
 
-                    <td className="px-3 py-2 text-admin-textMuted">
-                      {formatDateTime(firstDate)}
-                    </td>
+                      <td className="px-3 py-2 text-admin-textMuted">
+                        {formatDateTime(firstDate)}
+                      </td>
 
-                    <td className="px-3 py-2 text-center">
-                      <PrimaryButton
-                        type="button"
-                        className="px-3 py-1 text-xs"
-                        onClick={() => handleOpenModal(s, idx)}
-                        disabled={loading}
-                      >
-                        สร้าง Class
-                      </PrimaryButton>
+                      <td className="px-3 py-2 text-center">
+                        <PrimaryButton
+                          type="button"
+                          className="px-3 py-1 text-xs"
+                          onClick={() => handleOpenModal(s, idx)}
+                          disabled={loading}
+                        >
+                          สร้าง Class
+                        </PrimaryButton>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {!loading && filteredItems.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="px-3 py-4 text-center text-admin-textMuted"
+                    >
+                      ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
                     </td>
                   </tr>
-                );
-              })}
-
-              {!loading && filteredItems.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-3 py-4 text-center text-admin-textMuted"
-                  >
-                    ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
 
         {loading && (
           <div className="absolute inset-0 rounded-2xl bg-admin-surface/70 backdrop-blur-sm flex items-center justify-center">

@@ -3,6 +3,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+const TD = "border border-admin-border px-1.5 py-1 align-top"; // ลด padding
+const TH = "border border-admin-border px-1.5 py-1 align-top";
+const TRUNC = "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
+
 function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
@@ -1273,9 +1277,9 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
   /* ---------------- render ---------------- */
   return (
-    <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
+    <div className="w-full min-w-0 flex flex-col h-full min-h-0 overflow-hidden">
       {/* Summary */}
-      <div className="mb-4 rounded-2xl border border-admin-border bg-white p-4">
+      <div className="mb-4 shrink-0 rounded-2xl border border-admin-border bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-admin-text">
@@ -1340,7 +1344,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <div className="text-[11px] text-admin-textMuted">
             Top เมนู (จาก API)
           </div>
-          <div className="mt-2 space-y-1">
+          <div className="mt-2 space-y-1 overflow-y-auto pr-1" style={{ maxHeight: "86px" }}>
             {(summary?.menuCounts || []).slice(0, 8).map((x, idx) => (
               <div
                 key={idx}
@@ -1359,298 +1363,347 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="flex flex-wrap gap-3">
-          <div>
-            <label className="block text-[11px] text-admin-textMuted">
-              วันที่
-            </label>
+      <div className="rounded-2xl bg-admin-surface p-4 shadow-card flex flex-col flex-1 min-h-0 overflow-hidden">
+        {/* Filter bar */}
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-end md:justify-between shrink-0">
+          <div className="flex flex-wrap gap-3">
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                วันที่
+              </label>
+              <input
+                type="date"
+                className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                Class
+              </label>
+              <select
+                className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+              >
+                <option value="">ทุก Class</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.className}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                สถานะ
+              </label>
+              <select
+                className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">ทั้งหมด</option>
+                <option value="food">เฉพาะอาหาร</option>
+                <option value="coupon">เฉพาะ COUPON</option>
+                <option value="noFood">เฉพาะ ไม่รับอาหาร</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-1 min-w-0 flex-col gap-2 md:items-end">
             <input
-              type="date"
-              className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
+              className="w-full max-w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary md:w-96"
+              placeholder="ค้นหา (ชื่อผู้เรียน / ร้าน / เมนู / หมายเหตุ)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
 
-          <div>
-            <label className="block text-[11px] text-admin-textMuted">
-              Class
-            </label>
-            <select
-              className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
-            >
-              <option value="">ทุก Class</option>
-              {classOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.className}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportAll}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+              >
+                Export ทั้งหมด (ตาม filter)
+              </button>
 
-          <div>
-            <label className="block text-[11px] text-admin-textMuted">
-              สถานะ
-            </label>
-            <select
-              className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">ทั้งหมด</option>
-              <option value="food">เฉพาะอาหาร</option>
-              <option value="coupon">เฉพาะ COUPON</option>
-              <option value="noFood">เฉพาะ ไม่รับอาหาร</option>
-            </select>
-          </div>
-        </div>
+              <button
+                type="button"
+                onClick={handleExportSelected}
+                className={cx(
+                  "rounded-full border px-4 py-1.5 text-xs font-medium",
+                  selectedRows.length
+                    ? "border-brand-primary bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/15"
+                    : "border-admin-border text-admin-textMuted",
+                )}
+              >
+                Export เฉพาะที่เลือก
+              </button>
 
-        <div className="flex flex-1 flex-col gap-2 md:items-end">
-          <input
-            className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary md:w-96"
-            placeholder="ค้นหา (ชื่อผู้เรียน / ร้าน / เมนู / หมายเหตุ)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+              <button
+                type="button"
+                onClick={handlePrintAll}
+                className="rounded-full border border-admin-border px-4 py-1.5 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
+              >
+                Print ทั้งหมด (ตาม filter)
+              </button>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleExportAll}
-              className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-            >
-              Export ทั้งหมด (ตาม filter)
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportSelected}
-              className={cx(
-                "rounded-full border px-4 py-1.5 text-xs font-medium",
-                selectedRows.length
-                  ? "border-brand-primary bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/15"
-                  : "border-admin-border text-admin-textMuted",
-              )}
-            >
-              Export เฉพาะที่เลือก
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrintAll}
-              className="rounded-full border border-admin-border px-4 py-1.5 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
-            >
-              Print ทั้งหมด (ตาม filter)
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrintSelected}
-              className={cx(
-                "rounded-full border px-4 py-1.5 text-xs font-medium",
-                selectedRows.length
-                  ? "border-admin-border text-admin-text hover:bg-admin-surfaceMuted"
-                  : "border-admin-border text-admin-textMuted",
-              )}
-            >
-              Print เฉพาะที่เลือก
-            </button>
+              <button
+                type="button"
+                onClick={handlePrintSelected}
+                className={cx(
+                  "rounded-full border px-4 py-1.5 text-xs font-medium",
+                  selectedRows.length
+                    ? "border-admin-border text-admin-text hover:bg-admin-surfaceMuted"
+                    : "border-admin-border text-admin-textMuted",
+                )}
+              >
+                Print เฉพาะที่เลือก
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {loading && (
-        <div className="mb-3 text-xs text-admin-textMuted">
-          กำลังโหลดข้อมูล...
-        </div>
-      )}
+        {loading && (
+          <div className="mb-3 text-xs text-admin-textMuted shrink-0">
+            กำลังโหลดข้อมูล...
+          </div>
+        )}
 
-      {/* Grouped tables */}
-      <div className="space-y-6">
-        {groups.map((g) => {
-          const groupIds = g.items.map((o) => String(o.id || o._id));
-          const groupAllSelected = groupIds.every((id) => selectedIds.has(id));
-          const groupSomeSelected = groupIds.some((id) => selectedIds.has(id));
+        {/* Grouped tables */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+          <div className="space-y-6">
+            {groups.map((g) => {
+              const groupIds = g.items.map((o) => String(o.id || o._id));
+              const groupAllSelected = groupIds.every((id) =>
+                selectedIds.has(id),
+              );
+              const groupSomeSelected = groupIds.some((id) =>
+                selectedIds.has(id),
+              );
 
-          return (
-            <div
-              key={g.key}
-              className="rounded-2xl border border-admin-border bg-white p-4 shadow-sm"
-            >
-              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                <div>
-                  <div className="text-xs font-semibold text-admin-text">
-                    {g.className}
+              return (
+                <div
+                  key={g.key}
+                  className="rounded-2xl border border-admin-border bg-white p-4 shadow-sm"
+                >
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-semibold text-admin-text">
+                        {g.className}
+                      </div>
+                      <div className="text-[11px] text-admin-textMuted">
+                        {g.roomName && <>ห้อง {g.roomName} • </>}
+                        ผู้เรียน {g.items.length} คน
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleSelectGroup(g)}
+                      className="rounded-full border border-admin-border px-3 py-1 text-[11px] hover:bg-admin-surfaceMuted"
+                      title="เลือก/ยกเลิกเลือกทั้งกลุ่ม"
+                    >
+                      {groupAllSelected
+                        ? "ยกเลิกเลือกทั้งกลุ่ม"
+                        : groupSomeSelected
+                          ? "เลือกที่เหลือในกลุ่ม"
+                          : "เลือกทั้งกลุ่ม"}
+                    </button>
                   </div>
-                  <div className="text-[11px] text-admin-textMuted">
-                    {g.roomName && <>ห้อง {g.roomName} • </>}
-                    ผู้เรียน {g.items.length} คน
+
+                  <div className="min-w-0 overflow-x-hidden">
+                    <table className="w-full table-fixed border-collapse text-xs">
+                      <colgroup>
+                        <col className="w-[44px]" /> {/* เลือก */}
+                        <col className="w-[44px]" /> {/* # */}
+                        <col className="w-[22%]" /> {/* ชื่อผู้เรียน */}
+                        <col className="w-[14%]" /> {/* ร้านอาหาร */}
+                        <col className="w-[16%]" /> {/* เมนู */}
+                        <col className="w-[12%]" /> {/* Add-on */}
+                        <col className="w-[10%]" /> {/* เครื่องดื่ม */}
+                        <col className="w-[16%]" /> {/* หมายเหตุ */}
+                        <col className="w-[84px]" /> {/* Action */}
+                      </colgroup>
+
+                      <thead className="bg-admin-surfaceMuted text-[11px] text-admin-textMuted">
+                        <tr>
+                          <th
+                            className={cx(TH, "text-center whitespace-nowrap")}
+                          >
+                            เลือก
+                          </th>
+                          <th
+                            className={cx(TH, "text-center whitespace-nowrap")}
+                          >
+                            ลำดับ
+                          </th>
+                          <th className={cx(TH, "text-left", TRUNC)}>
+                            ชื่อผู้เรียน
+                          </th>
+                          <th className={cx(TH, "text-left", TRUNC)}>
+                            ร้านอาหาร
+                          </th>
+                          <th className={cx(TH, "text-left", TRUNC)}>เมนู</th>
+                          <th className={cx(TH, "text-left", TRUNC)}>Add-on</th>
+                          <th className={cx(TH, "text-left", TRUNC)}>
+                            เครื่องดื่ม
+                          </th>
+                          <th className={cx(TH, "text-left", TRUNC)}>
+                            หมายเหตุ
+                          </th>
+                          <th
+                            className={cx(TH, "text-center whitespace-nowrap")}
+                          >
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="[&>tr>td]:min-w-0">
+                        {g.items.map((o, idx) => {
+                          const rowId = String(o.id || o._id);
+                          const checked = selectedIds.has(rowId);
+
+                          // ===== status detection: choiceType first, note fallback only if choiceType empty =====
+                          const choiceRaw =
+                            o.choiceType ?? o.food?.choiceType ?? "";
+                          const choice = String(choiceRaw || "").toLowerCase();
+
+                          let isCoupon =
+                            choice === "coupon" ||
+                            o.isCoupon === true ||
+                            o.food?.coupon === true;
+
+                          let isNoFood =
+                            choice === "nofood" ||
+                            o.isNoFood === true ||
+                            o.food?.noFood === true;
+
+                          // fallback to note only when choiceType is empty
+                          if (!choice) {
+                            const noteLower = String(
+                              o.note ?? o.food?.note ?? "",
+                            ).toLowerCase();
+                            if (noteLower.includes("coupon")) isCoupon = true;
+                            if (noteLower.includes("ไม่รับอาหาร"))
+                              isNoFood = true;
+                          }
+
+                          const rest = isCoupon
+                            ? "-"
+                            : isNoFood
+                              ? "ไม่รับอาหาร"
+                              : o.restaurantName || "-";
+
+                          const menu = isCoupon
+                            ? "Cash Coupon"
+                            : isNoFood
+                              ? "ไม่รับอาหาร"
+                              : o.menuName || "-";
+
+                          // note text: show actual note if exists, else default for coupon/noFood
+                          const noteText =
+                            String(o.note ?? o.food?.note ?? "").trim() ||
+                            (isCoupon
+                              ? "COUPON"
+                              : isNoFood
+                                ? "ไม่รับอาหาร"
+                                : "-");
+
+                          return (
+                            <tr key={rowId}>
+                              <td className={cx(TD, "text-center")}>
+                                <input
+                                  type="checkbox"
+                                  className="h-3.5 w-3.5"
+                                  checked={checked}
+                                  onChange={() => toggleSelectRow(rowId)}
+                                />
+                              </td>
+
+                              <td
+                                className={cx(
+                                  TD,
+                                  "text-center whitespace-nowrap",
+                                )}
+                              >
+                                {idx + 1}
+                              </td>
+
+                              <td className={cx(TD, "min-w-0")}>
+                                <div
+                                  className={cx(
+                                    "w-full",
+                                    TRUNC,
+                                    "font-medium text-admin-text",
+                                  )}
+                                >
+                                  {o.studentName || "-"}
+                                </div>
+                                {o.company && (
+                                  <div
+                                    className={cx(
+                                      "w-full",
+                                      TRUNC,
+                                      "text-[11px] text-admin-textMuted",
+                                    )}
+                                  >
+                                    {o.company}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className={cx(TD, TRUNC)}>{rest}</td>
+
+                              <td className={cx(TD, TRUNC)}>
+                                <span className={TRUNC}>{menu}</span>
+                              </td>
+
+                              <td className={cx(TD, TRUNC)}>
+                                <span className={TRUNC}>
+                                  {Array.isArray(o.addons) && o.addons.length
+                                    ? o.addons.join(" / ")
+                                    : "-"}
+                                </span>
+                              </td>
+
+                              <td className={cx(TD, TRUNC)}>
+                                {o.drink || "-"}
+                              </td>
+
+                              <td className={cx(TD, TRUNC)}>
+                                <span className={TRUNC}>{noteText}</span>
+                              </td>
+
+                              <td
+                                className={cx(
+                                  TD,
+                                  "text-center whitespace-nowrap",
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => openEditRow(o)}
+                                  className="rounded-full border border-admin-border px-2 py-1 text-[11px] hover:bg-admin-surfaceMuted"
+                                >
+                                  แก้ไข
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => toggleSelectGroup(g)}
-                  className="rounded-full border border-admin-border px-3 py-1 text-[11px] hover:bg-admin-surfaceMuted"
-                  title="เลือก/ยกเลิกเลือกทั้งกลุ่ม"
-                >
-                  {groupAllSelected
-                    ? "ยกเลิกเลือกทั้งกลุ่ม"
-                    : groupSomeSelected
-                      ? "เลือกที่เหลือในกลุ่ม"
-                      : "เลือกทั้งกลุ่ม"}
-                </button>
-              </div>
-
-              <div className="overflow-auto">
-                <table className="min-w-full border-collapse text-xs">
-                  <thead className="bg-admin-surfaceMuted text-[11px] text-admin-textMuted">
-                    <tr>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        เลือก
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        #
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        ชื่อผู้เรียน
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        ร้านอาหาร
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        เมนู
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        Add-on
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        เครื่องดื่ม
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        หมายเหตุ
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.items.map((o, idx) => {
-                      const rowId = String(o.id || o._id);
-                      const checked = selectedIds.has(rowId);
-
-                      // ===== status detection: choiceType first, note fallback only if choiceType empty =====
-                      const choiceRaw =
-                        o.choiceType ?? o.food?.choiceType ?? "";
-                      const choice = String(choiceRaw || "").toLowerCase();
-
-                      let isCoupon =
-                        choice === "coupon" ||
-                        o.isCoupon === true ||
-                        o.food?.coupon === true;
-
-                      let isNoFood =
-                        choice === "nofood" ||
-                        o.isNoFood === true ||
-                        o.food?.noFood === true;
-
-                      // fallback to note only when choiceType is empty
-                      if (!choice) {
-                        const noteLower = String(
-                          o.note ?? o.food?.note ?? "",
-                        ).toLowerCase();
-                        if (noteLower.includes("coupon")) isCoupon = true;
-                        if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-                      }
-
-                      const rest = isCoupon
-                        ? "-"
-                        : isNoFood
-                          ? "ไม่รับอาหาร"
-                          : o.restaurantName || "-";
-
-                      const menu = isCoupon
-                        ? "Cash Coupon"
-                        : isNoFood
-                          ? "ไม่รับอาหาร"
-                          : o.menuName || "-";
-
-                      // note text: show actual note if exists, else default for coupon/noFood
-                      const noteText =
-                        String(o.note ?? o.food?.note ?? "").trim() ||
-                        (isCoupon ? "COUPON" : isNoFood ? "ไม่รับอาหาร" : "-");
-
-                      return (
-                        <tr key={rowId}>
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            <input
-                              type="checkbox"
-                              className="h-3.5 w-3.5"
-                              checked={checked}
-                              onChange={() => toggleSelectRow(rowId)}
-                            />
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {idx + 1}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            <div className="font-medium text-admin-text">
-                              {o.studentName || "-"}
-                            </div>
-                            {o.company && (
-                              <div className="text-[11px] text-admin-textMuted">
-                                {o.company}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {rest}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {menu}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {Array.isArray(o.addons) && o.addons.length
-                              ? o.addons.join(" / ")
-                              : "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {o.drink || "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {noteText}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            <button
-                              type="button"
-                              onClick={() => openEditRow(o)}
-                              className="rounded-full border border-admin-border px-3 py-1 text-[11px] hover:bg-admin-surfaceMuted"
-                            >
-                              แก้ไข
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* ===== Edit Modal ===== */}
