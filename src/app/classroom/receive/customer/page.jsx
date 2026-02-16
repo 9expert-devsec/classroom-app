@@ -133,7 +133,7 @@ export default function ReceiveCustomerSearchPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="พิมพ์ชื่อ / บริษัท / เลขที่ QT/IV/RP เช่น INV-001, RP2026..."
+            placeholder="พิมพ์เลขที่ QT/IV/RP เช่น INV-001, RP2026..."
             className="w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
             onKeyDown={(e) => {
               if (e.key === "Enter") doSearch();
