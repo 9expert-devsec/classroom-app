@@ -862,46 +862,6 @@ export default function ClassroomDashboardClient({
         </div>
 
         <div className="flex h-full min-h-0 flex-col gap-4">
-          <div className="rounded-2xl bg-admin-surface p-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">
-                เช็คอินเร็วที่สุดของวัน (TOP 3)
-              </h2>
-              <span className="text-[11px] text-admin-textMuted">
-                รวมทุกคลาส
-              </span>
-            </div>
-
-            {loadingPart.lists ? (
-              <SkeletonAsideList count={3} />
-            ) : !data?.fastest3?.length ? (
-              <p className="mt-4 text-sm text-admin-textMuted">
-                ยังไม่มีการเช็คอิน
-              </p>
-            ) : (
-              <ul className="mt-4 space-y-2 text-sm">
-                {data.fastest3.map((x, idx) => (
-                  <li
-                    key={x.id}
-                    className="flex items-center justify-between rounded-xl border border-admin-border px-3 py-2"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">
-                        #{idx + 1} {x.name}
-                      </span>
-                      <span className="text-[11px] text-admin-textMuted">
-                        {x.classLabel}
-                      </span>
-                    </div>
-                    <div className="text-[12px] font-semibold">
-                      {fmtTime(x.time)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
           <div className="flex h-full min-h-0 flex-col rounded-2xl bg-admin-surface p-5 shadow-sm overflow-hidden">
             <div className="shrink-0">
               <h2 className="text-sm font-semibold">เช็คอินล่าสุด</h2>
@@ -951,6 +911,48 @@ export default function ClassroomDashboardClient({
               )}
             </div>
           </div>
+          
+          <div className="rounded-2xl bg-admin-surface p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">
+                เช็คอินเร็วที่สุดของวัน (TOP 3)
+              </h2>
+              <span className="text-[11px] text-admin-textMuted">
+                รวมทุกคลาส
+              </span>
+            </div>
+
+            {loadingPart.lists ? (
+              <SkeletonAsideList count={3} />
+            ) : !data?.fastest3?.length ? (
+              <p className="mt-4 text-sm text-admin-textMuted">
+                ยังไม่มีการเช็คอิน
+              </p>
+            ) : (
+              <ul className="mt-4 space-y-2 text-sm">
+                {data.fastest3.map((x, idx) => (
+                  <li
+                    key={x.id}
+                    className="flex items-center justify-between rounded-xl border border-admin-border px-3 py-2"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        #{idx + 1} {x.name}
+                      </span>
+                      <span className="text-[11px] text-admin-textMuted">
+                        {x.classLabel}
+                      </span>
+                    </div>
+                    <div className="text-[12px] font-semibold">
+                      {fmtTime(x.time)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          
         </div>
       </div>
     </div>
