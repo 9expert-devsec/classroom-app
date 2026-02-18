@@ -141,9 +141,9 @@ export default function CheckinClient({ searchParams = {} }) {
       <StepHeader currentStep={1} />
 
       <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
-        <h2 className="text-lg font-semibold">Step 1 : ค้นหาชื่อ</h2>
+        <h2 className="sm:text-2xl lg:text-lg font-semibold">Step 1 : ค้นหาชื่อ</h2>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4 shrink-0">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4 flex flex-col items-center shrink-0">
           <TextInput
             placeholder="ค้นหาชื่อ.........."
             value={keyword}

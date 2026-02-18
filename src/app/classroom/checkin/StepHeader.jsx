@@ -18,12 +18,12 @@ export default function StepHeader({ currentStep }) {
           return (
             <div
               key={step.id}
-              className="relative z-10 flex flex-1 items-center gap-2 rounded-2xl bg-gradient-to-r from-[#005CFF] to-[#FFB020] px-4 py-2 text-white shadow-md transform scale-[1.1] transition-transform duration-200 ease-out"
+              className="relative z-10 flex flex-1 sm:flex-col lg:flex-row items-center gap-2 rounded-2xl bg-gradient-to-r from-[#005CFF] to-[#FFB020] px-4 py-3 text-white shadow-md transform scale-[1.1] transition-transform duration-200 ease-out"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-base font-semibold">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 sm:text-xl lg:text-base font-semibold">
                 {step.id}
               </span>
-              <span className="text-base font-medium">{step.label}</span>
+              <span className="sm:text-xl lg:text-base font-bold">{step.label}</span>
             </div>
           );
 
@@ -31,14 +31,14 @@ export default function StepHeader({ currentStep }) {
           return (
             <div
               key={step.id}
-              className="flex flex-1 items-center gap-2 rounded-2xl  bg-slate-100 px-4 py-2"
+              className="flex flex-1 sm:flex-col lg:flex-row items-center gap-2 rounded-2xl  bg-slate-100 px-4 py-3"
             >
               
-              <span className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-[#F8FAFD] bg-[#005CFF]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full sm:text-lg lg:text-sm font-semibold text-[#F8FAFD] bg-[#005CFF]">
                 {/* {step.id} */}
-                <Check size={18}/>
+                <Check size={20}/>
               </span>
-              <span className="text-sm font-medium text-[#0D1B2A]">
+              <span className="sm:text-lg lg:text-sm font-medium text-[#0D1B2A]">
                 {step.label}
               </span>
             </div>
@@ -47,12 +47,12 @@ export default function StepHeader({ currentStep }) {
         return (
           <div
             key={step.id}
-            className="flex flex-1 items-center gap-2 rounded-2xl border bg-front-stepFuture px-4 py-2"
+            className="flex flex-1 sm:flex-col lg:flex-row items-center gap-2 rounded-2xl border bg-front-stepFuture px-4 py-3"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-medium text-slate-300">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full sm:text-lg lg:text-sm font-medium text-slate-300">
               {step.id}
             </span>
-            <span className="text-sm text-slate-300">{step.label}</span>
+            <span className="sm:text-lg lg:text-sm text-slate-300">{step.label}</span>
           </div>
         );
       })}
