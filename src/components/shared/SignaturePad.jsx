@@ -193,17 +193,17 @@ export default function SignaturePad({ onChange }) {
       />
 
       <div className="absolute right-3 top-3 flex items-center gap-2">
-        <button
+        {/* <button
           type="button"
           onClick={handleUndo}
           className="rounded-lg bg-front-bgSoft px-3 py-1 text-sm text-front-text shadow"
         >
           Undo
-        </button>
+        </button> */}
         <button
           type="button"
           onClick={handleClear}
-          className="rounded-lg bg-white px-3 py-1 text-sm text-front-text shadow ring-1 ring-black/5"
+          className="rounded-lg bg-white px-3 py-1 sm:text-base lg:text-sm text-front-text shadow ring-1 ring-black/5"
         >
           ล้าง
         </button>
