@@ -53,11 +53,11 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
         </div>
 
         <div>
-          <h2 className="text-xl font-semibold text-front-text">
+          <h2 className="sm:text-2xl lg:text-xl font-semibold text-front-text">
             เช็คอินสำเร็จ
           </h2>
 
-          <p className="mt-2 text-base text-front-textMuted">{message}</p>
+          <p className="mt-2 sm:text-lg lg:text-base text-front-textMuted">{message}</p>
 
           {/* {sid && (
             <p className="mt-1 text-[11px] text-front-textMuted">
@@ -65,7 +65,7 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
             </p>
           )} */}
 
-          <p className="mt-4 text-sm text-front-textMuted">
+          <p className="mt-4 sm:text-base lg:text-sm text-front-textMuted">
             ระบบจะพากลับไปหน้าเช็คอินอัตโนมัติใน {countdown} วินาที...
           </p>
         </div>
