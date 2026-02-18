@@ -293,13 +293,13 @@ export async function POST(req) {
     if (hit?._id) finalDrinkId = String(hit._id);
   }
 
-  const needDrink = (menuDoc.drinkIds || []).length > 0;
+  const needDrink = false;
 
   // ต้องมีเมนู + ร้าน + (ถ้าต้องเลือก drink -> ต้องมี drinkId)
   const hasCompleteFood =
     !!finalRestaurantId &&
     !!clean(menuId) &&
-    (needDrink ? !!finalDrinkId : true);
+    true;
 
   if (!hasCompleteFood) {
     const nextFood = {

@@ -5,6 +5,8 @@ import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Restaurant from "@/models/Restaurant";
 import FoodMenu from "@/models/FoodMenu";
+import FoodAddon from "@/models/FoodAddon";
+import FoodDrink from "@/models/FoodDrink";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +37,7 @@ export async function GET(req) {
   if (!studentId) {
     return NextResponse.json(
       { ok: false, error: "studentId is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -43,7 +45,7 @@ export async function GET(req) {
   if (!student) {
     return NextResponse.json(
       { ok: false, error: "Student not found" },
-      { status: 404 }
+      { status: 404 },
     );
   }
 
@@ -89,19 +91,84 @@ export async function GET(req) {
   // ----- ข้อมูลอาหาร (อ่านจาก student.food) -----
   let foodPreview = null;
 
-  if (student.food && student.food.restaurantId && student.food.menuId) {
-    const [restaurant, menu] = await Promise.all([
-      Restaurant.findById(student.food.restaurantId).lean(),
-      FoodMenu.findById(student.food.menuId).lean(),
-    ]);
+  const sf = student.food || null;
+  if (sf) {
+    const choiceType = String(sf.choiceType || "");
+    const noFood = !!sf.noFood;
+    const isCoupon = choiceType === "coupon" || !!sf.coupon;
 
-    foodPreview = {
-      restaurantName: restaurant?.name || "",
-      menuName: menu?.name || "",
-      addons: student.food.addons || [],
-      drink: student.food.drink || "",
-      note: student.food.note || "",
-    };
+    // 1) เคส coupon / noFood
+    if (isCoupon) {
+      foodPreview = {
+        choiceType: "coupon",
+        restaurantName: "",
+        menuName: "",
+        addons: [],
+        drink: "",
+        note: sf.note || "COUPON",
+      };
+    } else if (choiceType === "noFood" || noFood) {
+      foodPreview = {
+        choiceType: "noFood",
+        restaurantName: "",
+        menuName: "",
+        addons: [],
+        drink: "",
+        note: sf.note || "ไม่รับอาหาร",
+      };
+    } else {
+      // 2) เคส food
+      const restaurantId = sf.restaurantId;
+      const menuId = sf.menuId;
+
+      let restaurant = null;
+      let menu = null;
+
+      if (restaurantId)
+        restaurant = await Restaurant.findById(restaurantId).lean();
+      if (menuId) menu = await FoodMenu.findById(menuId).lean();
+
+      const addonIds = Array.isArray(sf.addonIds)
+        ? sf.addonIds.map(String)
+        : [];
+      const drinkId = String(sf.drinkId || "");
+
+      const [addonDocs, drinkDoc] = await Promise.all([
+        addonIds.length
+          ? FoodAddon.find({ _id: { $in: addonIds } })
+              .select("name")
+              .lean()
+          : [],
+        drinkId ? FoodDrink.findById(drinkId).select("name").lean() : null,
+      ]);
+
+      // const addonNameById = new Map(
+      //   (restaurant?.addons || []).map((a) => [
+      //     String(a._id || a.id),
+      //     a.name || "",
+      //   ]),
+      // );
+      // const drinkNameById = new Map(
+      //   (restaurant?.drinks || []).map((d) => [
+      //     String(d._id || d.id),
+      //     d.name || "",
+      //   ]),
+      // );
+
+      const addons = addonDocs.map((x) => x.name).filter(Boolean);
+      const drink = drinkDoc?.name ? String(drinkDoc.name) : "";
+
+      foodPreview = {
+        choiceType: "food",
+        restaurantName: restaurant?.name || "",
+        menuName: menu?.name || "",
+        addons,
+        addonIds,
+        drink,
+        drinkId,
+        note: sf.note || "",
+      };
+    }
   }
 
   return NextResponse.json({
