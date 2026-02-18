@@ -826,7 +826,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               <tr>
                 <td class="td num">${idx + 1}</td>
                 <td class="td">${o.studentName || "-"}</td>
-                <td class="td">${rest}</td>
+                
                 <td class="td">${menu}</td>
                 <td class="td">${addons}</td>
                 <td class="td">${drink}</td>
@@ -839,6 +839,14 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         return `
           <div class="page class-page">
             <table class="class-table">
+              <colgroup>
+                <col class="c-num" />
+                <col class="c-student" />
+                <col class="c-menu" />
+                <col class="c-addon" />
+                <col class="c-drink" />
+                <col class="c-note" />
+                </colgroup>
               <thead>
                 <tr>
                   <th colspan="7" class="class-head">
@@ -851,7 +859,6 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                 <tr>
                   <th class="th num">#</th>
                   <th class="th">ชื่อผู้เรียน</th>
-                  <th class="th">ร้านอาหาร</th>
                   <th class="th">เมนู</th>
                   <th class="th">Add-on</th>
                   <th class="th">เครื่องดื่ม</th>
@@ -881,7 +888,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <meta charset="utf-8" />
           <title>Food Report</title>
           <style>
-            @page { margin: 12mm; }
+            @page { size: A4 portrait; margin: 0; }
             body {
               font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               font-size: 12px;
@@ -891,7 +898,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             .page { padding: 0; }
             .page-break { page-break-after: always; break-after: page; height: 0; }
 
-            .class-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+            .class-table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
             .class-table thead { display: table-header-group; }
             .class-table tfoot { display: table-footer-group; }
             tr { page-break-inside: avoid; break-inside: avoid; }
@@ -900,12 +907,22 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             .class-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
             .class-sub { font-size: 11px; color: #6b7280; }
 
-            .th, .td { border: 1px solid #111827; padding: 5px 6px; font-size: 11px; vertical-align: top; }
+            .th, .td { border: 1px solid #111827; padding: 5px 6px; font-size: 11px; vertical-align: top; overflow: hidden; word-break: break-word;}
             .th { background: #f3f4f6; font-weight: 700; }
             .num { width: 54px; text-align: right; }
             .empty { text-align: center; color: #6b7280; padding: 10px; }
 
             .footer { margin-top: 8px; font-size: 11px; color: #6b7280; text-align: right; }
+
+            .c-num     { width: 6%; }
+            .c-student { width: 20%; }
+            .c-menu   { width: 16%; }
+            .c-addon   { width: 14%; }
+            .c-drink   { width: 10%; }
+            .c-note    { width: 34%; }
+
+            .trunc{white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+
 
             @media print {
               body { margin: 0; }
