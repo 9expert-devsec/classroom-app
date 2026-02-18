@@ -1002,14 +1002,14 @@ export default function RestaurantDetailPage({ params }) {
                   >
                     edit
                   </button>
-                  <button
+                  {/* <button
                     type="button"
                     className="rounded-full px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-50"
                     onClick={() => handleDisableAddon(a)}
                     title="ปิดการใช้งาน"
                   >
                     disable
-                  </button>
+                  </button> */}
                   <button
                     type="button"
                     className="rounded-full px-2 py-1 text-[11px] text-red-600 hover:bg-red-50"
@@ -1099,14 +1099,14 @@ export default function RestaurantDetailPage({ params }) {
                   >
                     edit
                   </button>
-                  <button
+                  {/* <button
                     type="button"
                     className="rounded-full px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-50"
                     onClick={() => handleDisableDrink(d)}
                     title="ปิดการใช้งาน"
                   >
                     disable
-                  </button>
+                  </button> */}
                   <button
                     type="button"
                     className="rounded-full px-2 py-1 text-[11px] text-red-600 hover:bg-red-50"
