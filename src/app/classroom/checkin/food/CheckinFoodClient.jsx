@@ -9,6 +9,7 @@ import Image from "next/image";
 
 import RestaurantCard from "./RestaurantCard";
 import MenuCard from "./MenuCard";
+import { Ban } from "lucide-react";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -65,9 +66,13 @@ function QuickChoiceCard({
         >
           {icon}
         </div>
-        <div>
-          <div className="text-sm font-semibold text-front-text">{title}</div>
-          <div className="text-xs text-front-textMuted">{subtitle}</div>
+        <div className="flex flex-col ">
+          <div className="sm:text-2xl lg:text-base font-semibold text-front-text">
+            {title}
+          </div>
+          <div className="sm:text-base lg:text-sm text-front-textMuted">
+            {subtitle}
+          </div>
         </div>
       </div>
 
@@ -89,37 +94,39 @@ function AddonCard({ item, active, onClick }) {
       type="button"
       onClick={onClick}
       className={cx(
-        "flex items-center gap-3 rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
+        "flex flex-row items-center justify-between rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
         active
           ? "border-brand-primary bg-brand-primary/10"
           : "border-brand-border hover:bg-front-bgSoft",
       )}
     >
-      <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-front-bgSoft">
-        {item?.imageUrl ? (
-          <Image
-            src={item.imageUrl}
-            alt={item.name || "addon"}
-            fill
-            sizes="40px"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[10px] text-front-textMuted">
-            +
-          </div>
-        )}
-      </div>
+      <div className="flex flex-col w-full items-center gap-2">
+        <div className="relative h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
+          {item?.imageUrl ? (
+            <Image
+              src={item.imageUrl}
+              alt={item.name || "addon"}
+              fill
+              sizes="40px"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-front-textMuted">
+              <Ban size={60} />
+            </div>
+          )}
+        </div>
 
-      <div className="flex-1">
-        <div className="text-sm font-semibold text-front-text">
-          {item?.name || "-"}
+        <div className="flex-1">
+          <div className="sm:text-lg lg:text-base font-normal text-front-text">
+            {item?.name || "-"}
+          </div>
         </div>
       </div>
 
       <div
         className={cx(
-          "h-5 w-5 rounded-full border-2",
+          "h-5 w-5 rounded-full border-2 shrink-0",
           active
             ? "border-brand-primary bg-brand-primary"
             : "border-brand-border bg-white",
@@ -135,31 +142,33 @@ function DrinkCard2({ item, active, onClick }) {
       type="button"
       onClick={onClick}
       className={cx(
-        "flex items-center gap-3 rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
+        "flex flex-row items-center justify-between rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
         active
           ? "border-brand-primary bg-brand-primary/10"
           : "border-brand-border hover:bg-front-bgSoft",
       )}
     >
-      <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-front-bgSoft">
-        {item?.imageUrl ? (
-          <Image
-            src={item.imageUrl}
-            alt={item.name || "drink"}
-            fill
-            sizes="40px"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[10px] text-front-textMuted">
-            🥤
-          </div>
-        )}
-      </div>
+      <div className="flex flex-col w-full items-center gap-2">
+        <div className="relative h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
+          {item?.imageUrl ? (
+            <Image
+              src={item.imageUrl}
+              alt={item.name || "drink"}
+              fill
+              sizes="40px"
+              className="object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center  text-front-textMuted">
+              <Ban size={60} />
+            </div>
+          )}
+        </div>
 
-      <div className="flex-1">
-        <div className="text-sm font-semibold text-front-text">
-          {item?.name || "-"}
+        <div className="flex-1">
+          <div className="sm:text-lg lg:text-base font-normal text-front-text">
+            {item?.name || "-"}
+          </div>
         </div>
       </div>
 
@@ -195,12 +204,18 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     returnToDefault,
   );
 
+  const returnFrom = pick(searchParams, "returnFrom");
+  const shouldPrefill = isEdit || returnFrom === "sign";
+
   const [restaurants, setRestaurants] = useState([]);
   const [restaurant, setRestaurant] = useState(null);
   const [menu, setMenu] = useState(null);
 
-  const [addonIds, setAddonIds] = useState([]);
+  const [addonId, setAddonId] = useState("");
   const [drinkId, setDrinkId] = useState("");
+
+  const [addonTouched, setAddonTouched] = useState(false);
+  const [drinkTouched, setDrinkTouched] = useState(false);
 
   // ✅ หมายเหตุ
   const [note, setNote] = useState("");
@@ -220,8 +235,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   function resetFoodSelection() {
     setRestaurant(null);
     setMenu(null);
-    setAddonIds([]);
+    setAddonId("");
     setDrinkId("");
+    setAddonTouched(false);
+    setDrinkTouched(false);
   }
 
   function setNoteAuto(nextText) {
@@ -247,8 +264,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setChoiceType("food");
     setRestaurant(null);
     setMenu(null);
-    setAddonIds([]);
+    setAddonId("");
     setDrinkId("");
+    setAddonTouched(false);
+    setDrinkTouched(false);
 
     // ✅ เลือกร้าน = เริ่ม note ใหม่ (วันใหม่ไม่ควรดึง note เก่า)
     setNote("");
@@ -269,9 +288,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   }
 
   function toggleAddonId(id) {
-    setAddonIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    // setAddonIds((prev) =>
+    //   prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    // );
+    setAddonId((cur) => (cur === id ? "" : id));
   }
 
   function applyPrefill(currentFood, items) {
@@ -334,7 +354,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       );
       if (!foundMenu) {
         setMenu(null);
-        setAddonIds([]);
+        setAddonId("");
         setDrinkId("");
         return;
       }
@@ -351,8 +371,15 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       const allowedAddon = new Set(menuObj.addonIds || []);
       const allowedDrink = new Set(menuObj.drinkIds || []);
 
-      setAddonIds(addonIdList.filter((x) => allowedAddon.has(String(x))));
+      const firstAllowedAddon =
+        addonIdList.find((x) => allowedAddon.has(String(x))) || "";
+      setAddonId(firstAllowedAddon);
+      // setAddonIds(addonIdList.filter((x) => allowedAddon.has(String(x))));
       setDrinkId(allowedDrink.has(String(dId)) ? String(dId) : "");
+
+      // edit mode: ถือว่ายืนยันแล้ว
+      setAddonTouched(true);
+      setDrinkTouched(true);
     }
   }
 
@@ -385,7 +412,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         // ✅ POLICY:
         // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
         // - prefill เฉพาะ isEdit เท่านั้น
-        if (isEdit && !didPrefillRef.current && data?.currentFood) {
+        if (shouldPrefill && !didPrefillRef.current && data?.currentFood) {
           didPrefillRef.current = true;
           applyPrefill(data.currentFood, data.items || []);
         }
@@ -397,7 +424,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     }
 
     loadFood();
-  }, [studentId, classId, day, isEdit]);
+  }, [studentId, classId, day, isEdit, shouldPrefill]);
 
   // ✅ ทำ map จาก master list ต่อร้าน
   const addonById = useMemo(() => {
@@ -422,15 +449,20 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   }, [menu, drinkById]);
 
   const selectedAddons = useMemo(() => {
-    return addonIds.map((id) => addonById.get(String(id))).filter(Boolean);
-  }, [addonIds, addonById]);
+    // return addonIds.map((id) => addonById.get(String(id))).filter(Boolean);
+    return addonById.get(String(addonId)) || null;
+  }, [addonId, addonById]);
 
   const selectedDrink = useMemo(() => {
     return drinkById.get(String(drinkId)) || null;
   }, [drinkId, drinkById]);
 
   // ✅ Drink required เฉพาะ “เมนูนี้” (ถ้ามี option)
-  const drinkRequired = menuDrinkOptions.length > 0;
+  // const drinkRequired = menuDrinkOptions.length > 0;
+  const drinkRequired = false;
+
+  const needsAddonConfirm = menuAddonOptions.length > 0;
+  const needsDrinkConfirm = menuDrinkOptions.length > 0;
 
   const ready =
     choiceType === "noFood" ||
@@ -438,7 +470,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     (choiceType === "food" &&
       restaurant &&
       menu &&
-      (!drinkRequired || !!drinkId));
+      (!needsAddonConfirm || addonTouched) &&
+      (!needsDrinkConfirm || drinkTouched));
 
   async function handleSubmit() {
     if (!studentId || !classId) {
@@ -482,7 +515,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 noFood: false,
                 restaurantId: restaurant?.id || "",
                 menuId: menu?.id || "",
-                addonIds: addonIds,
+                addonIds: addonId ? [addonId] : [],
                 drinkId: drinkId || "",
                 note: note || "",
               };
@@ -527,7 +560,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
       <StepHeader currentStep={2} />
       <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
-        <h2 className="text-lg font-semibold">
+        <h2 className="sm:text-2xl lg:text-lg font-semibold">
           {isEdit ? "แก้ไขเมนูอาหาร" : "Step 2: เลือกเมนูอาหาร"}
         </h2>
 
@@ -552,12 +585,12 @@ export default function CheckinFoodClient({ searchParams = {} }) {
               </div>
 
               <div className="animate-fadeIn">
-                <h3 className="mb-2 text-sm font-medium text-front-textMuted">
+                <h3 className="mb-2 sm:text-base lg:text-sm font-medium text-front-textMuted">
                   หมายเหตุเพิ่มเติม
                 </h3>
                 <textarea
                   rows={3}
-                  className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
+                  className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 sm:text-base lg:text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
                   placeholder="เช่น ไม่รับอาหาร, Coupon, แพ้อาหาร ฯลฯ"
                   value={note}
                   onChange={(e) => {
@@ -587,7 +620,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
             </div>
           ) : (
             <>
-              <h3 className="mb-2 text-sm font-medium text-front-textMuted">
+              <h3 className=" sm:text-base lg:text-sm font-medium text-front-textMuted">
                 เลือกร้านอาหาร
               </h3>
 
@@ -627,11 +660,11 @@ export default function CheckinFoodClient({ searchParams = {} }) {
               {/* เมนู */}
               {choiceType === "food" && restaurant && (
                 <div className="animate-fadeIn">
-                  <h3 className="mt-6 mb-2 text-sm font-medium text-front-textMuted">
+                  <h3 className="mt-6 mb-2 sm:text-lg lg:text-sm font-medium text-front-textMuted">
                     เมนูจากร้าน {restaurant.name}
                   </h3>
 
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-4 gap-3">
                     {restaurant.menus.map((m) => (
                       <MenuCard
                         key={m.id}
@@ -639,8 +672,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                         active={menu?.id === m.id}
                         onClick={() => {
                           setMenu(null);
-                          setAddonIds([]);
+                          setAddonId("");
                           setDrinkId("");
+                          setAddonTouched(false);
+                          setDrinkTouched(false);
 
                           setTimeout(
                             () =>
@@ -665,20 +700,31 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 menu &&
                 menuAddonOptions.length > 0 && (
                   <div className="animate-fadeIn">
-                    <h3 className="mt-6 mb-2 text-sm font-medium text-front-textMuted">
+                    <h3 className="mt-6 mb-2 sm:text-lg lg:text-sm font-medium text-front-textMuted">
                       ตัวเลือกเพิ่มเติม (Add-on)
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
+                      <AddonCard
+                        item={{ id: "", name: "ไม่รับ Add-on", imageUrl: "" }}
+                        active={addonTouched && addonId === ""}
+                        onClick={() => {
+                          setAddonId("");
+                          setAddonTouched(true);
+                        }}
+                      />
                       {menuAddonOptions.map((a) => {
                         const id = String(a.id);
-                        const active = addonIds.includes(id);
+                        const active = String(addonId) === id;
                         return (
                           <AddonCard
                             key={id}
                             item={a}
-                            active={active}
-                            onClick={() => toggleAddonId(id)}
+                            active={addonTouched && String(addonId) === id}
+                            onClick={() => {
+                              setAddonId(id);
+                              setAddonTouched(true);
+                            }}
                           />
                         );
                       })}
@@ -692,50 +738,67 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 menu &&
                 menuDrinkOptions.length > 0 && (
                   <div className="animate-fadeIn">
-                    <h3 className="mt-6 mb-2 text-sm font-medium text-front-textMuted">
-                      เครื่องดื่ม <span className="text-red-500">*</span>
+                    <h3 className="mt-6 mb-2 sm:text-lg lg:text-sm font-medium text-front-textMuted">
+                      เครื่องดื่ม
+                      {/* เครื่องดื่ม <span className="text-red-500">*</span> */}
                     </h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
+                      <DrinkCard2
+                        item={{
+                          id: "",
+                          name: "ไม่รับเครื่องดื่ม",
+                          imageUrl: "",
+                        }}
+                        active={drinkTouched && drinkId === ""}
+                        onClick={() => {
+                          setDrinkId("");
+                          setDrinkTouched(true);
+                        }}
+                      />
+
                       {menuDrinkOptions.map((d) => {
                         const id = String(d.id);
                         return (
                           <DrinkCard2
                             key={id}
                             item={d}
-                            active={String(drinkId) === id}
-                            onClick={() => setDrinkId(id)}
+                            active={drinkTouched && String(drinkId) === id}
+                            onClick={() => {
+                              setDrinkId(id);
+                              setDrinkTouched(true);
+                            }}
                           />
                         );
                       })}
                     </div>
 
-                    {drinkId && (
+                    {/* {drinkId && (
                       <button
                         type="button"
                         className="mt-2 text-xs text-front-textMuted underline"
-                        onClick={() => setDrinkId("")}
+                        onClick={() => { setDrinkId(""); setDrinkTouched(true); }}
                       >
                         ล้างการเลือกเครื่องดื่ม
                       </button>
-                    )}
+                    )} */}
 
-                    {!drinkId && (
-                      <div className="mt-2 text-xs text-front-textMuted">
+                    {/* {!drinkId && (
+                      <div className="mt-2 sm:text-sm lg:text-xs text-front-textMuted">
                         กรุณาเลือกเครื่องดื่ม 1 อย่าง
                       </div>
-                    )}
+                    )} */}
                   </div>
                 )}
 
               {/* หมายเหตุ */}
-              <div className="mt-6 animate-fadeIn">
-                <h3 className="mb-2 text-sm font-medium text-front-textMuted">
+              <div className="animate-fadeIn">
+                <h3 className="my-2 sm:text-base lg:text-sm font-medium text-front-textMuted">
                   หมายเหตุเพิ่มเติม
                 </h3>
                 <textarea
                   rows={3}
-                  className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
+                  className="w-full rounded-2xl border border-brand-border bg-white px-3 py-2 sm:text-base lg:text-sm text-front-text shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/60"
                   placeholder="เช่น เผ็ดน้อย, ไม่ใส่ผัก ฯลฯ"
                   value={note}
                   onChange={(e) => {
@@ -752,14 +815,14 @@ export default function CheckinFoodClient({ searchParams = {} }) {
           <button
             type="button"
             onClick={() => router.push(backHref)}
-            className="flex-1 rounded-2xl border border-brand-border bg-white px-4 py-2 text-sm font-medium text-front-text hover:bg-front-bgSoft"
+            className="w-80 shrink-0 rounded-2xl border border-brand-border bg-white px-4 py-2 sm:text-lg lg:text-sm font-medium text-front-text hover:bg-front-bgSoft"
           >
             ← ย้อนกลับ
           </button>
 
           <PrimaryButton
             onClick={handleSubmit}
-            className="flex-1"
+            className="flex-1 w-full"
             disabled={!ready || submitting}
           >
             {primaryLabel}

@@ -2,7 +2,7 @@ export default function MenuCard({ menu, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-4 rounded-2xl border p-4 shadow-sm transition ${
+      className={`flex flex-col w-full items-center  rounded-2xl border p-3 shadow-sm transition ${
         active
           ? "border-brand-primary bg-front-bgSoft"
           : "border-brand-border bg-white"
@@ -10,12 +10,12 @@ export default function MenuCard({ menu, active, onClick }) {
     >
       <img
         src={menu.image}
-        className="h-16 w-16 rounded-xl object-cover"
+        className="w-24 h-24 rounded-xl object-cover"
         alt={menu.name}
       />
-      <div className="text-left">
-        <p className="text-sm font-medium">{menu.name}</p>
-      </div>
+      <p className="mt-3 line-clamp-2 min-h-[2rem] text-center sm:text-xl lg:text-base font-medium">
+        {menu.name}
+      </p>
     </button>
   );
 }
