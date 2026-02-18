@@ -50,7 +50,7 @@ function QuickChoiceCard({
       className={cx(
         "flex items-center justify-between rounded-2xl border px-4 py-4 text-left shadow-sm transition",
         active
-          ? "border-brand-primary bg-brand-primary/10"
+          ? "border-2 border-[#66ccff] bg-[#66ccff]/20"
           : "border-brand-border bg-white hover:bg-front-bgSoft",
         className,
       )}
@@ -80,7 +80,7 @@ function QuickChoiceCard({
         className={cx(
           "h-5 w-5 rounded-full border-2",
           active
-            ? "border-brand-primary bg-brand-primary"
+            ? "border-[#66ccff] bg-[#66ccff]"
             : "border-brand-border bg-white",
         )}
       />
@@ -96,7 +96,7 @@ function AddonCard({ item, active, onClick }) {
       className={cx(
         "flex flex-row items-center justify-between rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
         active
-          ? "border-brand-primary bg-brand-primary/10"
+          ? "border-2 border-[#66ccff] bg-[#66ccff]/20"
           : "border-brand-border hover:bg-front-bgSoft",
       )}
     >
@@ -128,7 +128,7 @@ function AddonCard({ item, active, onClick }) {
         className={cx(
           "h-5 w-5 rounded-full border-2 shrink-0",
           active
-            ? "border-brand-primary bg-brand-primary"
+            ? "border-[#66ccff] bg-[#66ccff]"
             : "border-brand-border bg-white",
         )}
       />
@@ -144,7 +144,7 @@ function DrinkCard2({ item, active, onClick }) {
       className={cx(
         "flex flex-row items-center justify-between rounded-2xl border bg-white px-3 py-2 text-left shadow-sm transition",
         active
-          ? "border-brand-primary bg-brand-primary/10"
+          ? "border-2 border-[#66ccff] bg-[#66ccff]/20"
           : "border-brand-border hover:bg-front-bgSoft",
       )}
     >
@@ -174,9 +174,9 @@ function DrinkCard2({ item, active, onClick }) {
 
       <div
         className={cx(
-          "h-5 w-5 rounded-full border-2",
+          "h-5 w-5 rounded-full border-2 shrink-0",
           active
-            ? "border-brand-primary bg-brand-primary"
+            ? "border-[#66ccff] bg-[#66ccff]"
             : "border-brand-border bg-white",
         )}
       />

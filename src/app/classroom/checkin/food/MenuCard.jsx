@@ -4,7 +4,7 @@ export default function MenuCard({ menu, active, onClick }) {
       onClick={onClick}
       className={`flex flex-col w-full items-center  rounded-2xl border p-3 shadow-sm transition ${
         active
-          ? "border-brand-primary bg-front-bgSoft"
+          ? "border-2 border-[#66ccff] bg-[#66ccff]/20"
           : "border-brand-border bg-white"
       }`}
     >

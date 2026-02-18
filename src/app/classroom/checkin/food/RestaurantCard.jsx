@@ -4,7 +4,7 @@ export default function RestaurantCard({ restaurant, active, onClick }) {
       onClick={onClick}
       className={`flex flex-row gap-3 rounded-2xl border px-3 py-4 shadow-sm transition text-left ${
         active
-          ? "border-brand-primary bg-front-bgSoft"
+          ? "border-2 border-[#66ccff] bg-[#66ccff]/20"
           : "border-brand-border bg-white"
       }`}
     >
