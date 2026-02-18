@@ -1,0 +1,10 @@
+{
+  "name": "9Expert Register",
+  "short_name": "Register",
+  "start_url": "/classroom/",
+  "scope": "/classroom/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "theme_color": "#0A1F33",
+  "background_color": "#0A1F33"
+}
