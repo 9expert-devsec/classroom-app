@@ -89,6 +89,18 @@ export async function GET(req, { params }) {
         "company",
         "paymentRef",
 
+        "type",
+        "typeTimeline",
+        "typeEditCount",
+        "editLogs",
+
+        "learnType",
+        "studyType",
+        "type",
+        "learnTypeTimeline",
+        "typeTimeline",
+        "learnTypeHistory",
+
         // ✅ IMPORTANT: ส่งสถานะผู้เรียนไปให้ FE ด้วย
         "studentStatus",
 
@@ -199,7 +211,7 @@ export async function GET(req, { params }) {
         continue;
       }
 
-      const sigUrl = clean(ci.signatureUrl) || clean(stu.signatureUrl) || "";
+      const sigUrl = clean(ci.signatureUrl) || "";
 
       daily.push({
         day: d,

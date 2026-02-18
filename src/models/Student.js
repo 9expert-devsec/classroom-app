@@ -1,11 +1,61 @@
 // src/models/Student.js
 import mongoose from "mongoose";
 
+const StudentEditLogSchema = new mongoose.Schema(
+  {
+    at: { type: Date, default: Date.now },
+    by: { type: String, default: "" },
+
+    // แนะนำให้ใช้ action เป็นข้อความที่อ่านง่ายใน UI
+    action: { type: String, default: "แก้ไข" }, // เช่น "เปลี่ยนประเภท"
+    field: { type: String, default: "" }, // เช่น "type", "studentStatus"
+
+    from: { type: mongoose.Schema.Types.Mixed, default: "" },
+    to: { type: mongoose.Schema.Types.Mixed, default: "" },
+
+    note: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
+const LearnTypeTimelineSchema = new mongoose.Schema(
+  {
+    effectiveDay: { type: Number, default: 1 },
+    type: { type: String, enum: ["classroom", "live"], default: "classroom" },
+    at: { type: Date, default: Date.now },
+    by: { type: String, default: "" },
+    note: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const StudentSchema = new mongoose.Schema(
   {
     classId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Class",
+      index: true,
+    },
+
+    typeEditCount: { type: Number, default: 0 },
+
+    typeTimeline: {
+      type: [LearnTypeTimelineSchema],
+      default: [],
+    },
+
+    editLogs: {
+      type: [StudentEditLogSchema],
+      default: [],
+    },
+
+    // ✅ ประเภทผู้เรียน (ใหม่)
+    // รองรับก่อน: classroom | live
+    // หมายเหตุ: ใช้ชื่อ field "type" ได้ แต่ต้องเขียนแบบ { type: String } ตามนี้
+    type: {
+      type: String,
+      enum: ["classroom", "live"],
+      default: "classroom",
       index: true,
     },
 
@@ -51,10 +101,9 @@ const StudentSchema = new mongoose.Schema(
 
     // ✅ เมนูอาหาร
     food: {
-      // แยกประเภทให้ชัดเจน
       // food = เลือกอาหารจริง
       // noFood = ไม่รับอาหาร
-      // coupon = ใช้คูปอง (ไปเซ็นได้เลย)
+      // coupon = ใช้คูปอง
       choiceType: {
         type: String,
         enum: ["food", "noFood", "coupon", ""],
@@ -71,13 +120,13 @@ const StudentSchema = new mongoose.Schema(
       addons: { type: [String], default: [] },
       drink: { type: String, default: "" },
 
-      // ✅ new ids (validate รายเมนู + แสดงรูปได้)
+      // ✅ new ids
       addonIds: { type: [String], default: [] },
       drinkId: { type: String, default: "" },
 
       note: { type: String, default: "" },
 
-      // optional (ไว้รองรับ trace)
+      // optional trace
       classId: { type: String, default: "" },
       day: { type: Number, default: null },
     },

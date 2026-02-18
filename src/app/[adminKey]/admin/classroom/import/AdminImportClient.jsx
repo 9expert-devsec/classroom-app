@@ -1,3 +1,4 @@
+// src/app/[adminKey]/admin/classroom/import/AdminImportClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,8 +15,28 @@ function pick(sp, key) {
   return Array.isArray(v) ? v[0] || "" : v || "";
 }
 
+function pickCol(row, keys = []) {
+  for (const k of keys) {
+    const v = row?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+  }
+  return "";
+}
+
 function pickName(row) {
   return clean(row?.name) || clean(row?.thaiName) || clean(row?.engName) || "";
+}
+
+function normalizeStudentType(x) {
+  const raw = clean(x).toLowerCase();
+  if (!raw) return "classroom"; // default
+  if (raw === "classroom") return "classroom";
+  if (raw === "live") return "live";
+  // เผื่อพิมพ์แบบอื่นๆ: online/live-stream -> live
+  if (raw === "online" || raw === "livestream" || raw === "live-stream")
+    return "live";
+  // ถ้าไม่รู้จัก ให้คืนค่า raw ไปโชว์เตือน (แต่ตอน import จะ fallback classroom)
+  return raw;
 }
 
 function normalizePreviewRows(rows) {
@@ -23,8 +44,19 @@ function normalizePreviewRows(rows) {
 
   const mapped = arr.map((r) => {
     const name = pickName(r);
+
+    // รองรับ header ได้ทั้ง "type" และ "ประเภท"
+    const typeRaw = pickCol(r, [
+      "type",
+      "ประเภท",
+      "studentType",
+      "trainingType",
+    ]);
+    const type = normalizeStudentType(typeRaw);
+
     return {
       name,
+      type,
       company: clean(r?.company),
       paymentRef: clean(r?.paymentRef),
       receiveType: clean(r?.receiveType),
@@ -79,7 +111,16 @@ export default function ImportPage({ searchParams = {} }) {
       (acc, r) => (r.name ? acc : acc + 1),
       0,
     );
-    return { total, missingName };
+
+    // type ที่ไม่ใช่ classroom/live จะถือว่า invalid (แต่ยังแสดงใน preview)
+    const invalidType = previewRows.reduce((acc, r) => {
+      const t = clean(r.type).toLowerCase();
+      if (!t) return acc; // default จะเป็น classroom อยู่แล้ว
+      if (t === "classroom" || t === "live") return acc;
+      return acc + 1;
+    }, 0);
+
+    return { total, missingName, invalidType };
   }, [previewRows]);
 
   const previewLimit = 20;
@@ -104,13 +145,20 @@ export default function ImportPage({ searchParams = {} }) {
       return;
     }
 
+    // กัน type แปลก ๆ: fallback เป็น classroom ตอนส่ง
+    const safeRows = previewRows.map((r) => {
+      const t = clean(r.type).toLowerCase();
+      const safeType = t === "live" ? "live" : "classroom";
+      return { ...r, type: safeType };
+    });
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/classroom/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: csvData, classId }),
+        body: JSON.stringify({ data: safeRows, classId }),
       });
 
       const out = await res.json();
@@ -140,7 +188,7 @@ export default function ImportPage({ searchParams = {} }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl h-full min-h-0  flex flex-col overflow-hidden">
+    <div className="mx-auto max-w-3xl h-full min-h-0 flex flex-col overflow-hidden">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold">นำเข้ารายชื่อนักเรียน (CSV)</h1>
 
@@ -197,8 +245,12 @@ export default function ImportPage({ searchParams = {} }) {
             <div>
               <h2 className="text-lg font-semibold">พรีวิวข้อมูล</h2>
               <div className="mt-1 text-xs text-front-textMuted">
-                ระบบรองรับทั้งไฟล์ใหม่ (<b>name</b>) และไฟล์เก่า (
+                ระบบรองรับทั้งไฟล์ใหม่ (<b>name, type</b>) และไฟล์เก่า (
                 <b>thaiName/engName</b>)
+              </div>
+              <div className="mt-1 text-xs text-front-textMuted">
+                ค่า <b>type</b> ที่รองรับ: <b>classroom</b> หรือ <b>live</b>{" "}
+                (ถ้าไม่ใส่จะเป็น classroom)
               </div>
             </div>
 
@@ -214,6 +266,16 @@ export default function ImportPage({ searchParams = {} }) {
                   แถว (จะถูกข้ามตอนนำเข้า)
                 </>
               )}
+              {stats.invalidType > 0 && (
+                <>
+                  {" "}
+                  • type ไม่ถูกต้อง{" "}
+                  <span className="font-semibold text-amber-600">
+                    {stats.invalidType}
+                  </span>{" "}
+                  แถว (ระบบจะ fallback เป็น classroom)
+                </>
+              )}
             </div>
           </div>
 
@@ -223,6 +285,7 @@ export default function ImportPage({ searchParams = {} }) {
                 <tr className="border-b">
                   {[
                     "name",
+                    "type",
                     "company",
                     "paymentRef",
                     "receiveType",
@@ -241,12 +304,19 @@ export default function ImportPage({ searchParams = {} }) {
               <tbody>
                 {previewVisible.map((row, idx) => {
                   const missing = !row.name;
+                  const t = clean(row.type).toLowerCase();
+                  const invalidType = t && t !== "classroom" && t !== "live";
+
                   return (
                     <tr
                       key={idx}
                       className="border-b text-front-textMuted"
                       title={
-                        missing ? "แถวนี้ชื่อว่าง จะถูกข้ามตอน import" : ""
+                        missing
+                          ? "แถวนี้ชื่อว่าง จะถูกข้ามตอน import"
+                          : invalidType
+                            ? "type ไม่ถูกต้อง ระบบจะ fallback เป็น classroom"
+                            : ""
                       }
                     >
                       <td className="p-2">
@@ -259,6 +329,18 @@ export default function ImportPage({ searchParams = {} }) {
                           )}
                         </div>
                       </td>
+
+                      <td className="p-2">
+                        <div className="flex items-center gap-2">
+                          <span>{row.type || "classroom"}</span>
+                          {invalidType && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                              type ผิด
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
                       <td className="p-2">{row.company || "-"}</td>
                       <td className="p-2">{row.paymentRef || "-"}</td>
                       <td className="p-2">{row.receiveType || "-"}</td>
@@ -269,7 +351,7 @@ export default function ImportPage({ searchParams = {} }) {
 
                 {previewRows.length > previewLimit && (
                   <tr>
-                    <td colSpan={5} className="py-2 text-center text-xs">
+                    <td colSpan={6} className="py-2 text-center text-xs">
                       แสดง {previewLimit} แถวแรก จากทั้งหมด {previewRows.length}{" "}
                       แถว
                     </td>
@@ -279,7 +361,7 @@ export default function ImportPage({ searchParams = {} }) {
                 {previewRows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="py-4 text-center text-front-textMuted"
                     >
                       ไม่พบข้อมูลที่อ่านได้จากไฟล์ (หรือไฟล์ว่าง)

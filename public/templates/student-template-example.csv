@@ -1,15 +1,3 @@
-﻿name,company,paymentRef,receiveType,receiveDate
-พิรศักดิ์ สุงสุวรรณ,9Expert,INV-001,onsite,03-12-2025
-Angkana J,ABC Corp,INV-002,ems,
-Kiatnakorn P,9Expert,INV-003,onsite,03-12-2025
-Thitipa Jar,ABC Corp,INV-004,ems,
-Tham Kon,9Expert,INV-005,onsite,03-12-2025
-Panita Srit,ABC Corp,INV-006,ems,
-Naret Siri,9Expert,INV-007,onsite,03-12-2025
-Teerana R,ABC Corp,INV-008,ems,
-Taniya Kaj,9Expert,INV-009,onsite,03-12-2025
-Setha Om,ABC Corp,INV-010,ems,
-Chawisa R,9Expert,INV-011,onsite,03-12-2025
-Pongdech B,ABC Corp,INV-012,ems,
-Chanathin P,9Expert,INV-013,onsite,03-12-2025
-Kaewkan W,ABC Corp,INV-014,ems
+﻿name,type,company,paymentRef,receiveType,receiveDate
+John Doe,classroom,9Expert,INV-001,on_class,2026-02-18
+Jane Smith,live,Bitkub,IV-123,ems,2026-02-18

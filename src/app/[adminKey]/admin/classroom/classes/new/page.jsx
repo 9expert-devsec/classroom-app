@@ -1,7 +1,7 @@
 // src/app/admin/classroom/classes/new/page.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import { Calendar } from "@/components/ui/calendar";
 
@@ -28,11 +28,93 @@ function uniqDates(dates) {
   return Array.from(map.values()).sort((a, b) => a.getTime() - b.getTime());
 }
 
-function buildDefaultTitle(course) {
-  const code = course?.course_id || "";
-  const name = course?.course_name || "";
-  const t = `${code} - ${name}`.trim();
-  return t.replace(/\s+/g, " ");
+function normalizeCourseCode(code) {
+  return String(code || "CLASS")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-");
+}
+
+function toDDMMYY_BE_fromYMD(ymd) {
+  const s = String(ymd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return `00-00-00`;
+  const [y, m, d] = s.split("-");
+  const be = Number(y) + 543;
+  const yy = String(be).slice(-2);
+  return `${d}-${m}-${yy}`;
+}
+
+function formatDMYDashFromYMD(ymd) {
+  const s = String(ymd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  const [y, m, d] = s.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+function parseRunFromTitle(title) {
+  const s = String(title || "").trim();
+  const parts = s.split("-");
+  const last = parts[parts.length - 1];
+  const n = Number(last);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function safeArr(x) {
+  return Array.isArray(x) ? x : [];
+}
+
+// heuristic: ถ้าคอร์สเป็น hybrid หรือเลือกห้อง Online ให้ขึ้น H
+function pickTypePrefixManual(course, room) {
+  const raw = String(course?.type || course?.trainingType || "")
+    .trim()
+    .toLowerCase();
+  if (raw === "hybrid") return "H";
+  if (raw === "classroom") return "CR";
+  if (
+    String(room || "")
+      .trim()
+      .toLowerCase() === "online"
+  )
+    return "H";
+  return "CR";
+}
+
+async function guessNextRunNumber({ dateYMD, titlePrefix }) {
+  try {
+    const qs = new URLSearchParams({
+      date: dateYMD,
+      titlePrefix,
+    }).toString();
+
+    const res = await fetch(`/api/admin/classes?${qs}`, {
+      method: "GET",
+      headers: { "content-type": "application/json" },
+    });
+
+    if (!res.ok) return 1;
+
+    const data = await res.json().catch(() => ({}));
+    const rows =
+      data.items ||
+      data.data ||
+      data.classes ||
+      (Array.isArray(data) ? data : []);
+
+    const list = safeArr(rows);
+
+    let maxRun = 0;
+    for (const c of list) {
+      const t = String(c?.title || c?.classTitle || "").trim();
+      if (!t) continue;
+      if (!t.startsWith(titlePrefix + "-")) continue;
+      const r = parseRunFromTitle(t);
+      if (r && r > maxRun) maxRun = r;
+    }
+
+    return maxRun + 1 || 1;
+  } catch {
+    return 1;
+  }
 }
 
 export default function NewClassManualPage() {
@@ -58,10 +140,8 @@ export default function NewClassManualPage() {
     return first ? toLocalYMD(first) : "";
   }, [selectedSorted]);
 
-  // จำนวนวัน = จำนวนวันที่เลือก
   const dayCount = useMemo(() => selectedSorted.length || 0, [selectedSorted]);
 
-  // days[] = YMD ของทุกวันที่เลือก (source of truth สำหรับข้ามวัน/เว้นวัน)
   const daysYMD = useMemo(
     () => selectedSorted.map((d) => toLocalYMD(d)).filter(Boolean),
     [selectedSorted],
@@ -116,12 +196,42 @@ export default function NewClassManualPage() {
     loadInstructors();
   }, []);
 
-  // ✅ ถ้ายังไม่เคยแก้ title เอง ให้ auto-fill ตามคอร์สที่เลือก
+  // ✅ auto-gen title แบบเดียวกับหน้า import schedule
+  const genRef = useRef(0);
   useEffect(() => {
-    if (!selectedCourse) return;
-    if (titleTouched) return;
-    setTitle(buildDefaultTitle(selectedCourse));
-  }, [selectedCourse, titleTouched]);
+    async function run() {
+      if (!selectedCourse) return;
+      if (titleTouched) return;
+
+      // ยังไม่เลือกวัน → ยังไม่บังคับ pattern (รอเลือกวันก่อน)
+      if (!daysYMD.length) {
+        setTitle(
+          `${selectedCourse.course_id || ""} - ${selectedCourse.course_name || ""}`
+            .trim()
+            .replace(/\s+/g, " "),
+        );
+        return;
+      }
+
+      const firstYMD = daysYMD[0];
+      const type = pickTypePrefixManual(selectedCourse, room);
+      const channel = "PUB";
+      const code = normalizeCourseCode(selectedCourse.course_id || "CLASS");
+      const ddmmyy = toDDMMYY_BE_fromYMD(firstYMD);
+      const titlePrefix = `${type}-${channel}-${code}-${ddmmyy}`;
+
+      const my = ++genRef.current;
+      const runNo = await guessNextRunNumber({
+        dateYMD: firstYMD,
+        titlePrefix,
+      });
+
+      if (my !== genRef.current) return;
+      setTitle(`${titlePrefix}-${runNo}`);
+    }
+
+    run();
+  }, [selectedCourse, daysYMD, room, titleTouched]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -143,7 +253,6 @@ export default function NewClassManualPage() {
       return;
     }
 
-    // หา instructor ที่เลือก
     const selectedInst =
       instructors.find(
         (i) =>
@@ -153,19 +262,13 @@ export default function NewClassManualPage() {
       ) || null;
 
     const payload = {
-      // ✅ ใช้ชื่อที่กรอกเอง
       title: t,
 
       courseCode: selectedCourse.course_id || "",
       courseName: selectedCourse.course_name || "",
 
-      // compat (วันแรก)
       date: dateStr,
-
-      // นับจากวันที่เลือกจริง
       dayCount: dayCount || 1,
-
-      // ✅ วันอบรมจริงทั้งหมด (รองรับเลือกข้ามวัน/เว้นวัน)
       days: daysYMD,
 
       startTime,
@@ -205,16 +308,14 @@ export default function NewClassManualPage() {
 
       alert("สร้าง Class (manual) สำเร็จแล้ว");
 
-      // reset
       setSelectedDates([]);
       setStartTime("09:00");
       setEndTime("16:00");
       setRoom("");
       setInstructorId("");
 
-      // reset title → ให้ auto-fill รอบถัดไป
       setTitleTouched(false);
-      setTitle(selectedCourse ? buildDefaultTitle(selectedCourse) : "");
+      // รอเลือกวันใหม่แล้วค่อย auto-gen
     } catch (err) {
       console.error(err);
       alert("เกิดข้อผิดพลาดในการเรียก API");
@@ -242,9 +343,7 @@ export default function NewClassManualPage() {
           <select
             className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
             value={courseId}
-            onChange={(e) => {
-              setCourseId(e.target.value);
-            }}
+            onChange={(e) => setCourseId(e.target.value)}
           >
             <option value="">-- กรุณาเลือกคอร์ส --</option>
             {courses.map((c) => (
@@ -255,7 +354,7 @@ export default function NewClassManualPage() {
           </select>
         </div>
 
-        {/* ✅ ตั้งชื่อ Class เอง */}
+        {/* ตั้งชื่อ */}
         <div>
           <div className="flex items-center justify-between gap-3">
             <label className="block text-sm font-medium text-admin-text">
@@ -267,13 +366,12 @@ export default function NewClassManualPage() {
               className="rounded-full border border-admin-border bg-white px-3 py-1 text-xs text-admin-text hover:bg-admin-surfaceMuted"
               onClick={() => {
                 if (!selectedCourse) return;
-                setTitle(buildDefaultTitle(selectedCourse));
-                setTitleTouched(false);
+                setTitleTouched(false); // ให้ระบบ gen ใหม่
               }}
               disabled={!selectedCourse}
-              title="ตั้งค่าเป็นชื่อ default จากคอร์ส"
+              title="ให้ระบบ gen ชื่อใหม่อัตโนมัติ (ตามวันแรกที่เลือก)"
             >
-              ใช้ชื่อจากคอร์ส
+              ใช้ชื่ออัตโนมัติ
             </button>
           </div>
 
@@ -284,10 +382,10 @@ export default function NewClassManualPage() {
               setTitle(e.target.value);
               setTitleTouched(true);
             }}
-            placeholder="เช่น CR-PUB-XXX-26-01-26-1 หรือ ชื่ออะไรก็ได้"
+            placeholder="เช่น CR-PUB-XXX-26-01-69-1 หรือ ชื่ออะไรก็ได้"
           />
           <p className="mt-1 text-[11px] text-admin-textMuted">
-            * ระบบจะใช้ชื่อนี้เป็น title ของ Class ทันที (คุณตั้งรูปแบบเองได้)
+            * ถ้าไม่แก้เอง ระบบจะ gen ชื่อให้เหมือนหน้า import schedule
           </p>
         </div>
 
@@ -332,9 +430,6 @@ export default function NewClassManualPage() {
               );
             })}
           </select>
-          <p className="mt-1 text-[11px] text-admin-textMuted">
-            ถ้าไม่เลือก ระบบจะสร้าง Class โดยไม่มีชื่อผู้สอน (ไปกำหนดทีหลังได้)
-          </p>
         </div>
 
         {/* เลือกวันเอง + จำนวนวันอัตโนมัติ */}
@@ -350,7 +445,6 @@ export default function NewClassManualPage() {
                 numberOfMonths={1}
                 selected={selectedDates}
                 onSelect={(v) => setSelectedDates(Array.isArray(v) ? v : [])}
-                // ทำให้ selected เป็นวงขอบ (ไม่ใช่ range)
                 classNames={{
                   day_selected:
                     "bg-transparent text-admin-text ring-2 ring-brand-primary hover:bg-transparent",
@@ -364,7 +458,7 @@ export default function NewClassManualPage() {
                       key={d}
                       className="rounded-full bg-admin-surfaceMuted px-3 py-1 text-xs text-admin-text"
                     >
-                      {d}
+                      {formatDMYDashFromYMD(d)} {/* ✅ dd-mm-yyyy */}
                     </span>
                   ))
                 ) : (
@@ -381,15 +475,10 @@ export default function NewClassManualPage() {
               <label className="block text-sm font-medium text-admin-text">
                 จำนวนวันอบรม (คำนวณอัตโนมัติ)
               </label>
-              <div >
+              <div>
                 <div className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm cursor-not-allowed">
-                {dayCount || 0}
+                  {dayCount || 0}
                 </div>
-                {/* <input
-                  readOnly
-                  className="mt-1 w-full rounded-xl border border-admin-border bg-admin-surfaceMuted px-3 py-2 text-sm text-admin-text shadow-sm"
-                  value={dayCount || 0}
-                /> */}
                 <p className="mt-1 text-[11px] text-admin-textMuted">
                   จำนวนวัน = จำนวน “วันที่เลือก” (เลือกเว้นวันได้)
                 </p>

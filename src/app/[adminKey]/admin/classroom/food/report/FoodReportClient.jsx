@@ -11,23 +11,52 @@ function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
 
-function formatDateTH(d) {
-  if (!d) return "-";
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("th-TH", {
-    day: "numeric",
+function toYMD(d) {
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+
+// ✅ make a BKK date (start of day, +07:00) from "YYYY-MM-DD" or ISO/date
+function toBkkDate(d) {
+  if (!d) return null;
+
+  const ymd =
+    typeof d === "string"
+      ? String(d).slice(0, 10)
+      : typeof d === "object"
+        ? toYMD(d)
+        : "";
+
+  if (!ymd) return null;
+
+  const dt = new Date(`${ymd}T00:00:00.000+07:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+// ✅ 18 Feb 2026
+function formatDateEN(d) {
+  const dt = toBkkDate(d);
+  if (!dt) return "-";
+  return dt.toLocaleDateString("en-GB", {
+    day: "2-digit",
     month: "short",
     year: "numeric",
     timeZone: "Asia/Bangkok",
   });
 }
 
-function toYMD(d) {
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+// ✅ dd/mm/yyyy
+function formatDateDMY(d) {
+  const dt = toBkkDate(d);
+  if (!dt) return "-";
+  return dt.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
 }
 
 // เทียบวันแบบ BKK (ทำง่าย ๆ ด้วย +07:00)
@@ -504,7 +533,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       );
 
       return [
-        formatDateTH(o.date || date),
+        formatDateDMY(o.date || date), // ✅ dd/mm/yyyy
         o.courseCode || "",
         classTitle,
         o.roomName || "",
@@ -581,7 +610,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       a.className.localeCompare(b.className, "th"),
     );
 
-    const thDate = formatDateTH(date);
+    const printDate = formatDateEN(date); // ✅ 18 Feb 2026
     const generatedAt = new Date().toLocaleString("th-TH", {
       dateStyle: "short",
       timeStyle: "short",
@@ -668,7 +697,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             </div>
           </div>
           <div style="margin-top:6px;font-size:14px;">
-            วันที่ : <span style="font-weight:700;">${thDate}</span>
+            วันที่ : <span style="font-weight:700;">${printDate}</span>
           </div>
         </div>
 
@@ -792,17 +821,17 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               (o.note ?? o.food?.note ?? "") ||
               (isCoupon ? "COUPON" : isNoFood ? "ไม่รับอาหาร" : "");
 
+            // ✅ ตัดคอลัมน์ "บริษัท" ออกจาก Print
             return `
               <tr>
-      <td class="td num">${idx + 1}</td>
-      <td class="td">${o.studentName || "-"}</td>
-      <td class="td">${o.company || ""}</td>
-      <td class="td">${rest}</td>
-      <td class="td">${menu}</td>
-      <td class="td">${addons}</td>
-      <td class="td">${drink}</td>
-      <td class="td">${note}</td>
-    </tr>
+                <td class="td num">${idx + 1}</td>
+                <td class="td">${o.studentName || "-"}</td>
+                <td class="td">${rest}</td>
+                <td class="td">${menu}</td>
+                <td class="td">${addons}</td>
+                <td class="td">${drink}</td>
+                <td class="td">${note}</td>
+              </tr>
             `;
           })
           .join("");
@@ -812,17 +841,16 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             <table class="class-table">
               <thead>
                 <tr>
-                  <th colspan="8" class="class-head">
+                  <th colspan="7" class="class-head">
                     <div class="class-title">${g.className}</div>
                     <div class="class-sub">
-                      ${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${thDate}
+                      ${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${printDate}
                     </div>
                   </th>
                 </tr>
                 <tr>
                   <th class="th num">#</th>
                   <th class="th">ชื่อผู้เรียน</th>
-                  <th class="th">บริษัท</th>
                   <th class="th">ร้านอาหาร</th>
                   <th class="th">เมนู</th>
                   <th class="th">Add-on</th>
@@ -833,7 +861,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               <tbody>
                 ${
                   rowsHtml ||
-                  `<tr><td colspan="8" class="td empty">ไม่มีข้อมูล</td></tr>`
+                  `<tr><td colspan="7" class="td empty">ไม่มีข้อมูล</td></tr>`
                 }
               </tbody>
             </table>
@@ -854,7 +882,12 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <title>Food Report</title>
           <style>
             @page { margin: 12mm; }
-            body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; color: #111827; margin: 0; }
+            body {
+              font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+              font-size: 12px;
+              color: #111827;
+              margin: 0;
+            }
             .page { padding: 0; }
             .page-break { page-break-after: always; break-after: page; height: 0; }
 
@@ -1286,7 +1319,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               สรุปเมนูรวม
             </div>
             <div className="text-[11px] text-admin-textMuted">
-              วันที่ {formatDateTH(date)} • รวม{" "}
+              วันที่ {formatDateEN(date)} • รวม{" "}
               <span className="font-semibold text-admin-text">
                 {filteredCounts.total}
               </span>{" "}
@@ -1344,7 +1377,10 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <div className="text-[11px] text-admin-textMuted">
             Top เมนู (จาก API)
           </div>
-          <div className="mt-2 space-y-1 overflow-y-auto pr-1" style={{ maxHeight: "86px" }}>
+          <div
+            className="mt-2 space-y-1 overflow-y-auto pr-1"
+            style={{ maxHeight: "86px" }}
+          >
             {(summary?.menuCounts || []).slice(0, 8).map((x, idx) => (
               <div
                 key={idx}
@@ -1373,10 +1409,16 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               </label>
               <input
                 type="date"
+                lang="en-GB"
                 className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
               />
+              {date && (
+                <div className="mt-1 text-[11px] text-admin-textMuted">
+                  {formatDateDMY(date)}
+                </div>
+              )}
             </div>
 
             <div>
@@ -1563,6 +1605,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                           </th>
                         </tr>
                       </thead>
+
                       <tbody className="[&>tr>td]:min-w-0">
                         {g.items.map((o, idx) => {
                           const rowId = String(o.id || o._id);
@@ -1808,7 +1851,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                 </select>
               </div>
 
-              {/* ✅ Add-ons (ใช้ currentAddonChoices ตัวใหม่) */}
+              {/* ✅ Add-ons */}
               <div className="md:col-span-2">
                 <div className="text-[11px] text-admin-textMuted">Add-on</div>
                 <div className="mt-2 flex flex-wrap gap-2">

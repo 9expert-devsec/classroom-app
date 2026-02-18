@@ -101,14 +101,14 @@ function AddonCard({ item, active, onClick }) {
       )}
     >
       <div className="flex flex-col w-full items-center gap-2">
-        <div className="relative h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
+        <div className="h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
           {item?.imageUrl ? (
-            <Image
+            <img
               src={item.imageUrl}
               alt={item.name || "addon"}
-              fill
-              sizes="40px"
-              className="object-cover"
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-front-textMuted">
@@ -149,17 +149,17 @@ function DrinkCard2({ item, active, onClick }) {
       )}
     >
       <div className="flex flex-col w-full items-center gap-2">
-        <div className="relative h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
+        <div className="h-20 w-20 overflow-hidden rounded-xl bg-front-bgSoft">
           {item?.imageUrl ? (
-            <Image
+            <img
               src={item.imageUrl}
               alt={item.name || "drink"}
-              fill
-              sizes="40px"
-              className="object-cover"
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center  text-front-textMuted">
+            <div className="flex h-full w-full items-center justify-center text-front-textMuted">
               <Ban size={60} />
             </div>
           )}

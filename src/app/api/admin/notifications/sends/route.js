@@ -122,13 +122,36 @@ export async function GET(req) {
     const sinceDate = since ? new Date(since) : null;
     const hasSince = sinceDate && !Number.isNaN(sinceDate.getTime());
 
+    // ✅ HANDSHAKE: ไม่มี since (หรือ parse ไม่ได้) -> ไม่ส่งของเก่า
+    if (!hasSince) {
+      const latestDoc = await DocumentReceipt.findOne({
+        $or: [
+          { "staffSig.signedAt": { $ne: null } },
+          { "receivers.withholdingSig.signedAt": { $ne: null } },
+        ],
+      })
+        .sort({ updatedAt: -1 })
+        .limit(1)
+        .lean();
+
+      const ev = latestDoc ? pickLatestSendEvent(latestDoc) : null;
+      const cursor = ev?.signedAt
+        ? ev.signedAt.toISOString()
+        : new Date().toISOString();
+
+      return NextResponse.json(
+        { ok: true, cursor, items: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const q = {
       $or: [
         { "staffSig.signedAt": { $ne: null } },
         { "receivers.withholdingSig.signedAt": { $ne: null } },
       ],
+      updatedAt: { $gt: sinceDate },
     };
-    if (hasSince) q.updatedAt = { $gt: sinceDate };
 
     const rows = await DocumentReceipt.find(q)
       .sort({ updatedAt: -1 })
@@ -139,7 +162,7 @@ export async function GET(req) {
     for (const doc of rows) {
       const ev = pickLatestSendEvent(doc);
       if (!ev) continue;
-      if (hasSince && ev.signedAt <= sinceDate) continue;
+      if (ev.signedAt <= sinceDate) continue;
 
       events.push({
         id: `${String(doc._id)}:${ev.signedAt.toISOString()}`,

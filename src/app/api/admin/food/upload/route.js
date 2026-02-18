@@ -16,10 +16,7 @@ export async function POST(req) {
     const file = formData.get("file");
 
     if (!file) {
-      return NextResponse.json(
-        { error: "missing_file" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "missing_file" }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
@@ -33,14 +30,22 @@ export async function POST(req) {
     });
 
     return NextResponse.json(
-      { ok: true, url: result.secure_url },
-      { status: 200 }
+      {
+        ok: true,
+        url: result.secure_url,
+        publicId: result.public_id,
+        width: result.width,
+        height: result.height,
+        bytes: result.bytes,
+        format: result.format,
+      },
+      { status: 200 },
     );
   } catch (err) {
     console.error("Cloudinary upload error:", err);
     return NextResponse.json(
       { ok: false, error: err?.message || "upload_failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

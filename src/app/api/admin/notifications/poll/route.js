@@ -39,6 +39,21 @@ function safeDateFromIso(iso) {
   return d;
 }
 
+// since token รูปแบบ: "2026-02-17T03:06:30.867Z|checkin|<id>"
+function parseCursorToken(token) {
+  const s = clean(token);
+  if (!s) return null;
+  const [iso] = s.split("|");
+  const d = safeDateFromIso(iso);
+  if (!d) return null;
+  return { sinceTs: d, sinceKey: s };
+}
+
+function cursorKeyOf(iso, type, id) {
+  // iso ต้องเป็น ISO string (lexicographic sortable)
+  return `${iso}|${type}|${String(id || "")}`;
+}
+
 function pickCursorDateFromCheckin(row) {
   return (
     (row?.updatedAt && new Date(row.updatedAt)) ||
@@ -139,9 +154,9 @@ function pickLatestSendEvent(doc) {
   };
 }
 
-/* ---------------- prime cursor ---------------- */
+/* ---------------- prime cursor (composite) ---------------- */
 
-async function getPrimeCursor() {
+async function getPrimeCursorKey() {
   const [latestCheckin, latestFoodEdit, latestReceiptDoc, latestSendDoc] =
     await Promise.all([
       Checkin.findOne({})
@@ -170,36 +185,53 @@ async function getPrimeCursor() {
 
   if (latestCheckin) {
     const d = pickCursorDateFromCheckin(latestCheckin);
-    if (d && !Number.isNaN(d.getTime())) candidates.push(d);
-  }
-  if (latestFoodEdit?.createdAt) {
-    const d = new Date(latestFoodEdit.createdAt);
-    if (!Number.isNaN(d.getTime())) candidates.push(d);
-  }
-  if (latestReceiptDoc) {
-    const ev = pickLatestReceiptEvent(latestReceiptDoc);
-    if (ev?.signedAt && !Number.isNaN(ev.signedAt.getTime()))
-      candidates.push(ev.signedAt);
-  }
-  if (latestSendDoc) {
-    const ev = pickLatestSendEvent(latestSendDoc);
-    if (ev?.signedAt && !Number.isNaN(ev.signedAt.getTime()))
-      candidates.push(ev.signedAt);
+    if (d && !Number.isNaN(d.getTime())) {
+      const iso = d.toISOString();
+      candidates.push(cursorKeyOf(iso, "checkin", latestCheckin._id));
+    }
   }
 
-  if (!candidates.length) return new Date().toISOString();
-  candidates.sort((a, b) => a - b);
-  return candidates[candidates.length - 1].toISOString();
+  if (latestFoodEdit?.createdAt) {
+    const d = new Date(latestFoodEdit.createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      const iso = d.toISOString();
+      candidates.push(cursorKeyOf(iso, "foodEdit", latestFoodEdit._id));
+    }
+  }
+
+  if (latestReceiptDoc) {
+    const ev = pickLatestReceiptEvent(latestReceiptDoc);
+    if (ev?.signedAt && !Number.isNaN(ev.signedAt.getTime())) {
+      const iso = ev.signedAt.toISOString();
+      candidates.push(cursorKeyOf(iso, "receipt", latestReceiptDoc._id));
+    }
+  }
+
+  if (latestSendDoc) {
+    const ev = pickLatestSendEvent(latestSendDoc);
+    if (ev?.signedAt && !Number.isNaN(ev.signedAt.getTime())) {
+      const iso = ev.signedAt.toISOString();
+      candidates.push(cursorKeyOf(iso, "send", latestSendDoc._id));
+    }
+  }
+
+  if (!candidates.length) {
+    const nowIso = new Date().toISOString();
+    return cursorKeyOf(nowIso, "init", "0");
+  }
+
+  candidates.sort((a, b) => a.localeCompare(b));
+  return candidates[candidates.length - 1];
 }
 
 /* ---------------- builder: checkins ---------------- */
 
-async function buildCheckins(sinceDate, limit = 20) {
+async function buildCheckins(querySinceDate, sinceKey, limit = 20) {
   const q = {
     $or: [
-      { updatedAt: { $gt: sinceDate } },
-      { time: { $gt: sinceDate } },
-      { createdAt: { $gt: sinceDate } },
+      { updatedAt: { $gt: querySinceDate } },
+      { time: { $gt: querySinceDate } },
+      { createdAt: { $gt: querySinceDate } },
     ],
   };
 
@@ -229,72 +261,88 @@ async function buildCheckins(sinceDate, limit = 20) {
   const studentMap = new Map(students.map((s) => [String(s._id), s]));
   const classMap = new Map(classes.map((c) => [String(c._id), c]));
 
-  return rows
-    .slice()
-    .reverse()
-    .map((r) => {
-      const st = studentMap.get(String(r.studentId)) || {};
-      const cl = classMap.get(String(r.classId)) || {};
+  const items = [];
 
-      const fullName =
-        clean(st.name) || clean(st.thaiName) || clean(st.engName) || "ผู้เรียน";
+  // เรียงเก่า -> ใหม่
+  for (const r of rows.slice().reverse()) {
+    const st = studentMap.get(String(r.studentId)) || {};
+    const cl = classMap.get(String(r.classId)) || {};
 
-      const cursorDate = pickCursorDateFromCheckin(r);
-      const cursor = cursorDate.toISOString();
+    const fullName =
+      clean(st.name) || clean(st.thaiName) || clean(st.engName) || "ผู้เรียน";
 
-      const timeText =
-        formatTimeBKK(r.time) ||
-        formatTimeBKK(r.updatedAt) ||
-        formatTimeBKK(r.createdAt);
+    const cursorDate = pickCursorDateFromCheckin(r);
+    const cursorIso = cursorDate.toISOString();
+    const cKey = cursorKeyOf(cursorIso, "checkin", r._id);
 
-      const classTitle = clean(cl.title) || "ไม่ระบุคลาส";
+    // ✅ filter แบบ cursorKey (exclusive) กันเด้งของเก่าหลัง refresh/login
+    if (cKey.localeCompare(sinceKey) <= 0) continue;
 
-      return {
-        type: "checkin",
-        id: String(r._id),
-        eventId: `${String(r._id)}:${cursor}`,
-        cursor,
-        message: `คุณ ${fullName} ได้ทำการเช็คอินเรียบร้อย เวลา ${timeText} จาก class ${classTitle}`,
-      };
+    const timeText =
+      formatTimeBKK(r.time) ||
+      formatTimeBKK(r.updatedAt) ||
+      formatTimeBKK(r.createdAt);
+
+    const classTitle = clean(cl.title) || "ไม่ระบุคลาส";
+
+    items.push({
+      type: "checkin",
+      id: String(r._id),
+      eventId: `${String(r._id)}:${cursorIso}`,
+      cursor: cursorIso,
+      cursorKey: cKey,
+      message: `คุณ ${fullName} ได้ทำการเช็คอินเรียบร้อย เวลา ${timeText} จาก class ${classTitle}`,
     });
+  }
+
+  return items;
 }
 
 /* ---------------- builder: food edits ---------------- */
 
-async function buildFoodEdits(sinceDate, limit = 20) {
-  const rows = await FoodEditLog.find({ createdAt: { $gt: sinceDate } })
+async function buildFoodEdits(querySinceDate, sinceKey, limit = 20) {
+  const rows = await FoodEditLog.find({ createdAt: { $gt: querySinceDate } })
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean();
 
-  return rows
-    .slice()
-    .reverse()
-    .map((r) => {
-      const cursor = new Date(r.createdAt).toISOString();
-      return {
-        type: "foodEdit",
-        id: `${String(r._id)}:${cursor}`,
-        eventId: `${String(r._id)}:${cursor}`,
-        cursor,
-        classId: clean(r.classId),
-        studentName: clean(r.studentName) || "ผู้เรียน",
-        studentCompany: clean(r.studentCompany),
-        choiceType: clean(r.choiceType),
-      };
+  const items = [];
+
+  for (const r of rows.slice().reverse()) {
+    const cursorIso = new Date(r.createdAt).toISOString();
+    const cKey = cursorKeyOf(cursorIso, "foodEdit", r._id);
+    if (cKey.localeCompare(sinceKey) <= 0) continue;
+
+    items.push({
+      type: "foodEdit",
+      id: `${String(r._id)}:${cursorIso}`,
+      eventId: `${String(r._id)}:${cursorIso}`,
+      cursor: cursorIso,
+      cursorKey: cKey,
+      classId: clean(r.classId),
+      studentName: clean(r.studentName) || "ผู้เรียน",
+      studentCompany: clean(r.studentCompany),
+      choiceType: clean(r.choiceType),
     });
+  }
+
+  return items;
 }
 
 /* ---------------- builder: receipts + sends (DocumentReceipt union) ---------------- */
 
-async function buildReceiptAndSendEvents(sinceDate, limitDocs = 50) {
+async function buildReceiptAndSendEvents(
+  querySinceDate,
+  sinceKey,
+  limitDocs = 60,
+) {
   const q = {
     $or: [
       { "receivers.receiptSig.signedAt": { $ne: null } },
       { "staffSig.signedAt": { $ne: null } },
       { "receivers.withholdingSig.signedAt": { $ne: null } },
     ],
-    updatedAt: { $gt: sinceDate }, // กรองกว้างเร็ว แล้วคัดด้วย signedAt อีกชั้น
+    updatedAt: { $gt: querySinceDate },
   };
 
   const rows = await DocumentReceipt.find(q)
@@ -308,41 +356,51 @@ async function buildReceiptAndSendEvents(sinceDate, limitDocs = 50) {
   for (const doc of rows) {
     // receipt
     const rEv = pickLatestReceiptEvent(doc);
-    if (rEv?.signedAt && rEv.signedAt > sinceDate) {
-      receiptEvents.push({
-        type: "receipt",
-        id: `${String(doc._id)}:${rEv.signedAt.toISOString()}`,
-        eventId: `${String(doc._id)}:${rEv.signedAt.toISOString()}`,
-        cursor: rEv.signedAt.toISOString(),
-        classId: String(doc.classId || ""),
-        docId: clean(doc.docId),
-        signerName: rEv.signerName,
-        signerCompany: rEv.signerCompany,
-        receiveType: rEv.receiveType,
-        timeText: formatTimeBKK(rEv.signedAt),
-      });
+    if (rEv?.signedAt && !Number.isNaN(rEv.signedAt.getTime())) {
+      const cursorIso = rEv.signedAt.toISOString();
+      const cKey = cursorKeyOf(cursorIso, "receipt", doc._id);
+      if (cKey.localeCompare(sinceKey) > 0) {
+        receiptEvents.push({
+          type: "receipt",
+          id: `${String(doc._id)}:${cursorIso}`,
+          eventId: `${String(doc._id)}:${cursorIso}`,
+          cursor: cursorIso,
+          cursorKey: cKey,
+          classId: String(doc.classId || ""),
+          docId: clean(doc.docId),
+          signerName: rEv.signerName,
+          signerCompany: rEv.signerCompany,
+          receiveType: rEv.receiveType,
+          timeText: formatTimeBKK(rEv.signedAt),
+        });
+      }
     }
 
     // send
     const sEv = pickLatestSendEvent(doc);
-    if (sEv?.signedAt && sEv.signedAt > sinceDate) {
-      sendEvents.push({
-        type: "send",
-        id: `${String(doc._id)}:${sEv.signedAt.toISOString()}`,
-        eventId: `${String(doc._id)}:${sEv.signedAt.toISOString()}`,
-        cursor: sEv.signedAt.toISOString(),
-        classId: sEv.classId,
-        docId: sEv.docId,
-        senderName: sEv.senderName,
-        senderCompany: sEv.senderCompany,
-        timeText: formatTimeBKK(sEv.signedAt),
-      });
+    if (sEv?.signedAt && !Number.isNaN(sEv.signedAt.getTime())) {
+      const cursorIso = sEv.signedAt.toISOString();
+      const cKey = cursorKeyOf(cursorIso, "send", doc._id);
+      if (cKey.localeCompare(sinceKey) > 0) {
+        sendEvents.push({
+          type: "send",
+          id: `${String(doc._id)}:${cursorIso}`,
+          eventId: `${String(doc._id)}:${cursorIso}`,
+          cursor: cursorIso,
+          cursorKey: cKey,
+          classId: sEv.classId,
+          docId: sEv.docId,
+          senderName: sEv.senderName,
+          senderCompany: sEv.senderCompany,
+          timeText: formatTimeBKK(sEv.signedAt),
+        });
+      }
     }
   }
 
   // เก่า -> ใหม่
-  receiptEvents.sort((a, b) => new Date(a.cursor) - new Date(b.cursor));
-  sendEvents.sort((a, b) => new Date(a.cursor) - new Date(b.cursor));
+  receiptEvents.sort((a, b) => a.cursorKey.localeCompare(b.cursorKey));
+  sendEvents.sort((a, b) => a.cursorKey.localeCompare(b.cursorKey));
 
   return { receiptEvents, sendEvents };
 }
@@ -359,30 +417,32 @@ export async function GET(req) {
     const prime = clean(searchParams.get("prime")) === "1";
 
     if (prime) {
-      const cursor = await getPrimeCursor();
+      const cursor = await getPrimeCursorKey();
       return NextResponse.json(
         { ok: true, cursor, items: [] },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
 
-    const sinceDateRaw = safeDateFromIso(since);
-
-    // handshake (เผื่อไม่ได้ prime)
-    if (!sinceDateRaw) {
+    // ✅ ถ้า client ไม่ prime มา (กันหลุด)
+    const parsed = parseCursorToken(since);
+    if (!parsed) {
+      const cursor = await getPrimeCursorKey();
       return NextResponse.json(
-        { ok: true, cursor: new Date().toISOString(), items: [] },
+        { ok: true, cursor, items: [] },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
 
-    // overlap 2s กันพลาด event ชนกัน/มาช้า
-    const sinceDate = new Date(sinceDateRaw.getTime() - 2000);
+    const { sinceTs, sinceKey } = parsed;
+
+    // overlap 2s ใช้เพื่อ query เท่านั้น (กันพลาด event ที่ timestamp ชนกัน)
+    const querySince = new Date(sinceTs.getTime() - 2000);
 
     const [checkins, foodEdits, docPack] = await Promise.all([
-      buildCheckins(sinceDate, 20),
-      buildFoodEdits(sinceDate, 20),
-      buildReceiptAndSendEvents(sinceDate, 60),
+      buildCheckins(querySince, sinceKey, 20),
+      buildFoodEdits(querySince, sinceKey, 20),
+      buildReceiptAndSendEvents(querySince, sinceKey, 60),
     ]);
 
     const { receiptEvents, sendEvents } = docPack;
@@ -415,6 +475,7 @@ export async function GET(req) {
         id: e.id,
         eventId: e.eventId,
         cursor: e.cursor,
+        cursorKey: e.cursorKey,
         message: `คุณ ${e.studentName}${company} ยืนยันอาหาร: ${label} เวลา ${when} จาก class ${classTitle}`,
       };
     });
@@ -436,6 +497,7 @@ export async function GET(req) {
         id: e.id,
         eventId: e.eventId,
         cursor: e.cursor,
+        cursorKey: e.cursorKey,
         message: `คุณ ${e.signerName}${company} ได้รับเอกสาร${ref} เรียบร้อย เวลา ${e.timeText} จาก class ${classTitle}${recv}`,
       };
     });
@@ -451,15 +513,18 @@ export async function GET(req) {
         id: e.id,
         eventId: e.eventId,
         cursor: e.cursor,
+        cursorKey: e.cursorKey,
         message: `คุณ ${e.senderName}${company} ได้นำส่งเอกสาร${ref} เรียบร้อย เวลา ${e.timeText} จาก class ${classTitle}`,
       };
     });
 
     const items = [...checkins, ...receiptItems, ...sendItems, ...foodItems]
       .filter(Boolean)
-      .sort((a, b) => String(a.cursor).localeCompare(String(b.cursor)));
+      .sort((a, b) => String(a.cursorKey).localeCompare(String(b.cursorKey)));
 
-    const newCursor = items.length ? items[items.length - 1].cursor : since;
+    const newCursor = items.length
+      ? items[items.length - 1].cursorKey
+      : sinceKey;
 
     return NextResponse.json(
       { ok: true, cursor: newCursor, items },

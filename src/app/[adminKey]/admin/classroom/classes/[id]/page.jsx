@@ -1,4 +1,3 @@
-// src/app/admin/classroom/classes/[id]/page.jsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -6,12 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import StudentsTable from "./StudentsTable";
 import SyncStudentsButton from "./SyncStudentsButton";
 import ReportPreviewButton from "./ReportPreviewButton";
-import {
-  ChevronDown,
-  ChevronLeft,
-  MoreVertical,
-  FileSignature,
-} from "lucide-react";
+import { ChevronDown, ChevronLeft, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -21,6 +15,21 @@ import {
 
 /* ===== helpers ===== */
 
+const BKK_TZ = "Asia/Bangkok";
+const EN_LOCALE = "en-GB";
+
+/**
+ * ✅ ชุดห้องแบบเดียวกับหน้า "สร้าง Class (manual)"
+ */
+const ROOM_OPTIONS_BASE = [
+  "Jupiter",
+  "Mars",
+  "Saturn",
+  "Venus",
+  "Opera",
+  "Online",
+];
+
 function formatDateTH(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -29,7 +38,7 @@ function formatDateTH(value) {
     day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone: "Asia/Bangkok",
+    timeZone: BKK_TZ,
   });
 }
 
@@ -41,8 +50,166 @@ function formatTimeTH(value) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Asia/Bangkok",
+    timeZone: BKK_TZ,
   });
+}
+
+/** ให้ ymd (YYYY-MM-DD) แบบยึด Asia/Bangkok */
+function ymdFromAnyBKK(value) {
+  if (!value) return "";
+  const s = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BKK_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function ymdToUTCDate(ymd) {
+  const s = String(ymd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function utcDateToYMD(dt) {
+  if (!dt || Number.isNaN(dt.getTime())) return "";
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+
+function addDaysYMD(ymd, addDays) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  dt.setUTCDate(dt.getUTCDate() + Number(addDays || 0));
+  return utcDateToYMD(dt);
+}
+
+function diffDaysYMD(a, b) {
+  const da = ymdToUTCDate(a);
+  const db = ymdToUTCDate(b);
+  if (!da || !db) return null;
+  const ms = db.getTime() - da.getTime();
+  return Math.round(ms / 86400000);
+}
+
+function formatDateEN(input) {
+  const ymd = ymdFromAnyBKK(input);
+  if (!ymd) return "";
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString(EN_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: BKK_TZ,
+  });
+}
+
+function monthShortEN(ymd) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString(EN_LOCALE, { month: "short", timeZone: BKK_TZ });
+}
+
+function monthYearEN(ymd) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString(EN_LOCALE, {
+    month: "short",
+    year: "numeric",
+    timeZone: BKK_TZ,
+  });
+}
+
+/**
+ * สร้างข้อความช่วงวันอบรมจาก list ของวันจริง
+ */
+function buildTrainingRangeLabel(dayYMDs) {
+  const list = (dayYMDs || []).map((x) => ymdFromAnyBKK(x)).filter(Boolean);
+  if (!list.length) return "";
+
+  const uniq = Array.from(new Set(list)).sort();
+
+  const segs = [];
+  let start = uniq[0];
+  let prev = uniq[0];
+
+  for (let i = 1; i < uniq.length; i++) {
+    const cur = uniq[i];
+    const diff = diffDaysYMD(prev, cur);
+    if (diff === 1) {
+      prev = cur;
+      continue;
+    }
+    segs.push({ start, end: prev });
+    start = cur;
+    prev = cur;
+  }
+  segs.push({ start, end: prev });
+
+  const years = new Set(uniq.map((d) => d.slice(0, 4)));
+  const monthYears = new Set(uniq.map((d) => d.slice(0, 7)));
+  const sameYear = years.size === 1;
+  const sameMonthYear = monthYears.size === 1;
+
+  const fmtDay = (ymd) => String(Number(String(ymd).slice(8, 10)));
+  const year = uniq[0].slice(0, 4);
+
+  if (sameMonthYear) {
+    const my = monthYearEN(uniq[0]);
+    const parts = segs
+      .map(({ start, end }) => {
+        const a = fmtDay(start);
+        const b = fmtDay(end);
+        return start === end ? a : `${a} - ${b}`;
+      })
+      .join(" , ");
+    return `${parts} ${my}`;
+  }
+
+  if (sameYear) {
+    const parts = segs
+      .map(({ start, end }) => {
+        const aDay = fmtDay(start);
+        const bDay = fmtDay(end);
+        const aMon = monthShortEN(start);
+        const bMon = monthShortEN(end);
+
+        if (start === end) return `${aDay} ${aMon}`;
+        if (aMon === bMon) return `${aDay} - ${bDay} ${aMon}`;
+        return `${aDay} ${aMon} - ${bDay} ${bMon}`;
+      })
+      .join(" , ");
+    return `${parts} ${year}`;
+  }
+
+  const parts = segs
+    .map(({ start, end }) => {
+      const aMY = start.slice(0, 7);
+      const bMY = end.slice(0, 7);
+      if (aMY === bMY) {
+        const my = monthYearEN(start);
+        const a = fmtDay(start);
+        const b = fmtDay(end);
+        return start === end ? `${a} ${my}` : `${a} - ${b} ${my}`;
+      }
+      const aStr = formatDateEN(start);
+      const bStr = formatDateEN(end);
+      return start === end ? aStr : `${aStr} - ${bStr}`;
+    })
+    .join(" , ");
+
+  return parts;
 }
 
 function safeJson(res) {
@@ -58,7 +225,6 @@ function pickPositiveInt(...cands) {
 }
 
 function hasAnyCheckin(stu) {
-  // รองรับหลาย shape
   const cd = stu?.checkinDaily;
   if (Array.isArray(cd)) {
     return cd.some((x) => !!x?.checkedIn || !!x?.time);
@@ -137,6 +303,22 @@ function getStudentNameAny(stu) {
   );
 }
 
+/* ===== date helpers for edit modal ===== */
+
+function uniqueSortedYMDs(list) {
+  const arr = (list || []).map((x) => ymdFromAnyBKK(x)).filter(Boolean);
+  return Array.from(new Set(arr)).sort();
+}
+
+function buildConsecutiveDays(startYMD, dayCount) {
+  const base = ymdFromAnyBKK(startYMD);
+  const n = pickPositiveInt(dayCount, 1);
+  if (!base) return [];
+  return Array.from({ length: n }, (_, i) => addDaysYMD(base, i)).filter(
+    Boolean,
+  );
+}
+
 /* ===== Filter options ===== */
 
 const FILTERS = [
@@ -148,6 +330,236 @@ const FILTERS = [
   { key: "postponed", label: "ขอเลื่อน" },
 ];
 
+/* ===== NEW: NOW (BKK) + type + auto attendance + EMS counting ===== */
+
+function getNowBKK() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BKK_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => (map[p.type] = p.value));
+  const ymd = `${map.year}-${map.month}-${map.day}`;
+  const hh = Number(map.hour || 0);
+  const mm = Number(map.minute || 0);
+  return { ymd, minutes: hh * 60 + mm };
+}
+
+function normalizeLearnType(raw) {
+  const v = String(raw || "")
+    .trim()
+    .toLowerCase();
+  return v === "live" ? "live" : "classroom";
+}
+
+function getLearnTypeRaw(stu) {
+  return (
+    stu?.learnType ||
+    stu?.studyType ||
+    stu?.trainingType ||   // ✅ เพิ่ม (หลายระบบใช้ชื่อนี้ตอน import)
+    stu?.channel ||        // ✅ บางที import ใช้ channel=live
+    stu?.type ||
+    ""
+  );
+}
+
+function getLearnType(stu) {
+  return normalizeLearnType(getLearnTypeRaw(stu));
+}
+
+function getLearnTypeTimeline(stu) {
+  const arr =
+    stu?.learnTypeTimeline || stu?.typeTimeline || stu?.learnTypeHistory;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x) => ({
+      effectiveDay: Number(x?.effectiveDay ?? x?.day ?? 1) || 1,
+      type: normalizeLearnType(x?.type ?? x?.to ?? x?.learnType ?? "classroom"),
+    }))
+    .filter((x) => x.effectiveDay >= 1)
+    .sort((a, b) => a.effectiveDay - b.effectiveDay);
+}
+
+function getLearnTypeForDay(stu, day) {
+  const base = normalizeLearnType(getLearnTypeRaw(stu));
+  const tl = getLearnTypeTimeline(stu);
+  let cur = base;
+  for (const it of tl) {
+    if (Number(it.effectiveDay) <= Number(day)) cur = it.type;
+  }
+  return cur;
+}
+
+function deriveTodayDayIndex(dayDates) {
+  const today = ymdFromAnyBKK(new Date());
+  const arr = Array.isArray(dayDates) ? dayDates.map(ymdFromAnyBKK) : [];
+  const idx = arr.findIndex((x) => x === today);
+  return idx >= 0 ? idx + 1 : -1; // -1 = วันนี้ไม่อยู่ในรอบอบรม
+}
+
+function isCheckedInDay(stu, day) {
+  const d = Number(day);
+  if (!d) return false;
+
+  const cd = stu?.checkinDaily;
+  if (Array.isArray(cd)) {
+    const found = cd.find((x) => Number(x?.day) === d);
+    if (found) return !!found.checkedIn || !!found.time;
+  }
+
+  const dayKey = `day${d}`;
+  const st = stu?.checkinStatus || stu?.checkin || null;
+  if (st && typeof st === "object" && st[dayKey]) return true;
+
+  const chk = stu?.checkins;
+  if (chk && typeof chk === "object") {
+    const byNum = chk[d] || chk[String(d)] || chk[dayKey];
+    if (byNum && typeof byNum === "object") {
+      return !!byNum.checkedIn || !!byNum.time;
+    }
+  }
+
+  return false;
+}
+
+function hasCheckinDailyEntry(stu, day) {
+  const d = Number(day);
+  const cd = stu?.checkinDaily;
+  if (!Array.isArray(cd)) return false;
+  return cd.some((x) => Number(x?.day) === d);
+}
+
+function applyAutoAttendance(students, dayDates, nowBkk) {
+  const list = Array.isArray(students) ? students : [];
+  if (!list.length) return list;
+
+  const todayDay = deriveTodayDayIndex(dayDates);
+  if (todayDay <= 0) return list; // วันนี้ไม่อยู่ในวันอบรม -> ไม่ inject
+
+  const afterLive = nowBkk.minutes >= 8 * 60 + 30;
+  const afterAbsent = nowBkk.minutes >= 16 * 60;
+
+  if (!afterLive && !afterAbsent) return list;
+
+  const dayKey = `day${todayDay}`;
+
+  return list.map((stu) => {
+    if (!stu || typeof stu !== "object") return stu;
+
+    // ถ้ามี record ของวันนี้อยู่แล้ว ไม่ยุ่ง
+    if (hasCheckinDailyEntry(stu, todayDay)) return stu;
+
+    // ถ้าเช็คอินวันนี้แล้ว ไม่ยุ่ง
+    if (isCheckedInDay(stu, todayDay)) return stu;
+
+    const typeToday = getLearnTypeForDay(stu, todayDay);
+
+    // 1) LIVE หลัง 08:30 -> LIVE CHECK (ถือว่า check-in แล้ว แต่ไม่ต้องมีลายเซ็น)
+    if (typeToday === "live" && afterLive) {
+      const nextDaily = Array.isArray(stu.checkinDaily)
+        ? [...stu.checkinDaily]
+        : [];
+      nextDaily.push({
+        day: todayDay,
+        checkedIn: true,
+        mode: "live",
+        status: "live",
+        time: null,
+        signatureUrl: "",
+        _auto: true,
+      });
+
+      const nextStatus =
+        stu.checkinStatus && typeof stu.checkinStatus === "object"
+          ? { ...stu.checkinStatus }
+          : {};
+      nextStatus[dayKey] = true;
+
+      const nextCheckins =
+        stu.checkins && typeof stu.checkins === "object"
+          ? { ...stu.checkins }
+          : {};
+      nextCheckins[String(todayDay)] = {
+        checkedIn: true,
+        mode: "live",
+        status: "live",
+        time: null,
+        signatureUrl: "",
+        _auto: true,
+      };
+
+      return {
+        ...stu,
+        checkinDaily: nextDaily,
+        checkinStatus: nextStatus,
+        checkins: nextCheckins,
+      };
+    }
+
+    // 2) CLASSROOM หลัง 16:00 -> ไม่เข้าเรียน (ไม่ถือว่า check-in)
+    if (typeToday === "classroom" && afterAbsent) {
+      const nextDaily = Array.isArray(stu.checkinDaily)
+        ? [...stu.checkinDaily]
+        : [];
+      nextDaily.push({
+        day: todayDay,
+        checkedIn: false,
+        status: "absent",
+        mode: "",
+        time: null,
+        signatureUrl: "",
+        _auto: true,
+      });
+
+      const nextCheckins =
+        stu.checkins && typeof stu.checkins === "object"
+          ? { ...stu.checkins }
+          : {};
+      nextCheckins[String(todayDay)] = {
+        checkedIn: false,
+        status: "absent",
+        mode: "",
+        time: null,
+        signatureUrl: "",
+        _auto: true,
+      };
+
+      return {
+        ...stu,
+        checkinDaily: nextDaily,
+        checkins: nextCheckins,
+      };
+    }
+
+    return stu;
+  });
+}
+
+function getDocReceiveTypeRaw(stu) {
+  return String(stu?.documentReceiveType || stu?.receiveType || "")
+    .trim()
+    .toLowerCase();
+}
+
+function isEMSStudent(stu) {
+  return getDocReceiveTypeRaw(stu) === "ems";
+}
+
+function hasDocReceivedOnSite(stu) {
+  // เผื่อบางเคสเก็บเป็น signature/url/signedAt
+  if (stu?.documentReceivedAt) return true;
+  if (stu?.documentReceiptSignedAt) return true;
+  if (stu?.documentReceiptSigUrl) return true;
+  if (stu?.documentReceiptSig?.url) return true;
+  return false;
+}
+
 export default function ClassDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -155,18 +567,14 @@ export default function ClassDetailPage() {
   const [classData, setClassData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ selection (เอาไว้ export/print เฉพาะที่เลือกต่อ)
   const [selectedIds, setSelectedIds] = useState([]);
-
-  // ✅ filter (default: all)
   const [filterKey, setFilterKey] = useState("all");
-
   const [search, setSearch] = useState("");
 
-  // ===== state สำหรับ edit/delete class =====
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
   const [editForm, setEditForm] = useState({
     title: "",
     courseCode: "",
@@ -174,11 +582,21 @@ export default function ClassDetailPage() {
     trainerName: "",
     startDate: "",
     dayCount: 1,
+
+    dateMode: "consecutive",
+    days: [],
   });
 
+  const [dayPick, setDayPick] = useState("");
   const [instructors, setInstructors] = useState([]);
 
-  /* ===== โหลดข้อมูล Class (✅ ใช้ /api/admin/classes/[id] เป็นหลัก) ===== */
+  // ✅ tick เวลาเพื่อให้ LIVE CHECK/ไม่เข้าเรียน (และ report) อัปเดตตามเวลา
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30 * 1000);
+    return () => clearInterval(t);
+  }, []);
+  const nowBKK = useMemo(() => getNowBKK(), [nowTick]);
 
   const reloadClass = useCallback(async () => {
     if (!id) return null;
@@ -261,9 +679,7 @@ export default function ClassDetailPage() {
     loadInstructors();
   }, []);
 
-  /* ===== derived ===== */
-
-  const students = useMemo(() => {
+  const rawStudents = useMemo(() => {
     return Array.isArray(classData?.students) ? classData.students : [];
   }, [classData]);
 
@@ -277,7 +693,43 @@ export default function ClassDetailPage() {
     );
   }, [classData]);
 
-  // ✅ filter students
+  const startDate =
+    classData?.startDate || classData?.date || classData?.start || null;
+
+  const dayDates = useMemo(() => {
+    const raw = Array.isArray(classData?.days) ? classData.days : [];
+    const fromDays = raw
+      .map((x) => {
+        if (!x) return "";
+        if (typeof x === "string") return ymdFromAnyBKK(x);
+        if (typeof x === "object") {
+          return ymdFromAnyBKK(
+            x.date || x.ymd || x.day || x.value || x.startDate,
+          );
+        }
+        return ymdFromAnyBKK(x);
+      })
+      .filter(Boolean);
+
+    if (fromDays.length) return fromDays;
+
+    const base = ymdFromAnyBKK(startDate);
+    if (!base) return [];
+    const n = pickPositiveInt(dayCount, 1);
+    return Array.from({ length: n }, (_, i) => addDaysYMD(base, i)).filter(
+      Boolean,
+    );
+  }, [classData, startDate, dayCount]);
+
+  const trainingRangeLabel = useMemo(() => {
+    return buildTrainingRangeLabel(dayDates);
+  }, [dayDates]);
+
+  // ✅ NEW: inject LIVE CHECK / ABSENT สำหรับ “วันนี้” เข้า students แบบชั่วคราว (ใช้กับ table + report)
+  const students = useMemo(() => {
+    return applyAutoAttendance(rawStudents, dayDates, nowBKK);
+  }, [rawStudents, dayDates, nowBKK.ymd, nowBKK.minutes]);
+
   const filteredStudents = useMemo(() => {
     const rows = students || [];
     switch (filterKey) {
@@ -323,25 +775,32 @@ export default function ClassDetailPage() {
     });
   }, [filteredStudents, search]);
 
-  // ✅ present: เช็กอินอย่างน้อย 1 วัน
+  // (ยังไม่ใช้ใน UI แต่เก็บไว้ได้)
   const presentCount = useMemo(() => {
     return students.filter((s) => hasAnyCheckin(s)).length;
   }, [students]);
 
-  // ✅ lateCount: รวมทุกวัน
   const lateCount = useMemo(() => {
     return countLateAllDays(students);
   }, [students]);
 
-  const receivedCount = useMemo(() => {
-    return students.filter((s) => !!s.documentReceivedAt).length;
+  // ✅ NEW: เอกสาร — ไม่นับ EMS
+  const emsCount = useMemo(() => {
+    return students.filter((s) => isEMSStudent(s)).length;
   }, [students]);
 
-  const notReceivedCount = useMemo(() => {
-    return Math.max(0, students.length - receivedCount);
-  }, [students, receivedCount]);
+  const docNeedStudents = useMemo(() => {
+    return students.filter((s) => !isEMSStudent(s));
+  }, [students]);
 
-  // ✅ report sync: ถ้าเลือกไว้ -> รายงานใช้เฉพาะที่เลือก, ถ้าไม่เลือก -> ใช้ตาม filter ปัจจุบัน
+  const receivedCount = useMemo(() => {
+    return docNeedStudents.filter((s) => hasDocReceivedOnSite(s)).length;
+  }, [docNeedStudents]);
+
+  const notReceivedCount = useMemo(() => {
+    return Math.max(0, docNeedStudents.length - receivedCount);
+  }, [docNeedStudents, receivedCount]);
+
   const selectedStudents = useMemo(() => {
     const set = new Set((selectedIds || []).map(String));
     return (students || []).filter((s) => set.has(String(s?._id)));
@@ -352,7 +811,27 @@ export default function ClassDetailPage() {
     return finalStudents;
   }, [selectedIds, selectedStudents, finalStudents]);
 
-  /* ===== loading / not found ===== */
+  const roomOptions = useMemo(() => {
+    const base = [...ROOM_OPTIONS_BASE];
+    const cur = String(editForm.room || "").trim();
+    if (cur && !base.includes(cur)) base.unshift(cur);
+    return base;
+  }, [editForm.room]);
+
+  const editDaysPreviewLabel = useMemo(() => {
+    const days =
+      editForm.dateMode === "custom"
+        ? uniqueSortedYMDs(editForm.days || [])
+        : buildConsecutiveDays(editForm.startDate, editForm.dayCount);
+    return buildTrainingRangeLabel(days);
+  }, [editForm.dateMode, editForm.days, editForm.startDate, editForm.dayCount]);
+
+  const editTotalDays = useMemo(() => {
+    if (editForm.dateMode === "custom") {
+      return uniqueSortedYMDs(editForm.days || []).length || 1;
+    }
+    return pickPositiveInt(editForm.dayCount, 1);
+  }, [editForm.dateMode, editForm.days, editForm.dayCount]);
 
   if (loading) {
     return (
@@ -365,8 +844,6 @@ export default function ClassDetailPage() {
   if (!classData) {
     return <div className="p-6 text-sm text-red-500">ไม่พบข้อมูลห้องอบรม</div>;
   }
-
-  /* ===== class fields ===== */
 
   const courseTitle =
     classData.courseTitle || classData.course_name || classData.title || "";
@@ -388,9 +865,6 @@ export default function ClassDetailPage() {
     "";
 
   const dateRangeText = classData.date_range_text || classData.dateText || "";
-
-  const startDate =
-    classData.startDate || classData.date || classData.start || null;
   const endDate = classData.endDate || classData.finishDate || classData.end;
   const timeRangeText = classData.time_range_text || classData.timeText || "";
 
@@ -411,11 +885,8 @@ export default function ClassDetailPage() {
       : "");
 
   const studentsCount = students.length;
-
   const createdAt = classData.createdAt;
   const updatedAt = classData.updatedAt;
-
-  /* ===== edit modal ===== */
 
   function openEditModal() {
     const dc = pickPositiveInt(
@@ -425,15 +896,26 @@ export default function ClassDetailPage() {
       classData?.dayCount,
     );
 
+    const rawDays = Array.isArray(classData?.days) ? classData.days : [];
+    const parsedDays = uniqueSortedYMDs(
+      rawDays.map((x) => (typeof x === "object" ? x?.date || x?.ymd || x : x)),
+    );
+
+    const baseStart = ymdFromAnyBKK(startDate);
+    const hasCustomDays = parsedDays.length > 0;
+
+    setDayPick("");
+
     setEditForm({
       title: courseTitle || "",
       courseCode: courseCode || "",
       room: roomName || "",
       trainerName: trainerName || "",
-      startDate: startDate
-        ? new Date(startDate).toISOString().slice(0, 10)
-        : "",
-      dayCount: dc,
+      startDate: (hasCustomDays ? parsedDays[0] : baseStart) || "",
+      dayCount: hasCustomDays ? parsedDays.length : dc,
+
+      dateMode: hasCustomDays ? "custom" : "consecutive",
+      days: hasCustomDays ? parsedDays : [],
     });
 
     setEditOpen(true);
@@ -444,8 +926,28 @@ export default function ClassDetailPage() {
     setEditOpen(false);
   }
 
-  function openReceiveHome() {
-    window.open("/classroom/receive", "_blank", "noopener,noreferrer");
+  function addOneDay() {
+    const ymd = ymdFromAnyBKK(dayPick);
+    if (!ymd) return;
+
+    setEditForm((f) => {
+      const next = uniqueSortedYMDs([...(f.days || []), ymd]);
+      return { ...f, days: next, startDate: next[0] || f.startDate };
+    });
+
+    setDayPick("");
+  }
+
+  function removeDay(ymd) {
+    setEditForm((f) => {
+      const next = uniqueSortedYMDs((f.days || []).filter((x) => x !== ymd));
+      return {
+        ...f,
+        days: next,
+        startDate: next[0] || "",
+        dayCount: next.length || 1,
+      };
+    });
   }
 
   async function handleSaveEdit(e) {
@@ -459,13 +961,27 @@ export default function ClassDetailPage() {
 
     setEditSaving(true);
     try {
+      const customDays =
+        editForm.dateMode === "custom"
+          ? uniqueSortedYMDs(editForm.days || [])
+          : [];
+
       const payload = {
         title: editForm.title,
         courseCode: editForm.courseCode,
         room: editForm.room,
         trainerName: editForm.trainerName,
-        date: editForm.startDate || null,
-        dayCount: Number(editForm.dayCount) || 1,
+
+        date:
+          editForm.dateMode === "custom"
+            ? customDays[0] || null
+            : editForm.startDate || null,
+        dayCount:
+          editForm.dateMode === "custom"
+            ? customDays.length || 1
+            : Number(editForm.dayCount) || 1,
+
+        days: editForm.dateMode === "custom" ? customDays : undefined,
       };
 
       const res = await fetch(`/api/admin/classes/${id}`, {
@@ -520,8 +1036,6 @@ export default function ClassDetailPage() {
     }
   }
 
-  /* ===== render ===== */
-
   return (
     <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
       <div className="shrink-0 space-y-4">
@@ -540,24 +1054,15 @@ export default function ClassDetailPage() {
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* <button
-              type="button"
-              onClick={openReceiveHome}
-              className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-2 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
-              title="เปิดหน้า รับเอกสาร (เลือกโหมด 3.1 / 3.2)"
-            >
-              <FileSignature className="h-4 w-4" />
-              รับเอกสาร
-            </button> */}
-
             <SyncStudentsButton classId={id} />
 
-            {/* ✅ sync selection -> report: ถ้าเลือกไว้ ใช้เฉพาะที่เลือก, ถ้าไม่เลือก ใช้ตาม filter */}
             <ReportPreviewButton
-              students={reportStudents}
+              students={finalStudents} // ตาม filter + search (ที่เห็นในตาราง)
+              selectedStudents={selectedStudents} // เฉพาะที่เลือก
+              totalStudentsCount={studentsCount} // total ทั้งคลาส
               dayCount={dayCount}
+              dayDates={dayDates} // ✅ ใช้วันจริงชุดเดียวกับตาราง
               classInfo={classData}
-              selectedStudentIds={selectedIds}
             />
 
             <DropdownMenu>
@@ -629,10 +1134,13 @@ export default function ClassDetailPage() {
               </div>
             )}
 
-            {!timeRangeText && (startDate || endDate) && (
+            {!timeRangeText && (trainingRangeLabel || startDate || endDate) && (
               <div className=" text-base text-admin-textMuted">
-                ช่วงเวลา : {startDate && formatDateTH(startDate)}
-                {endDate && ` - ${formatDateTH(endDate)}`}
+                ช่วงเวลา :{" "}
+                {trainingRangeLabel ||
+                  `${startDate ? formatDateEN(startDate) : ""}${
+                    endDate ? ` - ${formatDateEN(endDate)}` : ""
+                  }`}
               </div>
             )}
 
@@ -659,6 +1167,8 @@ export default function ClassDetailPage() {
                   {studentsCount} คน
                 </div>
               </div>
+
+              {/* ✅ NEW: นับเฉพาะ “ไม่ใช่ EMS” */}
               <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
                 <div className="text-xs text-admin-textMuted">
                   รับเอกสารแล้ว
@@ -666,7 +1176,13 @@ export default function ClassDetailPage() {
                 <div className="mt-1 text-base font-semibold text-emerald-600">
                   {receivedCount} คน
                 </div>
+                {emsCount > 0 && (
+                  <div className="mt-0.5 text-[10px] text-admin-textMuted">
+                    * รับผ่าน ปณ {emsCount} คน (ไม่ถูกนับ)
+                  </div>
+                )}
               </div>
+
               <div className="flex flex-col items-center rounded-xl border border-admin-border p-2">
                 <div className="text-xs text-admin-textMuted">
                   ยังไม่รับเอกสาร
@@ -674,6 +1190,11 @@ export default function ClassDetailPage() {
                 <div className="mt-1 text-base font-semibold">
                   {notReceivedCount} คน
                 </div>
+                {emsCount > 0 && (
+                  <div className="mt-0.5 text-[10px] text-admin-textMuted">
+                    * เฉพาะคนมารับ ณ วันอบรม
+                  </div>
+                )}
               </div>
             </div>
 
@@ -681,14 +1202,14 @@ export default function ClassDetailPage() {
               <div className="flex flex-col items-end bg-admin-surface  text-[11px] text-admin-textMuted">
                 {createdAt && (
                   <div>
-                    สร้างเมื่อ : {formatDateTH(createdAt)}{" "}
+                    สร้างเมื่อ : {formatDateEN(createdAt)}{" "}
                     {formatTimeTH(createdAt) &&
                       `เวลา ${formatTimeTH(createdAt)} น.`}
                   </div>
                 )}
                 {updatedAt && (
                   <div>
-                    แก้ไขล่าสุด : {formatDateTH(updatedAt)}{" "}
+                    แก้ไขล่าสุด : {formatDateEN(updatedAt)}{" "}
                     {formatTimeTH(updatedAt) &&
                       `เวลา ${formatTimeTH(updatedAt)} น.`}
                   </div>
@@ -697,85 +1218,9 @@ export default function ClassDetailPage() {
             )}
           </div>
         </div>
-
-        {/* stats */}
-        {/* <div className="grid gap-3 rounded-2xl border border-admin-border bg-admin-surface p-4 text-xs text-admin-text md:grid-cols-6">
-        <div>
-          <div className="text-[11px] text-admin-textMuted">จำนวนวันอบรม</div>
-          <div className="mt-1 text-base font-semibold">{dayCount} วัน</div>
-        </div>
-        <div>
-          <div className="text-[11px] text-admin-textMuted">
-            จำนวนนักเรียนทั้งหมด
-          </div>
-          <div className="mt-1 text-base font-semibold">{studentsCount} คน</div>
-        </div>
-        <div>
-          <div className="text-[11px] text-admin-textMuted">
-            เช็กอินอย่างน้อย 1 วัน
-          </div>
-          <div className="mt-1 text-base font-semibold">{presentCount} คน</div>
-        </div>
-        <div>
-          <div className="text-[11px] text-admin-textMuted">
-            สถานะสาย (รวมทุกวัน)
-          </div>
-          <div className="mt-1 text-base font-semibold text-red-500">
-            {lateCount} คน
-          </div>
-        </div>
-
-        <div>
-          <div className="text-[11px] text-admin-textMuted">รับเอกสารแล้ว</div>
-          <div className="mt-1 text-base font-semibold text-emerald-600">
-            {receivedCount} คน
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] text-admin-textMuted">
-            ยังไม่รับเอกสาร
-          </div>
-          <div className="mt-1 text-base font-semibold">
-            {notReceivedCount} คน
-          </div>
-        </div>
-      </div> */}
-
-        {/* ✅ Filter bar */}
-        {/* <div className="rounded-2xl border border-admin-border bg-white p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-xs text-admin-textMuted mr-2">Filter:</div>
-            {FILTERS.map((f) => {
-              const active = filterKey === f.key;
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setFilterKey(f.key)}
-                  className={[
-                    "rounded-full px-3 py-1.5 text-xs border",
-                    active
-                      ? "bg-brand-primary text-white border-brand-primary"
-                      : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted",
-                  ].join(" ")}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-
-            <div className="ml-auto text-xs text-admin-textMuted">
-              แสดง {filteredStudents.length} / {students.length} คน
-              {selectedIds.length
-                ? ` • เลือกแล้ว ${selectedIds.length} คน`
-                : ""}
-            </div>
-          </div>
-        </div> */}
       </div>
 
       <div className="flex-1 min-h-0">
-        {/* ✅ Search + Filter (shadcn) */}
         <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-hidden flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
@@ -789,7 +1234,6 @@ export default function ClassDetailPage() {
             </div>
 
             <div className="flex w-full items-center gap-2 sm:w-auto">
-              {/* Filter dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -826,7 +1270,6 @@ export default function ClassDetailPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Search */}
               <input
                 type="text"
                 placeholder="ค้นหาชื่อ / บริษัท / เลข QT/IV/RP ..."
@@ -837,28 +1280,16 @@ export default function ClassDetailPage() {
             </div>
           </div>
 
-           <StudentsTable
+          <StudentsTable
             classId={id}
-            students={finalStudents} // ✅ แสดงตาม filter  ใช้ตัวที่ filter+search แล้ว
+            students={finalStudents}
             dayCount={dayCount}
+            dayDates={dayDates}
             selectedIds={selectedIds}
             onSelectedIdsChange={setSelectedIds}
             onReloadRequested={reloadClass}
           />
         </div>
-       
-
-        {/* table */}
-        {/* <div className="h-full rounded-2xl border border-admin-border bg-admin-surface p-4 shadow-sm overflow-hidden flex flex-col">
-          <StudentsTable
-            classId={id}
-            students={finalStudents} // ✅ แสดงตาม filter  ใช้ตัวที่ filter+search แล้ว
-            dayCount={dayCount}
-            selectedIds={selectedIds}
-            onSelectedIdsChange={setSelectedIds}
-            onReloadRequested={reloadClass}
-          />
-        </div> */}
       </div>
 
       {/* edit modal */}
@@ -868,7 +1299,7 @@ export default function ClassDetailPage() {
           onClick={closeEditModal}
         >
           <div
-            className="w-[95vw] max-w-lg rounded-2xl bg-white p-4 shadow-xl"
+            className="w-[95vw] max-w-xl rounded-2xl bg-white p-4 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="mb-3 text-sm font-semibold text-admin-text">
@@ -898,24 +1329,34 @@ export default function ClassDetailPage() {
                     className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
                     value={editForm.courseCode}
                     onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        courseCode: e.target.value,
-                      }))
+                      setEditForm((f) => ({ ...f, courseCode: e.target.value }))
                     }
                   />
                 </div>
+
                 <div>
                   <label className="block text-[11px] text-admin-textMuted">
                     ห้องอบรม
                   </label>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                    value={editForm.room}
+
+                  <select
+                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                    value={editForm.room || ""}
                     onChange={(e) =>
                       setEditForm((f) => ({ ...f, room: e.target.value }))
                     }
-                  />
+                  >
+                    <option value="">เช่น Jupiter / Mars / Online</option>
+                    {roomOptions.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="mt-1 text-[10px] text-admin-textMuted">
+                    * ถ้าห้องเดิมไม่อยู่ในรายการ ระบบจะแทรกให้เลือกอัตโนมัติ
+                  </div>
                 </div>
               </div>
 
@@ -928,10 +1369,7 @@ export default function ClassDetailPage() {
                   className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
                   value={editForm.trainerName || ""}
                   onChange={(e) =>
-                    setEditForm((f) => ({
-                      ...f,
-                      trainerName: e.target.value,
-                    }))
+                    setEditForm((f) => ({ ...f, trainerName: e.target.value }))
                   }
                 >
                   <option value="">-- เลือกวิทยากร --</option>
@@ -956,36 +1394,164 @@ export default function ClassDetailPage() {
                 </select>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-[11px] text-admin-textMuted">
-                    วันที่เริ่มอบรม
-                  </label>
-                  <input
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                    value={editForm.startDate}
-                    onChange={(e) =>
-                      setEditForm((f) => ({ ...f, startDate: e.target.value }))
-                    }
-                  />
+              <div className="rounded-xl border border-admin-border bg-admin-surface p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-[11px] text-admin-textMuted">
+                      รูปแบบวันอบรม
+                    </div>
+                    <div className="mt-1 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditForm((f) => ({
+                            ...f,
+                            dateMode: "consecutive",
+                            days: [],
+                            dayCount: pickPositiveInt(f.dayCount, 1),
+                          }))
+                        }
+                        className={`rounded-full px-3 py-1 text-xs border ${
+                          editForm.dateMode === "consecutive"
+                            ? "bg-brand-primary text-white border-brand-primary"
+                            : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted"
+                        }`}
+                      >
+                        ต่อเนื่อง (Start + จำนวนวัน)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditForm((f) => {
+                            const curDays = uniqueSortedYMDs(f.days || []);
+                            const fallback = curDays.length
+                              ? curDays
+                              : buildConsecutiveDays(f.startDate, f.dayCount);
+
+                            return {
+                              ...f,
+                              dateMode: "custom",
+                              days: fallback,
+                              startDate: fallback[0] || f.startDate,
+                              dayCount: fallback.length || 1,
+                            };
+                          })
+                        }
+                        className={`rounded-full px-3 py-1 text-xs border ${
+                          editForm.dateMode === "custom"
+                            ? "bg-brand-primary text-white border-brand-primary"
+                            : "bg-white text-admin-text border-admin-border hover:bg-admin-surfaceMuted"
+                        }`}
+                      >
+                        เลือกวันเอง (ข้ามวันได้)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-admin-textMuted">
+                    รวม{" "}
+                    <span className="font-semibold text-admin-text">
+                      {editTotalDays}
+                    </span>{" "}
+                    วัน
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] text-admin-textMuted">
-                    จำนวนวันอบรม
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                    value={editForm.dayCount}
-                    onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        dayCount: e.target.value,
-                      }))
-                    }
-                  />
+
+                {editForm.dateMode === "consecutive" ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-[11px] text-admin-textMuted">
+                        วันที่เริ่มอบรม
+                      </label>
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                        value={editForm.startDate || ""}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            startDate: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-admin-textMuted">
+                        จำนวนวันอบรม
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                        value={editForm.dayCount}
+                        onChange={(e) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            dayCount: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <div>
+                        <label className="block text-[11px] text-admin-textMuted">
+                          เลือกวันอบรม (เพิ่มได้หลายวัน / ข้ามวัน / ข้ามเดือน)
+                        </label>
+                        <input
+                          type="date"
+                          className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                          value={dayPick || ""}
+                          onChange={(e) => setDayPick(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={addOneDay}
+                          className="h-[30px] rounded-lg bg-brand-primary px-3 text-xs font-medium text-white hover:bg-brand-primary/90"
+                        >
+                          เพิ่มวัน
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {uniqueSortedYMDs(editForm.days || []).map((d) => (
+                        <span
+                          key={d}
+                          className="inline-flex items-center gap-2 rounded-full border border-admin-border bg-white px-3 py-1 text-xs text-admin-text"
+                        >
+                          {formatDateEN(d)}
+                          <button
+                            type="button"
+                            onClick={() => removeDay(d)}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full hover:bg-admin-surfaceMuted"
+                            aria-label="ลบวัน"
+                            title="ลบวัน"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+
+                      {!uniqueSortedYMDs(editForm.days || []).length && (
+                        <div className="text-xs text-admin-textMuted">
+                          ยังไม่ได้เพิ่มวัน
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 text-[11px] text-admin-textMuted">
+                  Preview:{" "}
+                  <span className="text-admin-text font-medium">
+                    {editDaysPreviewLabel || "-"}
+                  </span>
                 </div>
               </div>
 

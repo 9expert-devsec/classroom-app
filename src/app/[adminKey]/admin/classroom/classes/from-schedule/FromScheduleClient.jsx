@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 const ROOMS = ["Jupiter", "Mars", "Saturn", "Venus", "Opera"];
+const TZ = "Asia/Bangkok";
 
 /* ---------- helpers ---------- */
 
@@ -12,30 +13,8 @@ function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatSyncedAt(iso) {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function safeArr(x) {
+  return Array.isArray(x) ? x : [];
 }
 
 // แปลงวันที่เป็น "YYYY-MM-DD" ตามเวลา local (ไม่ผ่าน ISO/UTC)
@@ -46,6 +25,205 @@ function toLocalYMD(dateInput) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function clean(x) {
+  return String(x || "").trim();
+}
+
+/* ---------- Date format (EN) ---------- */
+
+const fmtEnDMY = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: TZ,
+});
+
+const fmtEnMY = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  year: "numeric",
+  timeZone: TZ,
+});
+
+function formatENDate(dateInput) {
+  if (!dateInput) return "-";
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return "-";
+  return fmtEnDMY.format(d); // "17 Feb 2026"
+}
+
+function sameDay(a, b) {
+  return (
+    a &&
+    b &&
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function sameMonthYear(a, b) {
+  return (
+    a &&
+    b &&
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth()
+  );
+}
+
+function toMidnightLocal(d) {
+  const ymd = toLocalYMD(d);
+  if (!ymd) return null;
+  const x = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(x.getTime())) return null;
+  return x;
+}
+
+function dayDiff(a, b) {
+  // assume midnight local (BKK no DST)
+  const ms = b.getTime() - a.getTime();
+  return Math.round(ms / 86400000);
+}
+
+// ดึง dates ของ schedule แล้ว normalize + sort + dedupe
+function getScheduleDates(schedule) {
+  const rawDates = safeArr(schedule?.dates).length
+    ? safeArr(schedule?.dates)
+    : [
+        schedule?.startDate ||
+          schedule?.start_at ||
+          schedule?.start ||
+          schedule?.date ||
+          null,
+      ].filter(Boolean);
+
+  const map = new Map(); // ymd -> Date(midnight)
+  for (const raw of rawDates) {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) continue;
+    const mid = toMidnightLocal(d);
+    if (!mid) continue;
+    const ymd = toLocalYMD(mid);
+    if (!ymd) continue;
+    map.set(ymd, mid);
+  }
+
+  const dates = Array.from(map.values()).sort((a, b) => a - b);
+  return dates;
+}
+
+// group เป็นช่วงวันติดกัน: [{start,end}]
+function groupConsecutiveDates(dates) {
+  const out = [];
+  if (!dates.length) return out;
+
+  let start = dates[0];
+  let prev = dates[0];
+
+  for (let i = 1; i < dates.length; i++) {
+    const cur = dates[i];
+    if (dayDiff(prev, cur) === 1) {
+      prev = cur;
+      continue;
+    }
+    out.push({ start, end: prev });
+    start = cur;
+    prev = cur;
+  }
+  out.push({ start, end: prev });
+
+  return out;
+}
+
+// format segments ให้รองรับหลายเคส
+function formatDateSegments(segments) {
+  if (!segments.length) return "-";
+
+  // เก็บรายการวันทั้งหมดเพื่อเช็คว่าอยู่เดือนเดียวกันไหม
+  const allDates = [];
+  for (const s of segments) {
+    allDates.push(s.start);
+    allDates.push(s.end);
+  }
+  const base = allDates[0];
+
+  const allSameMY = allDates.every((d) => sameMonthYear(d, base));
+
+  // ✅ ถ้าอยู่เดือน/ปีเดียวกันทั้งหมด -> ย่อเดือน/ปีไว้ท้ายสุด
+  if (allSameMY) {
+    const monthYear = fmtEnMY.format(base); // "Feb 2026"
+
+    const parts = segments.map(({ start, end }) => {
+      const sd = start.getDate();
+      const ed = end.getDate();
+      if (sameDay(start, end)) return `${sd}`;
+      return `${sd}-${ed}`;
+    });
+
+    return `${parts.join(", ")} ${monthYear}`;
+  }
+
+  // ✅ ถ้าข้ามเดือน/ปี -> ใส่ month/year ให้ชัดทุกช่วง
+  const parts = segments.map(({ start, end }) => {
+    if (sameDay(start, end)) return formatENDate(start);
+
+    if (sameMonthYear(start, end)) {
+      // "3-4 Feb 2026"
+      return `${start.getDate()}-${end.getDate()} ${fmtEnMY.format(start)}`;
+    }
+
+    // "30 Jan 2026 - 2 Feb 2026"
+    return `${formatENDate(start)} - ${formatENDate(end)}`;
+  });
+
+  return parts.join(", ");
+}
+
+// สรุปวันอบรมจาก schedule ทั้งหมด
+function formatScheduleDates(schedule) {
+  const dates = getScheduleDates(schedule);
+  if (!dates.length) return "-";
+  const segs = groupConsecutiveDates(dates);
+  return formatDateSegments(segs);
+}
+
+/* ---------- Filter dd/mm/yyyy helpers ---------- */
+
+function normalizeDMYInput(v) {
+  const digits = String(v || "")
+    .replace(/[^\d]/g, "")
+    .slice(0, 8); // ddmmyyyy
+
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+
+  let out = dd;
+  if (digits.length > 2) out += `/${mm}`;
+  if (digits.length > 4) out += `/${yyyy}`;
+  return out;
+}
+
+function dmyToYmd(dmy) {
+  const s = clean(dmy);
+  if (!s) return "";
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return "";
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (!yyyy || mm < 1 || mm > 12 || dd < 1 || dd > 31) return "";
+  const ymd = `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(
+    2,
+    "0",
+  )}-${String(dd).padStart(2, "0")}`;
+
+  const dt = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(dt.getTime())) return "";
+  // กันพวก 32/01/2026 ที่ Date auto roll
+  if (toLocalYMD(dt) !== ymd) return "";
+  return ymd;
 }
 
 // ดึง first date จาก object schedule (ยึด dates[0] ก่อน)
@@ -125,10 +303,6 @@ function parseRunFromTitle(title) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function safeArr(x) {
-  return Array.isArray(x) ? x : [];
-}
-
 /* ---------- Component ---------- */
 export default function FromScheduleClient() {
   const [loading, setLoading] = useState(false);
@@ -160,8 +334,10 @@ export default function FromScheduleClient() {
   // search + filter
   const [search, setSearch] = useState("");
   const [roomFilter, setRoomFilter] = useState("ALL");
-  const [fromDate, setFromDate] = useState(""); // YYYY-MM-DD
-  const [toDate, setToDate] = useState("");
+
+  // ✅ dd/mm/yyyy (UI) -> convert ตอนใช้ filter
+  const [fromDateDMY, setFromDateDMY] = useState("");
+  const [toDateDMY, setToDateDMY] = useState("");
 
   // ✅ เก็บ query ล่าสุดไว้ใช้กด refresh
   const [lastQs, setLastQs] = useState("");
@@ -280,19 +456,22 @@ export default function FromScheduleClient() {
 
   // ====== apply search + filter + SORT ใกล้ -> ไกล ======
   const filteredItems = useMemo(() => {
+    const fromYMD = dmyToYmd(fromDateDMY);
+    const toYMD = dmyToYmd(toDateDMY);
+
     const base = safeArr(items)
       .filter((s) => {
         const firstDateRaw = getFirstDateRaw(s);
         const d = firstDateRaw ? new Date(firstDateRaw) : null;
         if (!d || Number.isNaN(d.getTime())) return false;
 
-        // filter ช่วงวัน
-        if (fromDate) {
-          const df = new Date(fromDate + "T00:00:00");
+        // filter ช่วงวัน (ใช้วันแรกของรอบเหมือนเดิม)
+        if (fromYMD) {
+          const df = new Date(fromYMD + "T00:00:00");
           if (d < df) return false;
         }
-        if (toDate) {
-          const dt = new Date(toDate + "T23:59:59");
+        if (toYMD) {
+          const dt = new Date(toYMD + "T23:59:59");
           if (d > dt) return false;
         }
 
@@ -324,7 +503,7 @@ export default function FromScheduleClient() {
       });
 
     return base;
-  }, [items, search, roomFilter, fromDate, toDate]);
+  }, [items, search, roomFilter, fromDateDMY, toDateDMY]);
 
   async function guessNextRunNumber({ dateYMD, titlePrefix }) {
     try {
@@ -518,12 +697,12 @@ export default function FromScheduleClient() {
             <div className="flex flex-wrap gap-2">
               <Badge
                 label="Schedule sync:"
-                value={formatSyncedAt(scheduleMeta.latestSyncedAt)}
+                value={formatENDate(scheduleMeta.latestSyncedAt)}
                 tone={scheduleTone}
               />
               <Badge
                 label="Instructors sync:"
-                value={formatSyncedAt(instructorMeta.latestSyncedAt)}
+                value={formatENDate(instructorMeta.latestSyncedAt)}
                 tone={instructorTone}
               />
             </div>
@@ -572,99 +751,117 @@ export default function FromScheduleClient() {
           <div>
             <label className="block text-admin-textMuted mb-1">จากวันที่</label>
             <input
-              type="date"
-              className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
+              className="w-[140px] rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              value={fromDateDMY}
+              onChange={(e) =>
+                setFromDateDMY(normalizeDMYInput(e.target.value))
+              }
             />
+            {!!fromDateDMY && !dmyToYmd(fromDateDMY) && (
+              <div className="mt-1 text-[11px] text-brand-danger">
+                รูปแบบไม่ถูกต้อง
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-admin-textMuted mb-1">ถึงวันที่</label>
             <input
-              type="date"
-              className="rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
+              className="w-[140px] rounded-lg border border-admin-border bg-white px-3 py-1.5 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              value={toDateDMY}
+              onChange={(e) => setToDateDMY(normalizeDMYInput(e.target.value))}
             />
+            {!!toDateDMY && !dmyToYmd(toDateDMY) && (
+              <div className="mt-1 text-[11px] text-brand-danger">
+                รูปแบบไม่ถูกต้อง
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="rounded-2xl bg-admin-surface p-4 shadow-card relative flex flex-col flex-1 min-h-0">
         <div className="flex-1 min-h-0 overflow-y-auto">
-            <table className="w-full table-fixed text-xs sm:text-sm">
-              <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
-                <tr>
-                  <th className="px-3 py-2 text-left text-sm w-auto">Course</th>
-                  <th className="px-3 py-2 text-left text-sm w-[180px]">วัน/เวลาเริ่ม</th>
-                  <th className="px-3 py-2 text-center text-sm w-[160px]">สร้าง Class</th>
-                </tr>
-              </thead>
+          <table className="w-full table-fixed text-xs sm:text-sm">
+            <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[11px] uppercase text-admin-textMuted">
+              <tr>
+                <th className="px-3 py-2 text-left text-sm w-auto">Course</th>
+                <th className="px-3 py-2 text-left text-sm w-[220px]">
+                  วันอบรม
+                </th>
+                <th className="px-3 py-2 text-center text-sm w-[160px]">
+                  สร้าง Class
+                </th>
+              </tr>
+            </thead>
 
-              <tbody>
-                {filteredItems.map((s, idx) => {
-                  const key = s._id || s.id || s.schedule_id || idx;
+            <tbody>
+              {filteredItems.map((s, idx) => {
+                const key = s._id || s.id || s.schedule_id || idx;
 
-                  const courseName =
-                    s.course?.course_name ||
-                    s.course_name ||
-                    s.title ||
-                    "ไม่ทราบชื่อคอร์ส";
+                const courseName =
+                  s.course?.course_name ||
+                  s.course_name ||
+                  s.title ||
+                  "ไม่ทราบชื่อคอร์ส";
 
-                  const courseCode =
-                    s.course?.course_id || s.course_id || s.courseCode || "";
+                const courseCode =
+                  s.course?.course_id || s.course_id || s.courseCode || "";
 
-                  const firstDate = getFirstDateRaw(s);
+                return (
+                  <tr
+                    key={key}
+                    className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                  >
+                    <td className="px-3 py-2">
+                      <div className="font-medium truncate">{courseName}</div>
+                      <div className="text-[11px] text-admin-textMuted">
+                        {courseCode}{" "}
+                        {s?.type ? (
+                          <span className="ml-1 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px]">
+                            {String(s.type).toUpperCase()}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
 
-                  return (
-                    <tr
-                      key={key}
-                      className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-                    >
-                      <td className="px-3 py-2">
-                        <div className="font-medium truncate">{courseName}</div>
-                        <div className="text-[11px] text-admin-textMuted">
-                          {courseCode}{" "}
-                          {s?.type ? (
-                            <span className="ml-1 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px]">
-                              {String(s.type).toUpperCase()}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
+                    <td className="px-3 py-2 text-admin-textMuted">
+                      {formatScheduleDates(s)}
+                    </td>
 
-                      <td className="px-3 py-2 text-admin-textMuted">
-                        {formatDateTime(firstDate)}
-                      </td>
-
-                      <td className="px-3 py-2 text-center">
-                        <PrimaryButton
-                          type="button"
-                          className="px-3 py-1 text-xs"
-                          onClick={() => handleOpenModal(s, idx)}
-                          disabled={loading}
-                        >
-                          สร้าง Class
-                        </PrimaryButton>
-                      </td>
-                    </tr>
-                  );
-                })}
-
-                {!loading && filteredItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={3}
-                      className="px-3 py-4 text-center text-admin-textMuted"
-                    >
-                      ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
+                    <td className="px-3 py-2 text-center">
+                      <PrimaryButton
+                        type="button"
+                        className="px-3 py-1 text-xs"
+                        onClick={() => handleOpenModal(s, idx)}
+                        disabled={loading}
+                      >
+                        สร้าง Class
+                      </PrimaryButton>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+
+              {!loading && filteredItems.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="px-3 py-4 text-center text-admin-textMuted"
+                  >
+                    ยังไม่มีข้อมูล schedule ตามเงื่อนไขที่เลือก
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {loading && (
           <div className="absolute inset-0 rounded-2xl bg-admin-surface/70 backdrop-blur-sm flex items-center justify-center">
@@ -690,9 +887,7 @@ export default function FromScheduleClient() {
                     currentSchedule.title ||
                     "ไม่ทราบชื่อคอร์ส"}
                 </div>
-                <div>
-                  รอบวันที่: {formatDateTime(getFirstDateRaw(currentSchedule))}
-                </div>
+                <div>รอบวันที่: {formatScheduleDates(currentSchedule)}</div>
               </div>
             )}
 

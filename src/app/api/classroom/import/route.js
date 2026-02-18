@@ -43,6 +43,19 @@ function normalizeReceiveType(v) {
   return "ems";
 }
 
+function normalizeStudentType(v) {
+  // รองรับ: classroom | live
+  // เผื่อพิมพ์อื่น ๆ: online/live-stream -> live
+  const s = toLower(v);
+  if (!s) return "classroom";
+  if (s === "classroom") return "classroom";
+  if (s === "live") return "live";
+  if (s === "online") return "live";
+  if (s === "livestream") return "live";
+  if (s === "live-stream") return "live";
+  return "classroom";
+}
+
 function parseExcelSerialDate(n) {
   // Excel serial date -> JS Date (UTC-ish). We treat as local date.
   // Excel epoch starts 1899-12-30 in most implementations.
@@ -74,12 +87,16 @@ function parseDateMaybe(v) {
 // ✅ Default food: ไม่รับอาหารเสมอตอน import
 function defaultFood(classId) {
   return {
+    // ให้ชัดเจน (ถึง schema จะ default อยู่แล้ว)
+    choiceType: "",
     noFood: true,
+
     restaurantId: "",
     menuId: "",
     addons: [],
     drink: "",
     note: "",
+
     classId: String(classId || ""),
     day: null,
   };
@@ -129,8 +146,14 @@ export async function POST(req) {
     const thLegacy = clean(r.thaiName) || name; // ✅ fallback เขียนทับให้ระบบเก่าอ่านได้
     const enLegacy = clean(r.engName);
 
+    // ✅ new: ประเภท (type) -> Student.type
+    // รองรับทั้ง header "type" และเผื่อ key ภาษาไทย "ประเภท"
+    const type = normalizeStudentType(r.type ?? r["ประเภท"]);
+
     return {
       classId,
+
+      type, // ✅ classroom | live
 
       name, // ✅ new unified field
       thaiName: thLegacy, // ✅ fallback

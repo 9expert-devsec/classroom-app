@@ -40,6 +40,7 @@ export async function GET(req) {
     const since = clean(searchParams.get("since"));
     const prime = clean(searchParams.get("prime")) === "1";
 
+    // ✅ PRIME: ขอ cursor ล่าสุดจาก server
     if (prime) {
       const latest = await FoodEditLog.findOne({})
         .sort({ createdAt: -1 })
@@ -59,8 +60,24 @@ export async function GET(req) {
     const sinceDate = since ? new Date(since) : null;
     const hasSince = sinceDate && !Number.isNaN(sinceDate.getTime());
 
-    const q = {};
-    if (hasSince) q.createdAt = { $gt: sinceDate };
+    // ✅ HANDSHAKE: ไม่มี since (หรือ parse ไม่ได้) -> ไม่ส่งของเก่า
+    if (!hasSince) {
+      const latest = await FoodEditLog.findOne({})
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .lean();
+
+      const cursor = latest?.createdAt
+        ? new Date(latest.createdAt).toISOString()
+        : new Date().toISOString();
+
+      return NextResponse.json(
+        { ok: true, cursor, items: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const q = { createdAt: { $gt: sinceDate } };
 
     const rows = await FoodEditLog.find(q)
       .sort({ createdAt: -1 })
@@ -71,15 +88,18 @@ export async function GET(req) {
     const events = rows
       .slice()
       .reverse()
-      .map((r) => ({
-        id: `${String(r._id)}:${new Date(r.createdAt).toISOString()}`,
-        cursor: new Date(r.createdAt).toISOString(),
-        classId: clean(r.classId),
-        studentName: clean(r.studentName) || "ผู้เรียน",
-        studentCompany: clean(r.studentCompany),
-        choiceType: clean(r.choiceType),
-        doc: r,
-      }));
+      .map((r) => {
+        const cursor = new Date(r.createdAt).toISOString();
+        return {
+          id: `${String(r._id)}:${cursor}`,
+          cursor,
+          classId: clean(r.classId),
+          studentName: clean(r.studentName) || "ผู้เรียน",
+          studentCompany: clean(r.studentCompany),
+          choiceType: clean(r.choiceType),
+          doc: r,
+        };
+      });
 
     const classIds = [...new Set(events.map((e) => e.classId).filter(Boolean))];
     const classes = classIds.length

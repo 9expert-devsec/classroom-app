@@ -1,3 +1,4 @@
+// src/app/api/admin/notifications/receipts/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import { requireAdmin } from "@/lib/adminAuth.server";
@@ -81,11 +82,31 @@ export async function GET(req) {
     const sinceDate = since ? new Date(since) : null;
     const hasSince = sinceDate && !Number.isNaN(sinceDate.getTime());
 
+    // ✅ HANDSHAKE: ไม่มี since (หรือ parse ไม่ได้) -> ไม่ส่งของเก่า
+    if (!hasSince) {
+      const latestDoc = await DocumentReceipt.findOne({
+        "receivers.receiptSig.signedAt": { $ne: null },
+      })
+        .sort({ updatedAt: -1 })
+        .limit(1)
+        .lean();
+
+      const ev = latestDoc ? pickLatestReceiptEvent(latestDoc) : null;
+      const cursor = ev?.signedAt
+        ? ev.signedAt.toISOString()
+        : new Date().toISOString();
+
+      return NextResponse.json(
+        { ok: true, cursor, items: [] },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     // query กว้างไว้ก่อนด้วย updatedAt (เร็ว) แล้วค่อยกรอง signedAt อีกชั้น (แม่น)
     const q = {
       "receivers.receiptSig.signedAt": { $ne: null },
+      updatedAt: { $gt: sinceDate },
     };
-    if (hasSince) q.updatedAt = { $gt: sinceDate };
 
     const rows = await DocumentReceipt.find(q)
       .sort({ updatedAt: -1 })
@@ -97,7 +118,7 @@ export async function GET(req) {
     for (const doc of rows) {
       const ev = pickLatestReceiptEvent(doc);
       if (!ev) continue;
-      if (hasSince && ev.signedAt <= sinceDate) continue;
+      if (ev.signedAt <= sinceDate) continue;
 
       events.push({
         id: `${String(doc._id)}:${ev.signedAt.toISOString()}`,

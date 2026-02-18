@@ -1,7 +1,6 @@
-// src/app/admin/classroom/classes/[id]/ReportPreviewButton.jsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SecondaryButton from "@/components/ui/SecondaryButton";
 
 import {
@@ -46,18 +45,6 @@ function shouldShowENLine(stu) {
   return true;
 }
 
-function formatDateTH(input) {
-  if (!input) return "";
-  const d = new Date(input);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "Asia/Bangkok",
-  });
-}
-
 function formatDateTimeTH(input) {
   if (!input) return "";
   const d = new Date(input);
@@ -85,7 +72,6 @@ function formatTimeTH(input) {
 }
 
 function downloadCsv(csvText, filename) {
-  // ✅ ใส่ BOM กันภาษาไทยเพี้ยนใน Excel
   const bom = "\uFEFF";
   const blob = new Blob([bom + csvText], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -97,6 +83,89 @@ function downloadCsv(csvText, filename) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/* ================= day label helpers ================= */
+
+// normalize day item -> YYYY-MM-DD
+function pickYmd(x) {
+  if (!x) return "";
+  if (typeof x === "string") return clean(x).slice(0, 10);
+
+  if (typeof x === "object") {
+    const v =
+      x.date || x.ymd || x.day || x.value || x.startDate || x.start || "";
+    return clean(v).slice(0, 10);
+  }
+
+  return clean(x).slice(0, 10);
+}
+
+function uniqueSortedYmd(list) {
+  const arr = (list || []).map(pickYmd).filter(Boolean);
+  return Array.from(new Set(arr)).sort();
+}
+
+function toYmdBKK(input) {
+  if (!input) return "";
+  try {
+    const d = new Date(input);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }); // YYYY-MM-DD
+  } catch {
+    return "";
+  }
+}
+
+function addDaysYmd(startYmd, add) {
+  if (!startYmd) return "";
+  const base = new Date(`${startYmd}T00:00:00+07:00`).getTime();
+  const t = base + Number(add || 0) * 86400000;
+  return new Date(t).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+}
+
+function formatHeaderDateEN(ymd) {
+  if (!ymd) return "";
+  const d = new Date(`${ymd}T00:00:00+07:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d
+    .toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      timeZone: "Asia/Bangkok",
+    })
+    .replace(/,/g, "")
+    .toUpperCase();
+}
+
+function pickClassYmdDays(classInfo, fallbackDayCount) {
+  // 1) days[] (รองรับ object)
+  const rawArr =
+    classInfo?.days ||
+    classInfo?.classDays ||
+    classInfo?.trainingDays ||
+    classInfo?.scheduleDays ||
+    null;
+
+  const fromDays = uniqueSortedYmd(Array.isArray(rawArr) ? rawArr : []);
+  if (fromDays.length) return fromDays;
+
+  // 2) fallback: startDate/date + dayCount (ต่อเนื่อง)
+  const startRaw =
+    classInfo?.startDate ||
+    classInfo?.date ||
+    classInfo?.start ||
+    classInfo?.startAt ||
+    classInfo?.start_at ||
+    "";
+
+  const startYmd = toYmdBKK(startRaw) || clean(startRaw).slice(0, 10);
+  const n = Math.max(1, Number(fallbackDayCount || 1));
+
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(addDaysYmd(startYmd, i));
+  return out.filter(Boolean);
 }
 
 /* ================= receive (3.1) helpers ================= */
@@ -187,7 +256,6 @@ function getCheckinInfo(stu, day) {
   const byStrNum = stu?.checkins?.[String(day)];
   const byDayKey = stu?.checkins?.[key];
 
-  // ✅ รองรับ API ใหม่ที่ส่ง checkinDaily[]
   if (Array.isArray(stu?.checkinDaily)) {
     const found = stu.checkinDaily.find((x) => Number(x.day) === Number(day));
     if (found && found.checkedIn) {
@@ -219,12 +287,13 @@ function getCheckinTimeRaw(stu, day) {
 
 function getCheckinSignatureUrl(stu, day) {
   const info = getCheckinInfo(stu, day);
-  return clean(info?.signatureUrl) || clean(stu?.signatureUrl) || "";
+  if (!info) return "";
+  return clean(info?.signatureUrl) || "";
 }
 
 function getIsLateForDay(stu, day) {
   const info = getCheckinInfo(stu, day);
-  return Boolean(info?.isLate ?? stu?.isLate ?? stu?.late ?? false);
+  return Boolean(info?.isLate ?? false);
 }
 
 /* ================= aggregates ================= */
@@ -233,14 +302,6 @@ function countCheckedDays(stu, dayCount) {
   let c = 0;
   for (let d = 1; d <= (dayCount || 1); d++) {
     if (getCheckinChecked(stu, d)) c++;
-  }
-  return c;
-}
-
-function countLateDays(stu, dayCount) {
-  let c = 0;
-  for (let d = 1; d <= (dayCount || 1); d++) {
-    if (getCheckinChecked(stu, d) && getIsLateForDay(stu, d)) c++;
   }
   return c;
 }
@@ -292,18 +353,51 @@ function waitImagesThenPrint(win, timeoutMs = 1500) {
 /* ================================================= */
 
 export default function ReportPreviewButton({
-  students = [],
+  students = [], // current list (ตาม filter/search)
+  selectedStudents = [], // selected subset
+  totalStudentsCount, // total ทั้งคลาส
   dayCount = 1,
+  dayDates = [], // ✅ source of truth จาก page.jsx
   classInfo,
 }) {
   const [open, setOpen] = useState(false);
-  //const [mode, setMode] = useState("checkin"); // "checkin" | "signature"
   const [tab, setTab] = useState("checkin"); // "checkin" | "signature"
+  const [scope, setScope] = useState("current"); // "current" | "selected"
 
-  const days = useMemo(
-    () => Array.from({ length: dayCount || 1 }, (_, i) => i + 1),
-    [dayCount],
-  );
+  const hasSelection = (selectedStudents || []).length > 0;
+
+  // เปิด modal: default เป็น "selected" ถ้ามีการเลือก
+  useEffect(() => {
+    if (!open) return;
+    setScope(hasSelection ? "selected" : "current");
+  }, [open, hasSelection]);
+
+  const activeStudents = useMemo(() => {
+    if (scope === "selected" && hasSelection) return selectedStudents || [];
+    return students || [];
+  }, [scope, hasSelection, selectedStudents, students]);
+
+  const totalCount =
+    Number.isFinite(Number(totalStudentsCount)) &&
+    Number(totalStudentsCount) >= 0
+      ? Number(totalStudentsCount)
+      : classInfo?.students?.length || 0;
+
+  // ✅ map วันอบรม -> label วันที่จริง (ใช้ dayDates ก่อน)
+  const dayMeta = useMemo(() => {
+    const ymds =
+      Array.isArray(dayDates) && dayDates.length
+        ? uniqueSortedYmd(dayDates)
+        : pickClassYmdDays(classInfo, dayCount);
+
+    return ymds.map((ymd, idx) => ({
+      day: idx + 1,
+      ymd,
+      label: formatHeaderDateEN(ymd) || `DAY ${idx + 1}`,
+    }));
+  }, [dayDates, classInfo, dayCount]);
+
+  const effectiveDayCount = dayMeta.length || dayCount || 1;
 
   const courseTitle =
     classInfo?.courseTitle || classInfo?.course_name || classInfo?.title || "";
@@ -324,18 +418,6 @@ export default function ReportPreviewButton({
     classInfo?.roomInfo?.name ||
     "";
 
-  const studentsCount = students.length;
-
-  // function openCheckinReport() {
-  //   setMode("checkin");
-  //   setOpen(true);
-  // }
-
-  // function openSignatureReport() {
-  //   setMode("signature");
-  //   setOpen(true);
-  // }
-
   function openReport() {
     setTab("checkin");
     setOpen(true);
@@ -344,7 +426,7 @@ export default function ReportPreviewButton({
   /* ================= Export CSV ================= */
 
   function exportCheckinCsv() {
-    if (!students.length) {
+    if (!activeStudents.length) {
       alert("ยังไม่มีรายชื่อนักเรียนสำหรับ Export");
       return;
     }
@@ -355,21 +437,23 @@ export default function ReportPreviewButton({
       "บริษัท",
       "เลขที่ QT/IV/RP",
       "เช็กอิน (วัน)",
-      "มาสาย (วัน)",
-      ...days.map((d) => `DAY ${d} เวลา`),
-      ...days.map((d) => `ลายเซ็น DAY ${d} (URL)`),
+      ...dayMeta.map((x) => `${x.label} เวลา`),
+      ...dayMeta.map((x) => `ลายเซ็น ${x.label} (URL)`),
     ];
 
-    const rows = students.map((stu, idx) => {
-      const checkedDays = countCheckedDays(stu, dayCount);
-      const lateDays = countLateDays(stu, dayCount);
-      const timeCells = days.map((d) => {
+    const rows = activeStudents.map((stu, idx) => {
+      const checkedDays = countCheckedDays(stu, effectiveDayCount);
+
+      const timeCells = dayMeta.map((x) => {
+        const d = x.day;
         if (!getCheckinChecked(stu, d)) return "";
         const t = formatTimeTH(getCheckinTimeRaw(stu, d));
         const isLate = getIsLateForDay(stu, d);
         return `${isLate ? "LATE " : ""}${t || "✓"}`.trim();
       });
-      const sigCells = days.map((d) => {
+
+      const sigCells = dayMeta.map((x) => {
+        const d = x.day;
         if (!getCheckinChecked(stu, d)) return "";
         return getCheckinSignatureUrl(stu, d) || "";
       });
@@ -380,7 +464,6 @@ export default function ReportPreviewButton({
         stu.company || "",
         stu.paymentRef || "",
         checkedDays,
-        lateDays,
         ...timeCells,
         ...sigCells,
       ];
@@ -399,14 +482,16 @@ export default function ReportPreviewButton({
       )
       .join("\r\n");
 
-    const filename = `รายงานเช็กอิน_${courseCode || "class"}_${
-      classCode || ""
-    }.csv`;
+    const scopeTag =
+      scope === "selected" && hasSelection
+        ? `selected_${activeStudents.length}`
+        : "filtered";
+    const filename = `รายงานเช็กอิน_${courseCode || "class"}_${classCode || ""}_${scopeTag}.csv`;
     downloadCsv(csv, filename);
   }
 
   function exportSignatureCsv() {
-    if (!students.length) {
+    if (!activeStudents.length) {
       alert("ยังไม่มีรายชื่อนักเรียนสำหรับ Export");
       return;
     }
@@ -425,7 +510,7 @@ export default function ReportPreviewButton({
       "ลายเซ็นจนท. (3.2) (URL)",
     ];
 
-    const rows = students.map((stu, idx) => {
+    const rows = activeStudents.map((stu, idx) => {
       const receiveTypeText = receiveTypeLabel(getReceiveTypeRaw(stu));
       const receivedAt = getReceivedAt(stu);
       const receiveSigUrl = getReceiveSignatureUrl(stu);
@@ -463,9 +548,11 @@ export default function ReportPreviewButton({
       )
       .join("\r\n");
 
-    const filename = `รายงานลายเซ็น_${courseCode || "class"}_${
-      classCode || ""
-    }.csv`;
+    const scopeTag =
+      scope === "selected" && hasSelection
+        ? `selected_${activeStudents.length}`
+        : "filtered";
+    const filename = `รายงานลายเซ็น_${courseCode || "class"}_${classCode || ""}_${scopeTag}.csv`;
     downloadCsv(csv, filename);
   }
 
@@ -517,13 +604,6 @@ export default function ReportPreviewButton({
         .muted{ color:#6b7280; }
         .badgeLate{ color:#b91c1c; font-weight:800; }
         .badgeOk{ color:#047857; font-weight:800; }
-        .sigImg{
-          display:block;
-          height:38px;
-          width:120px;
-          object-fit:contain;
-          margin:0 auto;
-        }
         .sigImgSm{
           display:block;
           height:30px;
@@ -548,9 +628,13 @@ export default function ReportPreviewButton({
     });
 
     const title = courseTitle || courseCode || "รายงานเช็กอิน";
-    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด ${
-      studentsCount || 0
-    } คน`;
+    const scopeLabel =
+      scope === "selected" && hasSelection
+        ? `เฉพาะที่เลือก ${activeStudents.length} คน`
+        : `ตามตัวกรอง ${activeStudents.length} คน`;
+    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}${
+      totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""
+    }`;
 
     const thead = `
       <tr>
@@ -558,67 +642,40 @@ export default function ReportPreviewButton({
         <th style="text-align:left;">ชื่อ-สกุล</th>
         <th style="text-align:left;">บริษัท</th>
         <th class="nowrap">เช็กอิน (วัน)</th>
-        <th class="nowrap">มาสาย (วัน)</th>
-        ${days.map((d) => `<th class="nowrap">DAY ${d}</th>`).join("")}
+        ${dayMeta.map((x) => `<th class="nowrap">${escapeHtml(x.label)}</th>`).join("")}
       </tr>
     `;
 
-    const rows = students
+    const rows = activeStudents
       .map((stu, idx) => {
         const name = getStudentName(stu);
         const nameEn = shouldShowENLine(stu) ? getStudentNameEN(stu) : "";
-        const checkedDays = countCheckedDays(stu, dayCount);
-        const lateDays = countLateDays(stu, dayCount);
+        const checkedDays = countCheckedDays(stu, effectiveDayCount);
 
-        // const dayCells = days
-        //   .map((d) => {
-        //     if (!getCheckinChecked(stu, d)) {
-        //       return `<td class="center muted">-</td>`;
-        //     }
-        //     const t = formatTimeTH(getCheckinTimeRaw(stu, d));
-        //     const isLate = getIsLateForDay(stu, d);
-        //     const mark = isLate ? "⏰" : "✓";
-        //     const cls = isLate ? "badgeLate" : "badgeOk";
-        //     return `<td class="center"><span class="${cls}">${mark}</span>${
-        //       t ? ` ${escapeHtml(t)}` : ""
-        //     }</td>`;
-        //   })
-        //   .join("");
-
-        // const sigCells = days
-        //   .map((d) => {
-        //     if (!getCheckinChecked(stu, d)) {
-        //       return `<td class="center muted">-</td>`;
-        //     }
-        //     const url = getCheckinSignatureUrl(stu, d);
-        //     if (!url) return `<td class="center muted">-</td>`;
-        //     return `<td class="center"><img class="sigImgSm" src="${escapeHtml(
-        //       url,
-        //     )}" alt="sig"/></td>`;
-        //   })
-        //   .join("");
-
-        const dayCellsCombined = days
-          .map((d) => {
+        const dayCellsCombined = dayMeta
+          .map((x) => {
+            const d = x.day;
             if (!getCheckinChecked(stu, d))
               return `<td class="center muted">-</td>`;
+
             const t = formatTimeTH(getCheckinTimeRaw(stu, d));
             const isLate = getIsLateForDay(stu, d);
             const url = getCheckinSignatureUrl(stu, d);
             const mark = isLate ? "⏰" : "✓";
             const cls = isLate ? "badgeLate" : "badgeOk";
+
             return `
-     <td class="center">
-       <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
-         <div><span class="${cls}">${mark}</span>${t ? ` ${escapeHtml(t)}` : ""}</div>
-         ${
-           url
-             ? `<img class="sigImgSm" src="${escapeHtml(url)}" alt="sig"/>`
-             : `<span class="muted">-</span>`
-         }
-       </div>
-     </td>
-   `;
+              <td class="center">
+                <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
+                  <div><span class="${cls}">${mark}</span>${t ? ` ${escapeHtml(t)}` : ""}</div>
+                  ${
+                    url
+                      ? `<img class="sigImgSm" src="${escapeHtml(url)}" alt="sig"/>`
+                      : `<span class="muted">-</span>`
+                  }
+                </div>
+              </td>
+            `;
           })
           .join("");
 
@@ -629,15 +686,12 @@ export default function ReportPreviewButton({
               <div>${escapeHtml(name)}</div>
               ${
                 nameEn
-                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(
-                      nameEn,
-                    )}</div>`
+                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(nameEn)}</div>`
                   : ""
               }
             </td>
             <td>${escapeHtml(stu.company || "")}</td>
             <td class="center">${checkedDays}</td>
-            <td class="center">${lateDays}</td>
             ${dayCellsCombined}
           </tr>
         `;
@@ -667,7 +721,6 @@ export default function ReportPreviewButton({
     w.document.close();
     w.focus();
 
-    // ✅ รอรูปโหลดก่อนพิมพ์
     waitImagesThenPrint(w, 1800);
   }
 
@@ -683,9 +736,13 @@ export default function ReportPreviewButton({
     });
 
     const title = courseTitle || courseCode || "รายงานลายเซ็น";
-    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด ${
-      studentsCount || 0
-    } คน`;
+    const scopeLabel =
+      scope === "selected" && hasSelection
+        ? `เฉพาะที่เลือก ${activeStudents.length} คน`
+        : `ตามตัวกรอง ${activeStudents.length} คน`;
+    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}${
+      totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""
+    }`;
 
     const thead = `
       <tr>
@@ -704,7 +761,7 @@ export default function ReportPreviewButton({
       </tr>
     `;
 
-    const rows = students
+    const rows = activeStudents
       .map((stu, idx) => {
         const name = getStudentName(stu);
         const nameEn = shouldShowENLine(stu) ? getStudentNameEN(stu) : "";
@@ -725,9 +782,7 @@ export default function ReportPreviewButton({
               <div>${escapeHtml(name)}</div>
               ${
                 nameEn
-                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(
-                      nameEn,
-                    )}</div>`
+                  ? `<div class="muted" style="font-size:10px;">${escapeHtml(nameEn)}</div>`
                   : ""
               }
             </td>
@@ -740,15 +795,13 @@ export default function ReportPreviewButton({
               <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
                   ${
                     receiveSigUrl
-                      ? `<img class="sigImg" src="${escapeHtml(receiveSigUrl)}" alt="sig"/>`
+                      ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(receiveSigUrl)}" alt="sig"/>`
                       : `<span class="muted">-</span>`
                   }
 
                   ${
                     receivedAt
-                      ? `<div class="muted nowrap">${escapeHtml(
-                          formatDateTimeTH(receivedAt),
-                        )}</div>`
+                      ? `<div class="muted nowrap">${escapeHtml(formatDateTimeTH(receivedAt))}</div>`
                       : ""
                   }
               </div>
@@ -763,17 +816,13 @@ export default function ReportPreviewButton({
 
             <td class="center">${
               staffCustomerUrl
-                ? `<img class="sigImg" src="${escapeHtml(
-                    staffCustomerUrl,
-                  )}" alt="sig"/>`
+                ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(staffCustomerUrl)}" alt="sig"/>`
                 : `<span class="muted">-</span>`
             }</td>
 
             <td class="center">${
               staffStaffUrl
-                ? `<img class="sigImg" src="${escapeHtml(
-                    staffStaffUrl,
-                  )}" alt="sig"/>`
+                ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(staffStaffUrl)}" alt="sig"/>`
                 : `<span class="muted">-</span>`
             }</td>
           </tr>
@@ -804,7 +853,6 @@ export default function ReportPreviewButton({
     w.document.close();
     w.focus();
 
-    // ✅ รอรูปโหลดก่อนพิมพ์
     waitImagesThenPrint(w, 2200);
   }
 
@@ -816,433 +864,27 @@ export default function ReportPreviewButton({
   /* ================= UI (preview table in modal) ================= */
 
   const modalTitle = "รายงาน / Export";
-
   const modalTag = "PREVIEW • รายงาน";
 
-  const colSpanCheckin = 6 + days.length + days.length; // base 6 + time days + sig days
+  const colSpanCheckin = 4 + dayMeta.length;
   const colSpanSignature = 11;
+
+  const scopeLabelShort =
+    scope === "selected" && hasSelection
+      ? `เฉพาะที่เลือก ${activeStudents.length} คน`
+      : `ตามตัวกรอง ${activeStudents.length} คน`;
 
   return (
     <>
-      {/* ✅ แยกปุ่ม preview เป็น 2 ส่วน */}
-      {/* <div className="flex flex-wrap items-center gap-2">
-        <SecondaryButton
-          type="button"
-          className="px-3 py-1.5"
-          onClick={openCheckinReport}
-        >
-          ดูรายงานเช็กอิน / Export
-        </SecondaryButton>
-
-        <SecondaryButton
-          type="button"
-          className="px-3 py-1.5"
-          onClick={openSignatureReport}
-        >
-          ดูรายงานลายเซ็น / Export
-        </SecondaryButton>
-      </div> */}
-
       <div className="flex flex-wrap items-center gap-2">
         <SecondaryButton
           type="button"
-          className="px3 py-1.5"
+          className="px-3 py-1.5"
           onClick={openReport}
         >
           ดูรายงาน / Export
         </SecondaryButton>
       </div>
-
-      {/* {open && (
-        <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="max-h-[90vh] w-[95vw] max-w-6xl overflow-auto rounded-2xl bg-white p-4 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            //header
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-admin-textMuted">
-                  {modalTag}
-                </div>
-                <div className="text-sm font-semibold text-admin-text">
-                  {courseTitle || courseCode || modalTitle}
-                </div>
-                <div className="text-xs text-admin-textMuted">
-                  {roomName && <>ห้อง {roomName}</>} • ผู้เรียนทั้งหมด{" "}
-                  {studentsCount} คน
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleExportCsv}
-                  className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                >
-                  Export CSV (Excel)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handlePrint}
-                  className="rounded-full border border-admin-border px-4 py-1.5 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
-                >
-                  สั่ง Print (มีรูป)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-full bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
-                >
-                  ปิด
-                </button>
-              </div>
-            </div>
-
-            //table preview
-            <div className="overflow-auto rounded-xl border border-admin-border">
-              {mode === "checkin" ? (
-                <table className="min-w-full border-collapse text-xs">
-                  <thead className="bg-admin-surfaceMuted text-[11px] text-admin-text">
-                    <tr>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ลำดับ
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        ชื่อ-สกุล
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        บริษัท
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        เลขที่ QT/IV/RP
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        เช็กอิน(วัน)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        มาสาย(วัน)
-                      </th>
-
-                      {days.map((d) => (
-                        <th
-                          key={`t-${d}`}
-                          className="border border-admin-border px-2 py-1 text-center"
-                        >
-                          DAY {d}
-                        </th>
-                      ))}
-
-                      //✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน
-                      {days.map((d) => (
-                        <th
-                          key={`sig-${d}`}
-                          className="border border-admin-border px-2 py-1 text-center"
-                        >
-                          ลายเซ็น DAY {d}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {students.map((stu, idx) => {
-                      const checkedDays = countCheckedDays(stu, dayCount);
-                      const lateDays = countLateDays(stu, dayCount);
-
-                      return (
-                        <tr key={stu._id || idx}>
-                          <td className="border border-admin-border px-2 py-1 text-right">
-                            {idx + 1}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {getStudentName(stu)}
-                            {shouldShowENLine(stu) && (
-                              <div className="text-[10px] text-admin-textMuted">
-                                {getStudentNameEN(stu)}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {stu.company || ""}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {stu.paymentRef || ""}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {checkedDays}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {lateDays}
-                          </td>
-
-                          //DAY time
-                          {days.map((d) => {
-                            const checked = getCheckinChecked(stu, d);
-                            if (!checked) {
-                              return (
-                                <td
-                                  key={`t-${d}`}
-                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
-                                >
-                                  -
-                                </td>
-                              );
-                            }
-
-                            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
-                            const isLate = getIsLateForDay(stu, d);
-
-                            return (
-                              <td
-                                key={`t-${d}`}
-                                className="border border-admin-border px-2 py-1 text-center"
-                              >
-                                <span
-                                  className={
-                                    isLate
-                                      ? "font-semibold text-red-600"
-                                      : "font-semibold text-emerald-700"
-                                  }
-                                >
-                                  {isLate ? "⏰" : "✓"}
-                                </span>
-                                {t ? ` ${t}` : ""}
-                              </td>
-                            );
-                          })}
-
-                          //✅ DAY signature image
-                          {days.map((d) => {
-                            const checked = getCheckinChecked(stu, d);
-                            if (!checked) {
-                              return (
-                                <td
-                                  key={`sig-${d}`}
-                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
-                                >
-                                  -
-                                </td>
-                              );
-                            }
-
-                            const url = getCheckinSignatureUrl(stu, d);
-
-                            return (
-                              <td
-                                key={`sig-${d}`}
-                                className="border border-admin-border px-2 py-1 text-center"
-                              >
-                                {url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={url}
-                                    alt={`signature day ${d}`}
-                                    className="mx-auto h-9 w-[110px] object-contain"
-                                  />
-                                ) : (
-                                  <span className="text-admin-textMuted">
-                                    -
-                                  </span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-
-                    {students.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={colSpanCheckin}
-                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
-                        >
-                          ยังไม่มีรายชื่อนักเรียน
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="min-w-full border-collapse text-xs">
-                  <thead className="bg-admin-surfaceMuted text-[11px] text-admin-text">
-                    <tr>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ลำดับ
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        ชื่อ-สกุล
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
-                        บริษัท
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        เลขที่ QT/IV/RP
-                      </th>
-
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ช่องทางรับเอกสาร (3.1)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        วัน-เวลา (3.1)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ลายเซ็นรับเอกสาร (3.1)
-                      </th>
-
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        บันทึกเมื่อ (3.2)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        รายการ (3.2)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ลายเซ็นลูกค้า (3.2)
-                      </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        ลายเซ็นจนท. (3.2)
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {students.map((stu, idx) => {
-                      const receiveTypeText = receiveTypeLabel(
-                        getReceiveTypeRaw(stu),
-                      );
-                      const receivedAt = getReceivedAt(stu);
-                      const receiveSigUrl = getReceiveSignatureUrl(stu);
-
-                      const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
-                      const staffItemsText = staffItemsLabel(
-                        getStaffReceiveItems(stu),
-                      );
-                      const staffCustomerUrl =
-                        getStaffReceiveCustomerSigUrl(stu);
-                      const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
-
-                      return (
-                        <tr key={stu._id || idx}>
-                          <td className="border border-admin-border px-2 py-1 text-right">
-                            {idx + 1}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {getStudentName(stu)}
-                            {shouldShowENLine(stu) && (
-                              <div className="text-[10px] text-admin-textMuted">
-                                {getStudentNameEN(stu)}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1">
-                            {stu.company || ""}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {stu.paymentRef || ""}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {receiveTypeText || "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {receivedAt ? formatDateTimeTH(receivedAt) : "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {receiveSigUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={receiveSigUrl}
-                                alt="receive sig"
-                                className="mx-auto h-10 w-[120px] object-contain"
-                              />
-                            ) : (
-                              <span className="text-admin-textMuted">-</span>
-                            )}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {staffUpdatedAt
-                              ? formatDateTimeTH(staffUpdatedAt)
-                              : "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {staffItemsText || "-"}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {staffCustomerUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={staffCustomerUrl}
-                                alt="customer sig"
-                                className="mx-auto h-10 w-[120px] object-contain"
-                              />
-                            ) : (
-                              <span className="text-admin-textMuted">-</span>
-                            )}
-                          </td>
-
-                          <td className="border border-admin-border px-2 py-1 text-center">
-                            {staffStaffUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={staffStaffUrl}
-                                alt="staff sig"
-                                className="mx-auto h-10 w-[120px] object-contain"
-                              />
-                            ) : (
-                              <span className="text-admin-textMuted">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    {students.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={colSpanSignature}
-                          className="border border-admin-border px-2 py-4 text-center text-admin-textMuted"
-                        >
-                          ยังไม่มีรายชื่อนักเรียน
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {mode === "checkin" ? (
-              <div className="mt-2 text-[11px] text-admin-textMuted">
-                หมายเหตุ: ลายเซ็นจะแสดงใน Print
-                (รอโหลดรูปก่อนสั่งพิมพ์อัตโนมัติ)
-              </div>
-            ) : (
-              <div className="mt-2 text-[11px] text-admin-textMuted">
-                หมายเหตุ: รายงานนี้แสดงลายเซ็น (3.1) และ (3.2) พร้อมรูปใน Print
-              </div>
-            )}
-          </div>
-        </div>
-      )} */}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
@@ -1256,10 +898,42 @@ export default function ReportPreviewButton({
                 <DialogTitle className="text-base">
                   {courseTitle || courseCode || modalTitle}
                 </DialogTitle>
+
                 <DialogDescription className="text-xs">
-                  {roomName ? `ห้อง ${roomName} • ` : ""}ผู้เรียนทั้งหมด{" "}
-                  {studentsCount} คน
+                  {roomName ? `ห้อง ${roomName} • ` : ""}
+                  {scopeLabelShort}
+                  {Number.isFinite(totalCount) && totalCount > 0
+                    ? ` (จากทั้งหมด ${totalCount} คน)`
+                    : ""}
                 </DialogDescription>
+
+                {/* ✅ Toggle scope ถ้ามี selection */}
+                {hasSelection && (
+                  <div className="mt-2 inline-flex overflow-hidden rounded-lg border border-admin-border bg-white text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setScope("selected")}
+                      className={`px-2 py-1 ${
+                        scope === "selected"
+                          ? "bg-brand-primary text-white"
+                          : "text-admin-text hover:bg-admin-surfaceMuted"
+                      }`}
+                    >
+                      เฉพาะที่เลือก ({selectedStudents.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setScope("current")}
+                      className={`px-2 py-1 ${
+                        scope === "current"
+                          ? "bg-brand-primary text-white"
+                          : "text-admin-text hover:bg-admin-surfaceMuted"
+                      }`}
+                    >
+                      ตามตัวกรอง ({students.length})
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-4">
@@ -1297,20 +971,16 @@ export default function ReportPreviewButton({
               <TabsContent value="checkin" className="m-0">
                 <table className="min-w-full border-collapse text-xs">
                   <colgroup>
-                    <col style={{ width: 50 }} /> {/* ลำดับ */}
-                    <col style={{ width: 150 }} /> {/* ชื่อ */}
-                    <col style={{ width: 150 }} /> {/* บริษัท */}
-                    {/* <col style={{ width: 140 }} /> */}
-                    <col style={{ width: 90 }} /> {/* เช็กอิน(วัน) */}
-                    <col style={{ width: 90 }} /> {/* มาสาย(วัน) */}
-                    {/* {days.map((d) => (
-                      <col key={`c-day-${d}`} style={{ width: 120 }} />
-                    ))} */}
-                    {days.map((d) => (
-                      <col key={`c-sig-${d}`} style={{ width: 140 }} />
+                    <col style={{ width: 50 }} />
+                    <col style={{ width: 170 }} />
+                    <col style={{ width: 170 }} />
+                    <col style={{ width: 95 }} />
+                    {dayMeta.map((x) => (
+                      <col key={`c-day-${x.day}`} style={{ width: 160 }} />
                     ))}
                   </colgroup>
-                  <thead className="sticky top-0 z-20 bg-[#0a1f33] text-es text-white h-8">
+
+                  <thead className="sticky top-0 z-20 bg-[#0a1f33] text-xs text-white h-8">
                     <tr>
                       <th className="border border-admin-border px-2 py-1 text-center">
                         ลำดับ
@@ -1321,41 +991,26 @@ export default function ReportPreviewButton({
                       <th className="border border-admin-border px-2 py-1 text-left">
                         บริษัท
                       </th>
-                      {/* <th className="border border-admin-border px-2 py-1 text-center">
-                        เลขที่ QT/IV/RP
-                      </th> */}
                       <th className="border border-admin-border px-2 py-1 text-center">
                         เช็กอิน (วัน)
                       </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        มาสาย (วัน)
-                      </th>
-
-                      {/* {days.map((d) => (
+                      {dayMeta.map((x) => (
                         <th
-                          key={`t-${d}`}
+                          key={`h-${x.day}`}
                           className="border border-admin-border px-2 py-1 text-center"
                         >
-                          DAY {d}
-                        </th>
-                      ))} */}
-
-                      {/* ✅ เพิ่มหัวคอลัมน์ “ลายเซ็น” ต่อวัน */}
-                      {days.map((d) => (
-                        <th
-                          key={`sig-${d}`}
-                          className="border border-admin-border px-2 py-1 text-center"
-                        >
-                          DAY {d}
+                          {x.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
 
                   <tbody>
-                    {students.map((stu, idx) => {
-                      const checkedDays = countCheckedDays(stu, dayCount);
-                      const lateDays = countLateDays(stu, dayCount);
+                    {activeStudents.map((stu, idx) => {
+                      const checkedDays = countCheckedDays(
+                        stu,
+                        effectiveDayCount,
+                      );
 
                       return (
                         <tr key={stu._id || idx}>
@@ -1376,56 +1031,12 @@ export default function ReportPreviewButton({
                             {stu.company || ""}
                           </td>
 
-                          {/* <td className="border border-admin-border px-2 py-1 text-center">
-                            {stu.paymentRef || ""}
-                          </td> */}
-
                           <td className="border border-admin-border p-2 text-center">
                             {checkedDays}
                           </td>
 
-                          <td className="border border-admin-border p-2 text-center">
-                            {lateDays}
-                          </td>
-
-                          {/* DAY time */}
-                          {/* {days.map((d) => {
-                            const checked = getCheckinChecked(stu, d);
-                            if (!checked) {
-                              return (
-                                <td
-                                  key={`t-${d}`}
-                                  className="border border-admin-border px-2 py-1 text-center text-admin-textMuted"
-                                >
-                                  -
-                                </td>
-                              );
-                            }
-
-                            const t = formatTimeTH(getCheckinTimeRaw(stu, d));
-                            const isLate = getIsLateForDay(stu, d);
-
-                            return (
-                              <td
-                                key={`t-${d}`}
-                                className="border border-admin-border px-2 py-1 text-center"
-                              >
-                                <span
-                                  className={
-                                    isLate
-                                      ? "font-semibold text-red-600"
-                                      : "font-semibold text-emerald-700"
-                                  }
-                                >
-                                  {isLate ? "⏰" : "✓"}
-                                </span>
-                                {t ? ` ${t}` : ""}
-                              </td>
-                            );
-                          })} */}
-
-                          {/* ✅ DAY signature image */}
-                          {days.map((d) => {
+                          {dayMeta.map((x) => {
+                            const d = x.day;
                             const checked = getCheckinChecked(stu, d);
                             if (!checked) {
                               return (
@@ -1480,7 +1091,7 @@ export default function ReportPreviewButton({
                       );
                     })}
 
-                    {students.length === 0 && (
+                    {activeStudents.length === 0 && (
                       <tr>
                         <td
                           colSpan={colSpanCheckin}
@@ -1497,23 +1108,18 @@ export default function ReportPreviewButton({
               <TabsContent value="signature" className="m-0">
                 <table className="min-w-full border-collapse text-xs">
                   <colgroup>
-                    {/* base */}
-                    <col style={{ width: 50 }} /> {/* ลำดับ */}
-                    <col style={{ width: 150 }} /> {/* ชื่อ-สกุล */}
-                    <col style={{ width: 150 }} /> {/* บริษัท */}
-                    <col style={{ width: 140 }} /> {/* เลขที่ QT/IV/RP */}
-                    {/* 3.1 */}
-                    <col style={{ width: 160 }} />{" "}
-                    {/* ช่องทางรับเอกสาร (3.1) */}
-                    {/* <col style={{ width: 160 }} /> วัน-เวลา (3.1) */}
-                    <col style={{ width: 180 }} />{" "}
-                    {/* ลายเซ็นรับเอกสาร (3.1) */}
-                    {/* 3.2 */}
-                    <col style={{ width: 160 }} /> {/* บันทึกเมื่อ (3.2) */}
-                    <col style={{ width: 180 }} /> {/* รายการ (3.2) */}
-                    <col style={{ width: 180 }} /> {/* ลายเซ็นลูกค้า (3.2) */}
-                    <col style={{ width: 180 }} /> {/* ลายเซ็นจนท. (3.2) */}
+                    <col style={{ width: 50 }} />
+                    <col style={{ width: 150 }} />
+                    <col style={{ width: 150 }} />
+                    <col style={{ width: 140 }} />
+                    <col style={{ width: 160 }} />
+                    <col style={{ width: 180 }} />
+                    <col style={{ width: 160 }} />
+                    <col style={{ width: 180 }} />
+                    <col style={{ width: 180 }} />
+                    <col style={{ width: 180 }} />
                   </colgroup>
+
                   <thead className="sticky top-0 z-20 bg-[#0a1f33] text-xs text-white h-8">
                     <tr>
                       <th className="border border-admin-border px-2 py-1 text-center">
@@ -1532,9 +1138,6 @@ export default function ReportPreviewButton({
                       <th className="border border-admin-border px-2 py-1 text-center">
                         ช่องทางรับเอกสาร
                       </th>
-                      {/* <th className="border border-admin-border px-2 py-1 text-center">
-                        วัน-เวลา (3.1)
-                      </th> */}
                       <th className="border border-admin-border px-2 py-1 text-center">
                         ลายเซ็นรับเอกสาร
                       </th>
@@ -1555,7 +1158,7 @@ export default function ReportPreviewButton({
                   </thead>
 
                   <tbody>
-                    {students.map((stu, idx) => {
+                    {activeStudents.map((stu, idx) => {
                       const receiveTypeText = receiveTypeLabel(
                         getReceiveTypeRaw(stu),
                       );
@@ -1596,10 +1199,6 @@ export default function ReportPreviewButton({
                           <td className="border border-admin-border px-2 py-1 text-center">
                             {receiveTypeText || "-"}
                           </td>
-
-                          {/* <td className="border border-admin-border px-2 py-1 text-center">
-                            {receivedAt ? formatDateTimeTH(receivedAt) : "-"}
-                          </td> */}
 
                           <td className="border border-admin-border px-2 py-1 text-center">
                             <div className="flex flex-col gap-1">
@@ -1657,7 +1256,7 @@ export default function ReportPreviewButton({
                       );
                     })}
 
-                    {students.length === 0 && (
+                    {activeStudents.length === 0 && (
                       <tr>
                         <td
                           colSpan={colSpanSignature}
@@ -1671,17 +1270,6 @@ export default function ReportPreviewButton({
                 </table>
               </TabsContent>
             </div>
-
-            {/* {tab === "checkin" ? (
-              <div className="mt-2 text-[11px] text-admin-textMuted">
-                หมายเหตุ: ลายเซ็นจะแสดงใน Print
-                (รอโหลดรูปก่อนสั่งพิมพ์อัตโนมัติ)
-              </div>
-            ) : (
-              <div className="mt-2 text-[11px] text-admin-textMuted">
-                หมายเหตุ: รายงานนี้แสดงลายเซ็น (3.1) และ (3.2) พร้อมรูปใน Print
-              </div>
-            )} */}
           </Tabs>
         </DialogContent>
       </Dialog>

@@ -9,6 +9,7 @@ import {
   Calendar as CalendarIcon,
   RefreshCw,
 } from "lucide-react";
+
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,35 +29,15 @@ function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
 
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
 /* ---------------- date helpers ---------------- */
 
+// YYYY-MM-DD (local) from Date
 function toISODate(d) {
-  // YYYY-MM-DD (local)
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function startOfDay(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-
-function formatThaiDate(d) {
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("th-TH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "Asia/Bangkok",
-  });
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function normalizeISODate(x) {
@@ -65,12 +46,203 @@ function normalizeISODate(x) {
   return s;
 }
 
+// iso -> Date (local 00:00)
 function isoToDate(iso) {
   const s = normalizeISODate(iso);
   if (!s) return null;
-  // สำคัญ: เติมเวลาเพื่อให้เป็น local (ไม่โดนตีเป็น UTC)
   const d = new Date(s + "T00:00:00");
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// ใช้ใน modal (ไทย)
+function formatThaiDate(input) {
+  if (!input) return "-";
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("th-TH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+/* ---------- English formatter (UTC-safe) ---------- */
+
+const FMT_EN = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function dateUTCFromYMD(ymd) {
+  const s = normalizeISODate(ymd);
+  if (!s) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatEnYMD(ymd) {
+  const d = dateUTCFromYMD(ymd);
+  if (!d) return "-";
+  return FMT_EN.format(d); // "17 Feb 2026"
+}
+
+function uniqSortYMD(list) {
+  const set = new Set();
+  for (const x of list || []) {
+    const s = normalizeISODate(x);
+    if (s) set.add(s);
+  }
+  return Array.from(set).sort();
+}
+
+/**
+ * ✅ ถ้ามี cls.days[] -> ใช้เป็น source of truth
+ * ✅ ไม่งั้น fallback: cls.date + dayCount (ต่อเนื่อง)
+ */
+function getClassDaysYMD(cls) {
+  if (Array.isArray(cls.days) && cls.days.length > 0) {
+    return uniqSortYMD(cls.days);
+  }
+
+  const startStr = normalizeISODate(
+    cls.date || cls.startDate || cls.start_date,
+  );
+  if (!startStr) return [];
+
+  const dayCount = Number(cls.duration?.dayCount || cls.dayCount || 1) || 1;
+  const start = dateUTCFromYMD(startStr);
+  if (!start) return [];
+
+  const out = [];
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(start);
+    d.setUTCDate(d.getUTCDate() + i);
+    out.push(
+      `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`,
+    );
+  }
+  return out;
+}
+
+function getClassDayCount(cls) {
+  const days = getClassDaysYMD(cls);
+  if (days.length) return days.length;
+  return Number(cls.duration?.dayCount || cls.dayCount || 1) || 1;
+}
+
+/**
+ * ✅ format วันอบรม:
+ * - ต่อเนื่อง => "17 Feb 2026 - 20 Feb 2026"
+ * - เว้นวันเดือน/ปีเดียวกัน => "17-18, 20 Feb 2026"
+ * - ข้ามเดือน/ปี => "28 Feb 2026 - 1 Mar 2026" หรือ "28 Feb 2026, 2 Mar 2026"
+ */
+function formatDaysHumanEnglish(ymds) {
+  const days = uniqSortYMD(ymds);
+  if (!days.length) return "-";
+  if (days.length === 1) return formatEnYMD(days[0]);
+
+  const points = days
+    .map((ymd) => ({ ymd, d: dateUTCFromYMD(ymd) }))
+    .filter((x) => x.d);
+
+  if (!points.length) return "-";
+
+  // group consecutive (diff 1 day)
+  const groups = [];
+  let cur = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].d.getTime();
+    const now = points[i].d.getTime();
+    if (now - prev === 86400000) cur.push(points[i]);
+    else {
+      groups.push(cur);
+      cur = [points[i]];
+    }
+  }
+  groups.push(cur);
+
+  const first = points[0].d;
+  const sameMonthYear = points.every(
+    (p) =>
+      p.d.getUTCFullYear() === first.getUTCFullYear() &&
+      p.d.getUTCMonth() === first.getUTCMonth(),
+  );
+
+  const dayNum = (p) => p.d.getUTCDate();
+
+  // เดือน/ปีเดียวกันทั้งหมด
+  if (sameMonthYear) {
+    const month = first.toLocaleString("en-GB", {
+      month: "short",
+      timeZone: "UTC",
+    });
+    const year = first.getUTCFullYear();
+
+    // กลุ่มเดียวและติดกัน => "17 Feb 2026 - 20 Feb 2026"
+    if (groups.length === 1 && groups[0].length > 1) {
+      return `${formatEnYMD(groups[0][0].ymd)} - ${formatEnYMD(
+        groups[0][groups[0].length - 1].ymd,
+      )}`;
+    }
+
+    // เว้นวัน => "17-18, 20 Feb 2026"
+    const chunks = groups.map((g) => {
+      if (g.length === 1) return `${dayNum(g[0])}`;
+      return `${dayNum(g[0])}-${dayNum(g[g.length - 1])}`;
+    });
+
+    return `${chunks.join(", ")} ${month} ${year}`;
+  }
+
+  // ข้ามเดือน/ปี => แสดงเต็มเป็นก้อน ๆ
+  const chunks = groups.map((g) => {
+    if (g.length === 1) return formatEnYMD(g[0].ymd);
+    return `${formatEnYMD(g[0].ymd)} - ${formatEnYMD(g[g.length - 1].ymd)}`;
+  });
+
+  return chunks.join(", ");
+}
+
+/* dd/mm/yyyy <-> ISO */
+
+function formatDMYSlashFromISO(iso) {
+  const s = normalizeISODate(iso);
+  if (!s) return "";
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+function parseDMYToISO(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "";
+
+  const m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (!m) return "";
+
+  const dd = pad2(m[1]);
+  const mm = pad2(m[2]);
+  const yyyy = String(m[3]);
+
+  const test = new Date(`${yyyy}-${mm}-${dd}T00:00:00Z`);
+  if (Number.isNaN(test.getTime())) return "";
+
+  // roundtrip validate
+  if (
+    test.getUTCFullYear() !== Number(yyyy) ||
+    pad2(test.getUTCMonth() + 1) !== mm ||
+    pad2(test.getUTCDate()) !== dd
+  ) {
+    return "";
+  }
+
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function safeArr(x) {
+  return Array.isArray(x) ? x : [];
 }
 
 function uniqueSortDates(arr) {
@@ -81,37 +253,6 @@ function uniqueSortDates(arr) {
   }
   const keys = Array.from(map.keys()).sort();
   return keys.map((k) => isoToDate(k)).filter(Boolean);
-}
-
-function formatDateRange(cls) {
-  // ✅ ถ้ามี days ใช้ days เป็น source of truth
-  if (Array.isArray(cls.days) && cls.days.length > 0) {
-    const sorted = [...cls.days].map(normalizeISODate).filter(Boolean).sort();
-    if (sorted.length === 0) return "-";
-    if (sorted.length === 1) return formatThaiDate(sorted[0]);
-    return `${formatThaiDate(sorted[0])} - ${formatThaiDate(
-      sorted[sorted.length - 1],
-    )}`;
-  }
-
-  // fallback แบบเดิม: date + dayCount (ต่อเนื่อง)
-  const startStr = cls.date || cls.startDate || cls.start_date;
-  const dayCount = cls.duration?.dayCount || cls.dayCount || 1;
-
-  if (!startStr) return "-";
-
-  const dStart = new Date(startStr);
-  if (Number.isNaN(dStart.getTime())) return "-";
-
-  const dEnd = new Date(dStart);
-  dEnd.setDate(dEnd.getDate() + (Number(dayCount) - 1));
-
-  if (Number(dayCount) <= 1) return formatThaiDate(dStart);
-  return `${formatThaiDate(dStart)} - ${formatThaiDate(dEnd)}`;
-}
-
-function safeArr(x) {
-  return Array.isArray(x) ? x : [];
 }
 
 export default function ClassesListClient({ initialClasses, total }) {
@@ -185,8 +326,13 @@ export default function ClassesListClient({ initialClasses, total }) {
   const [courseCode, setCourseCode] = useState("");
   const [title, setTitle] = useState("");
 
+  // เก็บ ISO เพื่อ filter จริง
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+
+  // ✅ แสดงผล input เป็น dd/mm/yyyy
+  const [dateFromText, setDateFromText] = useState("");
+  const [dateToText, setDateToText] = useState("");
 
   // ✅ preset filter
   const [rangePreset, setRangePreset] = useState("today");
@@ -194,34 +340,14 @@ export default function ClassesListClient({ initialClasses, total }) {
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const [openMenuId, setOpenMenuId] = useState(null);
-
-  // ปิดเมนูเมื่อคลิกนอกเมนู
-  useEffect(() => {
-    if (openMenuId === null) return;
-
-    function handleClickOutside(e) {
-      const target = e.target;
-      if (
-        target instanceof HTMLElement &&
-        !target.closest("[data-class-actions-menu]")
-      ) {
-        setOpenMenuId(null);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [openMenuId]);
-
   // ✅ ตั้ง Default = Today ตอน mount (ครั้งแรก)
   useEffect(() => {
     const today = new Date();
     const iso = toISODate(today);
     setDateFrom(iso);
     setDateTo(iso);
+    setDateFromText(formatDMYSlashFromISO(iso));
+    setDateToText(formatDMYSlashFromISO(iso));
     setRangePreset("today");
   }, []);
 
@@ -233,6 +359,8 @@ export default function ClassesListClient({ initialClasses, total }) {
       const iso = toISODate(today);
       setDateFrom(iso);
       setDateTo(iso);
+      setDateFromText(formatDMYSlashFromISO(iso));
+      setDateToText(formatDMYSlashFromISO(iso));
       setRangePreset("today");
       setPage(1);
       return;
@@ -241,8 +369,11 @@ export default function ClassesListClient({ initialClasses, total }) {
     if (preset === "week") {
       const from = new Date(today);
       from.setDate(from.getDate() - 6);
-      setDateFrom(toISODate(from));
+      const isoFrom = toISODate(from);
+      setDateFrom(isoFrom);
       setDateTo(end);
+      setDateFromText(formatDMYSlashFromISO(isoFrom));
+      setDateToText(formatDMYSlashFromISO(end));
       setRangePreset("week");
       setPage(1);
       return;
@@ -251,8 +382,11 @@ export default function ClassesListClient({ initialClasses, total }) {
     if (preset === "month") {
       const from = new Date(today);
       from.setDate(from.getDate() - 29);
-      setDateFrom(toISODate(from));
+      const isoFrom = toISODate(from);
+      setDateFrom(isoFrom);
       setDateTo(end);
+      setDateFromText(formatDMYSlashFromISO(isoFrom));
+      setDateToText(formatDMYSlashFromISO(end));
       setRangePreset("month");
       setPage(1);
       return;
@@ -291,7 +425,7 @@ export default function ClassesListClient({ initialClasses, total }) {
         return false;
       }
 
-      // ✅ date range filter: ถ้ามี days -> เช็ค overlap
+      // ✅ date range filter: ใช้ days (ถ้ามี) แล้วเช็ค overlap
       if (dateFrom || dateTo) {
         const from = dateFrom ? new Date(dateFrom + "T00:00:00") : null;
         const to = dateTo ? new Date(dateTo + "T23:59:59") : null;
@@ -315,6 +449,7 @@ export default function ClassesListClient({ initialClasses, total }) {
 
           const dayCount =
             Number(cls.duration?.dayCount || cls.dayCount || 1) || 1;
+
           const dEnd = new Date(dStart);
           dEnd.setDate(dEnd.getDate() + (dayCount - 1));
           dEnd.setHours(23, 59, 59, 999);
@@ -617,13 +752,31 @@ export default function ClassesListClient({ initialClasses, total }) {
               จากวันที่
             </label>
             <input
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
               className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={dateFrom}
+              value={dateFromText}
               onChange={(e) => {
-                setDateFrom(e.target.value);
+                setDateFromText(e.target.value);
                 setRangePreset("custom");
                 setPage(1);
+              }}
+              onBlur={() => {
+                const raw = dateFromText.trim();
+                if (!raw) {
+                  setDateFrom("");
+                  setDateFromText("");
+                  return;
+                }
+                const iso = parseDMYToISO(raw);
+                if (!iso) {
+                  alert("รูปแบบวันที่ไม่ถูกต้อง (ต้องเป็น dd/mm/yyyy)");
+                  setDateFromText(formatDMYSlashFromISO(dateFrom));
+                  return;
+                }
+                setDateFrom(iso);
+                setDateFromText(formatDMYSlashFromISO(iso));
               }}
             />
           </div>
@@ -633,13 +786,31 @@ export default function ClassesListClient({ initialClasses, total }) {
               ถึงวันที่
             </label>
             <input
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="dd/mm/yyyy"
               className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-              value={dateTo}
+              value={dateToText}
               onChange={(e) => {
-                setDateTo(e.target.value);
+                setDateToText(e.target.value);
                 setRangePreset("custom");
                 setPage(1);
+              }}
+              onBlur={() => {
+                const raw = dateToText.trim();
+                if (!raw) {
+                  setDateTo("");
+                  setDateToText("");
+                  return;
+                }
+                const iso = parseDMYToISO(raw);
+                if (!iso) {
+                  alert("รูปแบบวันที่ไม่ถูกต้อง (ต้องเป็น dd/mm/yyyy)");
+                  setDateToText(formatDMYSlashFromISO(dateTo));
+                  return;
+                }
+                setDateTo(iso);
+                setDateToText(formatDMYSlashFromISO(iso));
               }}
             />
           </div>
@@ -650,8 +821,9 @@ export default function ClassesListClient({ initialClasses, total }) {
         <table className="w-full table-fixed text-base sm:text-sm">
           <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
             <tr>
-              <th className="w-[200px] px-3 py-2 text-left">วันที่อบรม</th>
-              <th className=" px-3 py-2 text-left">ชื่อ CLASS</th>
+              <th className="w-[220px] px-3 py-2 text-left">วันที่อบรม</th>
+              <th className="w-[110px] px-3 py-2 text-center">จำนวนวัน</th>
+              <th className="px-3 py-2 text-left">ชื่อ CLASS</th>
               <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
               <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
               <th className="w-[150px] px-3 py-2 text-center">จำนวนนักเรียน</th>
@@ -678,13 +850,20 @@ export default function ClassesListClient({ initialClasses, total }) {
                     "-"
                   : "-";
 
+              const daysYMD = getClassDaysYMD(cls);
+              const dayCount = getClassDayCount(cls);
+
               return (
                 <tr
                   key={id}
                   className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
                 >
                   <td className="px-3 py-2 text-admin-textMuted">
-                    {formatDateRange(cls)}
+                    {formatDaysHumanEnglish(daysYMD)}
+                  </td>
+
+                  <td className="px-3 py-2 text-center text-admin-textMuted">
+                    {dayCount}
                   </td>
 
                   <td className="px-3 py-2">
@@ -754,7 +933,7 @@ export default function ClassesListClient({ initialClasses, total }) {
             {visible.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-4 text-center text-admin-textMuted"
                 >
                   ยังไม่มี Class ตรงตามเงื่อนไข

@@ -3,6 +3,9 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
+const BKK_TZ = "Asia/Bangkok";
+const EN_LOCALE = "en-GB";
+
 function clean(s) {
   return String(s ?? "").trim();
 }
@@ -54,7 +57,7 @@ function formatDateTH(input) {
     year: "numeric",
     month: "short",
     day: "numeric",
-    timeZone: "Asia/Bangkok",
+    timeZone: BKK_TZ,
   });
 }
 
@@ -68,7 +71,7 @@ function formatDateTimeTH(input) {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Asia/Bangkok",
+    timeZone: BKK_TZ,
   });
 }
 
@@ -80,7 +83,44 @@ function formatTimeTH(input) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: "Asia/Bangkok",
+    timeZone: BKK_TZ,
+  });
+}
+
+/** -------- day label helpers (EN) -------- */
+function ymdFromAnyBKK(value) {
+  if (!value) return "";
+  const s = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BKK_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function ymdToUTCDate(ymd) {
+  const s = String(ymd || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+}
+
+function formatDateEN(input) {
+  const ymd = ymdFromAnyBKK(input);
+  if (!ymd) return "";
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString(EN_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: BKK_TZ,
   });
 }
 
@@ -134,14 +174,118 @@ function useAutoPageSize({
   return pageSize;
 }
 
+/* ================= Learn Type (Live/Classroom) ================= */
+
+function normalizeLearnType(raw) {
+  const v = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (v === "live") return "live";
+  if (v === "classroom") return "classroom";
+  return "classroom";
+}
+
+function getLearnTypeRaw(stu) {
+  return (
+    clean(stu?.learnType) ||
+    clean(stu?.studyType) ||
+    clean(stu?.type) ||
+    "classroom"
+  );
+}
+
+function getLearnTypeEditCount(stu) {
+  const n =
+    Number(
+      stu?.learnTypeEditCount ?? stu?.typeEditCount ?? stu?.typeEdits ?? 0,
+    ) || 0;
+  return n > 0 ? n : 0;
+}
+
+// รองรับ timeline (ถ้ามี) เพื่อให้ “เปลี่ยนประเภทแล้วมีผลตั้งแต่ day นั้นเป็นต้นไป”
+function getLearnTypeTimeline(stu) {
+  const arr =
+    stu?.learnTypeTimeline || stu?.typeTimeline || stu?.learnTypeHistory;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x) => ({
+      effectiveDay: Number(x?.effectiveDay ?? x?.day ?? 1) || 1,
+      type: normalizeLearnType(x?.type ?? x?.to ?? x?.learnType ?? "classroom"),
+    }))
+    .filter((x) => x.effectiveDay >= 1)
+    .sort((a, b) => a.effectiveDay - b.effectiveDay);
+}
+
+function getLearnTypeForDay(stu, day) {
+  const base = normalizeLearnType(getLearnTypeRaw(stu));
+  const tl = getLearnTypeTimeline(stu);
+  let cur = base;
+  for (const it of tl) {
+    if (Number(it.effectiveDay) <= Number(day)) cur = it.type;
+  }
+  return cur;
+}
+
+function learnTypeMeta(type) {
+  const t = normalizeLearnType(type);
+  if (t === "live") {
+    return {
+      key: "live",
+      label: "Live",
+      className: "border border-[#464EB8] bg-[#7B83EB] text-white",
+    };
+  }
+  return {
+    key: "classroom",
+    label: "Classroom",
+    className: "border border-[#3AC1F6] bg-[#A0E5FF] text-[#0a1f33]",
+  };
+}
+
+function getNowBKK() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BKK_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = fmt.formatToParts(new Date());
+  const map = {};
+  parts.forEach((p) => {
+    map[p.type] = p.value;
+  });
+
+  const ymd = `${map.year}-${map.month}-${map.day}`;
+  const hh = Number(map.hour || 0);
+  const mm = Number(map.minute || 0);
+  return { ymd, minutes: hh * 60 + mm };
+}
+
+function getTodayYmdBKK() {
+  return ymdFromAnyBKK(new Date());
+}
+
+function deriveTodayDayIndex(normalizedDayDates, dayCount) {
+  const today = getTodayYmdBKK();
+  const arr = Array.isArray(normalizedDayDates) ? normalizedDayDates : [];
+  const idx = arr.findIndex((x) => x === today);
+  if (idx >= 0) return idx + 1;
+  return dayCount >= 1 ? 1 : 1;
+}
+
 /* ================= Receive helpers (3.1 customer_receive) ================= */
 
-function ReceiveDocModal({ open, stu, onClose, onPreview }) {
+function ReceiveDocModal({ open, stu, onClose }) {
   if (!open) return null;
 
   const sig = getReceiveSignatureUrl(stu);
   const receivedAt = getReceivedAt(stu);
   const typeRaw = getReceiveTypeRaw(stu);
+  const isEMS = typeRaw === "ems";
   const qtNo = stu?.paymentRef || "-";
 
   return (
@@ -184,10 +328,14 @@ function ReceiveDocModal({ open, stu, onClose, onPreview }) {
             <div>
               <div className="text-sm text-admin-textMuted">สถานะ</div>
               <div className="mt-1 font-semibold">
-                {sig ? (
-                  <span className="text-emerald-700 ">รับเอกสารแล้ว</span>
+                {isEMS ? (
+                  <span className="text-slate-700">
+                    รับผ่าน ปณ (ไม่ต้องเซ็น)
+                  </span>
+                ) : sig ? (
+                  <span className="text-emerald-700">รับเอกสารแล้ว</span>
                 ) : (
-                  <span className="text-zinc-700 ">ยังไม่รับเอกสาร</span>
+                  <span className="text-zinc-700">ยังไม่รับเอกสาร</span>
                 )}
               </div>
             </div>
@@ -211,25 +359,28 @@ function ReceiveDocModal({ open, stu, onClose, onPreview }) {
             </div>
           </div>
 
-          {/* ลายเซ็นรับเอกสาร */}
-          <div className="mt-3 rounded-2xl border border-admin-border bg-white p-4">
-            <div className="text-sm text-admin-textMuted">ลายเซ็นรับเอกสาร</div>
+          {/* ถ้า EMS ไม่ต้องโชว์ลายเซ็น */}
+          {!isEMS && (
+            <div className="mt-3 rounded-2xl border border-admin-border bg-white p-4">
+              <div className="text-sm text-admin-textMuted">
+                ลายเซ็นรับเอกสาร
+              </div>
 
-            {sig ? (
-              <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 ">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={sig}
-                  alt="ลายเซ็นรับเอกสาร"
-                  className="max-h-[240px] w-auto max-w-full object-contain"
-                />
-              </div>
-            ) : (
-              <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-admin-textMuted">
-                ยังไม่มีลายเซ็นรับเอกสาร
-              </div>
-            )}
-          </div>
+              {sig ? (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 ">
+                  <img
+                    src={sig}
+                    alt="ลายเซ็นรับเอกสาร"
+                    className="max-h-[240px] w-auto max-w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-admin-textMuted">
+                  ยังไม่มีลายเซ็นรับเอกสาร
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -244,7 +395,7 @@ function receiveTypeLabel(raw) {
   const x = String(raw || "").trim();
   if (!x) return "-";
   if (x === "on_class" || x === "on_site") return "มารับ ณ วันอบรม";
-  if (x === "ems") return "ส่งทางไปรษณีย์";
+  if (x === "ems") return "รับผ่าน ปณ";
   return x;
 }
 
@@ -269,13 +420,7 @@ function getReceiveSignatureUrl(stu) {
 
 /* ================= Staff receive helpers (3.2 staff_receive) ================= */
 
-function StaffDeliverModal({
-  open,
-  stu,
-  onClose,
-  onPreviewCustomer,
-  onPreviewStaff,
-}) {
+function StaffDeliverModal({ open, stu, onClose }) {
   if (!open) return null;
 
   const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
@@ -373,36 +518,6 @@ function StaffDeliverModal({
               )}
             </div>
           </div>
-
-          {/* <div className="flex flex-wrap items-center justify-center gap-2 rounded-xl border border-admin-border p-3">
-            {customerUrl ? (
-              <button
-                type="button"
-                onClick={onPreviewCustomer}
-                className="rounded-full border border-blue-200 bg-white px-3 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
-              >
-                ลายเซ็นลูกค้า
-              </button>
-            ) : (
-              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] text-zinc-600">
-                ลายเซ็นลูกค้า -
-              </span>
-            )}
-
-            {staffUrl ? (
-              <button
-                type="button"
-                onClick={onPreviewStaff}
-                className="rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-semibold text-purple-700 hover:bg-purple-50"
-              >
-                ลายเซ็นเจ้าหน้าที่
-              </button>
-            ) : (
-              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] text-zinc-600">
-                ลายเซ็นเจ้าหน้าที่ -
-              </span>
-            )}
-          </div> */}
         </div>
       </div>
     </div>
@@ -462,14 +577,16 @@ function getCheckinInfo(stu, day) {
   const byStrNum = stu?.checkins?.[String(day)];
   const byDayKey = stu?.checkins?.[key];
 
-  // ✅ รองรับ API ใหม่ที่ส่ง checkinDaily[]
   if (Array.isArray(stu?.checkinDaily)) {
     const found = stu.checkinDaily.find((x) => Number(x.day) === Number(day));
-    if (found && found.checkedIn) {
+    if (found) {
       return {
         signatureUrl: found.signatureUrl,
         time: found.time,
         isLate: found.isLate,
+        mode: found.mode || found.kind || "",
+        status: found.status || "",
+        checkedIn: !!found.checkedIn,
       };
     }
   }
@@ -487,6 +604,9 @@ function getCheckinChecked(stu, day) {
 
 function getCheckinSignatureUrl(stu, day) {
   const info = getCheckinInfo(stu, day);
+  // ✅ ถ้าวันนั้นไม่ได้เช็คอิน ห้ามโชว์ลายเซ็นเด็ดขาด
+  if (!info || !info.checkedIn) return "";
+  // ✅ วันนั้นเช็คอินแล้วค่อยโชว์ (ถ้าคุณยังอยากมี fallback legacy)
   return clean(info?.signatureUrl) || clean(stu?.signatureUrl) || "";
 }
 
@@ -501,11 +621,16 @@ function getIsLateForDay(stu, day) {
   return Boolean(info?.isLate ?? stu?.isLate ?? stu?.late ?? false);
 }
 
+function getAttendanceMode(stu, day) {
+  const info = getCheckinInfo(stu, day);
+  const mode = clean(info?.mode);
+  const status = clean(info?.status);
+  return { mode, status };
+}
+
 /* ================= Student status (active/cancelled/postponed) ================= */
 
 function getStudentStatusRaw(stu) {
-  // ✅ ชื่อจริงใน schema: studentStatus
-  // ✅ เผื่อ legacy: status
   return clean(stu?.studentStatus) || clean(stu?.status) || "active";
 }
 
@@ -532,33 +657,289 @@ function studentStatusMeta(raw) {
   };
 }
 
+/* ================= Logs / Signature delete UI ================= */
+
+function LogsModal({ open, stu, onClose }) {
+  if (!open) return null;
+
+  const logs = Array.isArray(stu?.editLogs) ? stu.editLogs : [];
+
+  return (
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold text-admin-text">
+              ประวัติการแก้ไข
+            </div>
+            <div className="mt-0.5 text-sm text-admin-textMuted">
+              {getStudentName(stu)}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-admin-border px-3 py-1 text-xs hover:bg-admin-surfaceMuted"
+          >
+            ปิด
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {logs.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-admin-border p-6 text-sm text-admin-textMuted">
+              ยังไม่มี log (ต้องเริ่มเขียนจาก API ตอน PATCH/DELETE)
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {logs
+                .slice()
+                .reverse()
+                .map((it, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-admin-border p-3 text-sm"
+                  >
+                    <div className="text-xs text-admin-textMuted">
+                      {it?.at ? formatDateTimeTH(it.at) : "-"}{" "}
+                      {it?.by ? `• โดย ${it.by}` : ""}
+                      {it?.field ? ` • field: ${it.field}` : ""}
+                    </div>
+                    <div className="mt-1">
+                      {it?.action ? (
+                        <span className="font-semibold">{it.action}</span>
+                      ) : (
+                        <span className="font-semibold">แก้ไข</span>
+                      )}
+                      {typeof it?.from !== "undefined" ||
+                      typeof it?.to !== "undefined" ? (
+                        <span className="ml-2 text-admin-textMuted">
+                          {`"${clean(it.from)}" → "${clean(it.to)}"`}
+                        </span>
+                      ) : null}
+                    </div>
+                    {it?.note ? (
+                      <div className="mt-1 text-xs text-admin-textMuted">
+                        note: {it.note}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignatureDeleteModal({
+  open,
+  stu,
+  days,
+  classId,
+  onClose,
+  onDeleted,
+}) {
+  if (!open) return null;
+
+  const stuId = getStudentId(stu);
+
+  async function del(payload) {
+    if (!classId || !stuId) return;
+    const ok = window.confirm("ยืนยันลบลายเซ็นนี้?");
+    if (!ok) return;
+
+    try {
+      const res = await fetch(
+        `/api/admin/classes/${encodeURIComponent(classId)}/students/${encodeURIComponent(stuId)}/signatures`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const data = await safeJson(res);
+      if (!res.ok || data?.ok === false) {
+        alert(data?.error || "ลบไม่สำเร็จ (ต้องทำ API ต่อ)");
+        return;
+      }
+      alert("ลบเรียบร้อย");
+      onDeleted?.();
+    } catch (e) {
+      console.error(e);
+      alert("ลบไม่สำเร็จ");
+    }
+  }
+
+  const receiveType = getReceiveTypeRaw(stu);
+  const isEMS = receiveType === "ems";
+
+  const receiveSig = getReceiveSignatureUrl(stu);
+  const staffCus = getStaffReceiveCustomerSigUrl(stu);
+  const staffStaff = getStaffReceiveStaffSigUrl(stu);
+
+  return (
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-base font-semibold text-admin-text">
+              ลบลายเซ็น
+            </div>
+            <div className="mt-0.5 text-sm text-admin-textMuted">
+              {getStudentName(stu)}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-admin-border px-3 py-1 text-xs hover:bg-admin-surfaceMuted"
+          >
+            ปิด
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3 text-sm">
+          <div className="rounded-xl border border-admin-border p-3">
+            <div className="font-semibold">ลายเซ็นเช็คอิน</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {days.map((d) => {
+                const url = getCheckinSignatureUrl(stu, d);
+                if (!url) return null;
+                return (
+                  <div
+                    key={`sig-day-${d}`}
+                    className="rounded-xl border border-admin-border p-2"
+                  >
+                    <div className="text-xs text-admin-textMuted">Day {d}</div>
+                    <div className="mt-1 flex items-center justify-center rounded-lg bg-admin-surfaceMuted/40 p-2">
+                      <img
+                        src={url}
+                        alt={`sig day ${d}`}
+                        className="max-h-[120px] w-auto max-w-full object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => del({ kind: "checkin", day: d })}
+                      className="mt-2 w-full rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                    >
+                      ลบลายเซ็น Day {d}
+                    </button>
+                  </div>
+                );
+              })}
+              {days.every((d) => !getCheckinSignatureUrl(stu, d)) ? (
+                <div className="text-xs text-admin-textMuted">
+                  ไม่มีลายเซ็นเช็คอินให้ลบ
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-admin-border p-3">
+            <div className="font-semibold">รับเอกสาร (3.1)</div>
+            {isEMS ? (
+              <div className="mt-2 text-xs text-admin-textMuted">
+                กรณี EMS ไม่ต้องมีลายเซ็น
+              </div>
+            ) : receiveSig ? (
+              <button
+                type="button"
+                onClick={() => del({ kind: "receive_3_1" })}
+                className="mt-2 rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+              >
+                ลบลายเซ็นรับเอกสาร (3.1)
+              </button>
+            ) : (
+              <div className="mt-2 text-xs text-admin-textMuted">
+                ไม่มีลายเซ็นรับเอกสาร
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-admin-border p-3">
+            <div className="font-semibold">เอกสารนำส่ง (3.2)</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {staffCus ? (
+                <button
+                  type="button"
+                  onClick={() => del({ kind: "staff_3_2", who: "customer" })}
+                  className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                >
+                  ลบลายเซ็นลูกค้า (3.2)
+                </button>
+              ) : (
+                <span className="text-xs text-admin-textMuted">
+                  ไม่มีลายเซ็นลูกค้า
+                </span>
+              )}
+
+              {staffStaff ? (
+                <button
+                  type="button"
+                  onClick={() => del({ kind: "staff_3_2", who: "staff" })}
+                  className="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                >
+                  ลบลายเซ็นเจ้าหน้าที่ (3.2)
+                </button>
+              ) : (
+                <span className="text-xs text-admin-textMuted">
+                  ไม่มีลายเซ็นเจ้าหน้าที่
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-admin-textMuted">
+            * เมนูนี้ทำ UI ให้ก่อน — ต้องทำ API ลบจริง (รวมลบไฟล์บน Cloudinary
+            ถ้ามี publicId)
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================= Filter helpers ================= */
+
+function deriveDefaultFilterDay(normalizedDayDates, dayCount) {
+  const daysLen = normalizedDayDates?.length || 0;
+  const n = daysLen || Number(dayCount || 0) || 1;
+  const today = getTodayYmdBKK();
+  if (daysLen) {
+    const idx = normalizedDayDates.findIndex((x) => x === today);
+    if (idx >= 0) return idx + 1;
+  }
+  return 1 <= n ? 1 : 1;
+}
+
 export default function StudentsTable({
   students,
   dayCount,
-
-  // ✅ ใหม่ (optional)
+  dayDates = [], // ✅ NEW
   classId = "",
-
-  // ✅ selection (controlled optional)
   selectedIds,
   onSelectedIdsChange,
-
-  // ✅ callbacks (optional)
   onReloadRequested,
 }) {
-  // const [search, setSearch] = useState("");
-  // const [page, setPage] = useState(1);
-
-  // preview: { url, title, subtitle }
   const [preview, setPreview] = useState(null);
-
-  // row menu
   const [menuOpenId, setMenuOpenId] = useState("");
-
-  // ✅ overrides: แก้ปัญหา API class ไม่ส่ง studentStatus กลับมา
   const [overridesById, setOverridesById] = useState({});
 
-  // edit modal
   const [editOpen, setEditOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editDeleting, setEditDeleting] = useState(false);
@@ -570,12 +951,13 @@ export default function StudentsTable({
     paymentRef: "",
     studentStatus: "active",
     documentReceiveType: "ems",
+    learnType: "classroom",
   });
 
   const viewportRef = useRef(null);
   const tableRef = useRef(null);
 
-  const pageSize = useAutoPageSize({
+  useAutoPageSize({
     viewportRef,
     tableRef,
     min: 2,
@@ -584,12 +966,31 @@ export default function StudentsTable({
     padding: 8,
   });
 
-  const days = useMemo(
-    () => Array.from({ length: dayCount || 1 }, (_, i) => i + 1),
-    [dayCount],
-  );
+  const normalizedDayDates = useMemo(() => {
+    const arr = Array.isArray(dayDates) ? dayDates : [];
+    return arr.map((x) => ymdFromAnyBKK(x)).filter(Boolean);
+  }, [dayDates]);
 
-  // ----- selection (controlled/uncontrolled) -----
+  const days = useMemo(() => {
+    const n = normalizedDayDates.length || dayCount || 1;
+    return Array.from({ length: n }, (_, i) => i + 1);
+  }, [dayCount, normalizedDayDates]);
+
+  const getDayLabel = useMemo(() => {
+    return (d) => {
+      const ymd = normalizedDayDates?.[Number(d) - 1];
+      return ymd ? formatDateEN(ymd) : `DAY ${d}`;
+    };
+  }, [normalizedDayDates]);
+
+  // tick เวลาเพื่อแสดง LIVE CHECK/ไม่เข้าเรียน แบบ realtime
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30 * 1000);
+    return () => clearInterval(t);
+  }, []);
+  const nowBKK = useMemo(() => getNowBKK(), [nowTick]);
+
   const [internalSelected, setInternalSelected] = useState([]);
   const isControlled = Array.isArray(selectedIds);
   const sel = isControlled ? selectedIds : internalSelected;
@@ -625,11 +1026,6 @@ export default function StudentsTable({
     }
   }
 
-  function clearSelection() {
-    setSel([]);
-  }
-
-  // ✅ merge overrides ลง students เพื่อ render
   const mergedStudents = useMemo(() => {
     const list = Array.isArray(students) ? students : [];
     if (!list.length) return [];
@@ -640,59 +1036,58 @@ export default function StudentsTable({
     });
   }, [students, overridesById]);
 
-  // ----- search filter -----
-  // const filtered = useMemo(() => {
-  //   const q = search.trim().toLowerCase();
-  //   if (!q) return mergedStudents;
+  /* ================= Filters ================= */
 
-  //   return mergedStudents.filter((s) => {
-  //     const staffItems = getStaffReceiveItems(s);
-  //     const staffLabel = staffItemsLabel(staffItems);
-  //     const st = studentStatusMeta(getStudentStatusRaw(s));
+  const [filterKey, setFilterKey] = useState("all"); // all | checkedin | notchecked | late | cancelled | postponed
+  const [filterDay, setFilterDay] = useState(() =>
+    deriveDefaultFilterDay(normalizedDayDates, dayCount),
+  );
 
-  //     const pieces = [
-  //       getStudentName(s),
-  //       getStudentNameEN(s),
-  //       s.company,
-  //       s.paymentRef,
+  useEffect(() => {
+    const n = days.length || 1;
+    setFilterDay((prev) => {
+      const p = Number(prev || 1);
+      if (Number.isFinite(p) && p >= 1 && p <= n) return p;
+      return deriveDefaultFilterDay(normalizedDayDates, dayCount);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedDayDates, dayCount, days.length]);
 
-  //       // status
-  //       st.label,
-  //       st.key,
+  const filteredStudents = useMemo(() => {
+    const list = mergedStudents;
+    if (!list.length) return [];
 
-  //       // 3.1
-  //       getReceiveTypeRaw(s),
-  //       receiveTypeLabel(getReceiveTypeRaw(s)),
-  //       formatDateTH(getReceivedAt(s)),
+    return list.filter((stu) => {
+      const statusRaw = getStudentStatusRaw(stu);
+      const isActive = statusRaw === "active";
 
-  //       // 3.2
-  //       staffLabel,
-  //       formatDateTimeTH(getStaffReceiveUpdatedAt(s)),
-  //     ];
-  //     return pieces.some((p) => (p || "").toString().toLowerCase().includes(q));
-  //   });
-  // }, [mergedStudents, search]);
+      if (filterKey === "cancelled") return statusRaw === "cancelled";
+      if (filterKey === "postponed") return statusRaw === "postponed";
 
-  // const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  // const currentPage = Math.min(page, totalPages);
-  // const start = (currentPage - 1) * pageSize;
-  // const visible = filtered.slice(start, start + pageSize);
-  const visible = mergedStudents; // parent ส่งมาแล้ว
+      if (filterKey === "checkedin") {
+        if (!isActive) return false;
+        return getCheckinChecked(stu, filterDay);
+      }
+      if (filterKey === "notchecked") {
+        if (!isActive) return false;
+        return !getCheckinChecked(stu, filterDay);
+      }
+      if (filterKey === "late") {
+        if (!isActive) return false;
+        return (
+          getCheckinChecked(stu, filterDay) && getIsLateForDay(stu, filterDay)
+        );
+      }
+
+      return true;
+    });
+  }, [mergedStudents, filterKey, filterDay]);
+
+  const visible = filteredStudents;
 
   const visibleIds = useMemo(() => {
     return visible.map((s) => getStudentId(s)).filter(Boolean);
   }, [visible]);
-
-  // useEffect(() => {
-  //   setPage((p) => Math.min(p, totalPages));
-  // }, [totalPages]);
-
-  function goPrev() {
-    setPage((p) => Math.max(1, p - 1));
-  }
-  function goNext() {
-    setPage((p) => Math.min(totalPages, p + 1));
-  }
 
   function openCheckinPreview(stu, day) {
     const url = getCheckinSignatureUrl(stu, day);
@@ -704,51 +1099,9 @@ export default function StudentsTable({
     setPreview({
       url,
       title: "ลายเซ็นเช็กอิน",
-      subtitle: `${getStudentName(stu)} • Day ${day}${
+      subtitle: `${getStudentName(stu)} • ${getDayLabel(day)}${
         timeLabel ? ` • เวลา ${timeLabel} น.` : ""
       }${isLate ? " • สาย" : " • ตรงเวลา"}`,
-    });
-  }
-
-  function openReceivePreview(stu) {
-    const url = getReceiveSignatureUrl(stu);
-    if (!url) return;
-
-    const receivedAt = getReceivedAt(stu);
-    const receivedAtLabel = receivedAt ? formatDateTH(receivedAt) : "";
-
-    setPreview({
-      url,
-      title: "ลายเซ็นรับเอกสาร (3.1)",
-      subtitle: `${getStudentName(stu)}${
-        receivedAtLabel ? ` • วันที่รับเอกสาร ${receivedAtLabel}` : ""
-      }`,
-    });
-  }
-
-  function openStaffReceivePreview(stu, who) {
-    const isCustomer = who === "customer";
-    const url = isCustomer
-      ? getStaffReceiveCustomerSigUrl(stu)
-      : getStaffReceiveStaffSigUrl(stu);
-    if (!url) return;
-
-    const updatedAt = getStaffReceiveUpdatedAt(stu);
-    const updatedAtLabel =
-      updatedAt && updatedAt !== "-"
-        ? ` • บันทึกเมื่อ ${formatDateTimeTH(updatedAt)}`
-        : "";
-
-    const items = getStaffReceiveItems(stu);
-    const itemsLabel = staffItemsLabel(items);
-    const itemsText = itemsLabel ? ` • ${itemsLabel}` : "";
-
-    setPreview({
-      url,
-      title: isCustomer
-        ? "ลายเซ็นผู้ส่งเอกสาร (ลูกค้า) • 3.2"
-        : "ลายเซ็นเจ้าหน้าที่รับเอกสาร • 3.2",
-      subtitle: `${getStudentName(stu)}${updatedAtLabel}${itemsText}`,
     });
   }
 
@@ -756,13 +1109,12 @@ export default function StudentsTable({
     setPreview(null);
   }
 
-  // ----- edit actions -----
   function openEdit(stu) {
     const id = getStudentId(stu);
     if (!id) return;
 
-    setMenuOpenId("");
     setEditStuId(id);
+    setMenuOpenId("");
 
     setEditForm({
       name:
@@ -772,6 +1124,7 @@ export default function StudentsTable({
       paymentRef: clean(stu?.paymentRef) || "",
       studentStatus: studentStatusMeta(getStudentStatusRaw(stu)).key,
       documentReceiveType: clean(stu?.documentReceiveType) || "ems",
+      learnType: normalizeLearnType(getLearnTypeRaw(stu)),
     });
 
     setEditOpen(true);
@@ -792,25 +1145,26 @@ export default function StudentsTable({
     const ok = window.confirm("ยืนยันบันทึกการแก้ไขนักเรียนรายนี้หรือไม่?");
     if (!ok) return;
 
+    const effectiveDay = deriveTodayDayIndex(normalizedDayDates, dayCount);
+
     setEditSaving(true);
     try {
       const payload = {
         name: clean(editForm.name),
-        // backend เดิมใช้ engName แต่ UI ใช้ nameEN -> ส่งทั้งคู่ให้ชัวร์
         nameEN: clean(editForm.nameEN),
         engName: clean(editForm.nameEN),
-
         company: clean(editForm.company),
         paymentRef: clean(editForm.paymentRef),
-
         documentReceiveType: clean(editForm.documentReceiveType) || "ems",
         studentStatus: clean(editForm.studentStatus) || "active",
+
+        // ✅ ประเภท
+        learnType: normalizeLearnType(editForm.learnType),
+        learnTypeEffectiveDay: effectiveDay, // ให้ API ใช้เป็น “มีผลตั้งแต่ day นี้”
       };
 
       const res = await fetch(
-        `/api/admin/classes/${encodeURIComponent(
-          classId,
-        )}/students/${encodeURIComponent(editStuId)}`,
+        `/api/admin/classes/${encodeURIComponent(classId)}/students/${encodeURIComponent(editStuId)}`,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -825,27 +1179,26 @@ export default function StudentsTable({
         return;
       }
 
-      // ✅ FIX: แม้ reload class จะไม่ส่ง studentStatus กลับมา
-      // เราจะ override ใน UI ทันทีจาก payload/response
       const fromRes = data?.student || null;
       setOverridesById((m) => ({
         ...m,
         [editStuId]: {
           name: payload.name,
-          // ใส่ทั้ง nameEN/engName เพื่อให้ helper โชว์ EN line ได้
           nameEN: payload.nameEN,
           engName: payload.engName,
           company: payload.company,
           paymentRef: payload.paymentRef,
           documentReceiveType: payload.documentReceiveType,
           studentStatus: fromRes?.studentStatus || payload.studentStatus,
+          learnType: fromRes?.learnType || payload.learnType,
+          learnTypeEditCount: fromRes?.learnTypeEditCount,
+          learnTypeTimeline: fromRes?.learnTypeTimeline,
+          editLogs: fromRes?.editLogs,
         },
       }));
 
       alert("บันทึกเรียบร้อย");
       setEditOpen(false);
-
-      // ยังเรียก reload ได้ (แต่ต่อให้ API ไม่ส่ง status มา UI ก็ยังถูก เพราะ override)
       onReloadRequested?.();
     } catch (err) {
       console.error("update student error", err);
@@ -869,9 +1222,7 @@ export default function StudentsTable({
     setEditDeleting(true);
     try {
       const res = await fetch(
-        `/api/admin/classes/${encodeURIComponent(
-          classId,
-        )}/students/${encodeURIComponent(editStuId)}`,
+        `/api/admin/classes/${encodeURIComponent(classId)}/students/${encodeURIComponent(editStuId)}`,
         { method: "DELETE" },
       );
       const data = await safeJson(res);
@@ -900,13 +1251,10 @@ export default function StudentsTable({
 
   const TH_BASE = "box-border px-3 py-2";
   const TD_BASE = "box-border px-3 py-2";
-
   const stickyTopHead = "sticky top-0 z-30 ";
-
   const stickyLeft =
     "sticky left-0 z-10 bg-white group-hover/row:bg-admin-surfaceMuted";
   const stickyLeftHead = "sticky left-0 z-50 bg-[#0a1f33] text-white";
-
   const stickyRight =
     "sticky right-0 z-10 bg-white group-hover/row:bg-admin-surfaceMuted";
   const stickyRightHead = "sticky right-0 z-50 bg-[#0a1f33] text-white";
@@ -916,13 +1264,18 @@ export default function StudentsTable({
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-    const onScroll = () => setMenuOpen(null);
+    const onScroll = () => {
+      setMenuOpen(null);
+      setMenuOpenId("");
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
   const [receiveModal, setReceiveModal] = useState({ open: false, stu: null });
   const [staffModal, setStaffModal] = useState({ open: false, stu: null });
+  const [logsModal, setLogsModal] = useState({ open: false, stu: null });
+  const [sigModal, setSigModal] = useState({ open: false, stu: null });
 
   function openReceiveModal(stu) {
     setReceiveModal({ open: true, stu });
@@ -938,108 +1291,123 @@ export default function StudentsTable({
     setStaffModal({ open: false, stu: null });
   }
 
+  function openLogs(stu) {
+    setLogsModal({ open: true, stu });
+  }
+  function closeLogs() {
+    setLogsModal({ open: false, stu: null });
+  }
+
+  function openSigTools(stu) {
+    setSigModal({ open: true, stu });
+  }
+  function closeSigTools() {
+    setSigModal({ open: false, stu: null });
+  }
+
+  const filterLabel = useMemo(() => {
+    if (filterKey === "checkedin") return "เช็คอินแล้ว";
+    if (filterKey === "notchecked") return "ยังไม่เช็คอิน";
+    if (filterKey === "late") return "เช็คอินสาย";
+    if (filterKey === "cancelled") return "ยกเลิก";
+    if (filterKey === "postponed") return "ขอเลื่อน";
+    return "All";
+  }, [filterKey]);
+
   return (
     <>
-      {/* search + summary + selection bar */}
-      {/* <div className="mb-3 flex flex-col gap-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex gap-2">
-            <div className="text-xs text-admin-textMuted">
-              รายชื่อนักเรียน {filtered.length} คน
-              {filtered.length !== mergedStudents.length && (
-                <span> (ทั้งหมด {mergedStudents.length} คน)</span>
-              )}
-            </div>
+      {/* ===== Toolbar (Filter + Day + Selection) ===== */}
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs text-admin-textMuted">Filter:</div>
 
-            <div className="text-xs text-admin-textMuted">
-              เลือกแล้ว{" "}
-              <span className="font-semibold text-admin-text">
-                {sel.length}
-              </span>{" "}
-              คน
-            </div>
-          </div>
+          <select
+            value={filterKey}
+            onChange={(e) => setFilterKey(e.target.value)}
+            className="h-8 rounded-lg border border-admin-border bg-white px-2 text-xs text-admin-text"
+          >
+            <option value="all">All</option>
+            <option value="checkedin">เช็คอิน</option>
+            <option value="notchecked">ยังไม่เช็ค</option>
+            <option value="late">เช็คสาย</option>
+            <option value="cancelled">ยกเลิก</option>
+            <option value="postponed">ขอเลื่อน</option>
+          </select>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="ค้นหาชื่อ / บริษัท / เลข QT/IV/RP ... (รองรับค้นหา 3.2 ด้วย)"
-              className="w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary sm:w-80"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-            />
+          {days.length > 1 &&
+            (filterKey === "checkedin" ||
+              filterKey === "notchecked" ||
+              filterKey === "late") && (
+              <>
+                <div className="ml-1 text-xs text-admin-textMuted">Day:</div>
+                <select
+                  value={String(filterDay)}
+                  onChange={(e) => setFilterDay(Number(e.target.value || 1))}
+                  className="h-8 rounded-lg border border-admin-border bg-white px-2 text-xs text-admin-text"
+                >
+                  {days.map((d) => (
+                    <option key={`fday-${d}`} value={String(d)}>
+                      {getDayLabel(d)}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+          <div className="ml-1 text-xs text-admin-textMuted">
+            แสดง:{" "}
+            <span className="font-semibold text-admin-text">
+              {visible.length}
+            </span>{" "}
+            คน ({filterLabel})
           </div>
         </div>
 
-        
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="text-admin-textMuted">
-            เลือกแล้ว{" "}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-xs text-admin-textMuted">
+            เลือกแล้ว:{" "}
             <span className="font-semibold text-admin-text">{sel.length}</span>{" "}
             คน
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {sel.length > 0 && (
             <button
               type="button"
-              onClick={() => toggleSelectAllVisible(visibleIds)}
-              className="rounded-full border border-admin-border bg-white px-3 py-1 text-[11px] font-medium text-admin-text hover:bg-admin-surfaceMuted"
-              disabled={!visibleIds.length}
-              title="เลือก/ยกเลิกเลือกเฉพาะรายการที่แสดงในหน้านี้"
-            >
-              {isAllVisibleSelected(visibleIds)
-                ? "ยกเลิกเลือก (หน้านี้)"
-                : "เลือกทั้งหมด (หน้านี้)"}
-            </button>
-
-            <button
-              type="button"
-              onClick={clearSelection}
-              className="rounded-full border border-admin-border bg-white px-3 py-1 text-[11px] font-medium text-admin-text hover:bg-admin-surfaceMuted"
-              disabled={!sel.length}
+              onClick={() => setSel([])}
+              className="h-8 rounded-lg border border-admin-border bg-white px-3 text-xs text-admin-text hover:bg-admin-surfaceMuted"
             >
               ล้างที่เลือก
             </button>
-          </div>
+          )}
         </div>
-      </div> */}
+      </div>
 
       <div
         ref={viewportRef}
-        className="min-h-0 flex-1  overflow-auto rounded-xl"
+        className="min-h-0 flex-1 overflow-auto rounded-xl"
       >
         <table
           ref={tableRef}
-          className="min-w-full w-max table-fixed border-separate border-spacing-0 text-xs sm:text-sm "
+          className="min-w-full w-max table-fixed border-separate border-spacing-0 text-xs sm:text-sm"
         >
           <colgroup>
             <col className="w-[50px]" />
             <col className="w-[150px]" />
             <col className="w-[160px]" />
             <col className="w-[130px]" />
+            <col className="w-[110px]" /> {/* ✅ ประเภท */}
             <col className="w-[100px]" />
             <col className="w-[150px]" />
-
             {days.map((d) => (
               <col key={`col-day-${d}`} className="w-[150px]" />
             ))}
-
             <col className="w-[80px]" />
           </colgroup>
+
           <thead className=" text-[#0a1f33] uppercase text-[11px]">
             <tr>
-              {/* selection column */}
               <th
-                className={cx(
-                  TH_BASE,
-
-                  stickyTopHead,
-                  stickyLeftHead,
-                  "left-0",
-                )}
+                className={cx(TH_BASE, stickyTopHead, stickyLeftHead, "left-0")}
               >
                 <input
                   type="checkbox"
@@ -1061,6 +1429,7 @@ export default function StudentsTable({
               >
                 ชื่อ - สกุล
               </th>
+
               <th
                 className={cx(
                   TH_BASE,
@@ -1072,6 +1441,7 @@ export default function StudentsTable({
               >
                 บริษัท
               </th>
+
               <th
                 className={cx(
                   TH_BASE,
@@ -1084,6 +1454,7 @@ export default function StudentsTable({
                 เลขที่ QT/IV/RP
               </th>
 
+              {/* ✅ NEW: ประเภท */}
               <th
                 className={cx(
                   TH_BASE,
@@ -1091,6 +1462,18 @@ export default function StudentsTable({
                   stickyTopHead,
                   stickyLeftHead,
                   "left-[490px]",
+                )}
+              >
+                ประเภท
+              </th>
+
+              <th
+                className={cx(
+                  TH_BASE,
+                  "text-center",
+                  stickyTopHead,
+                  stickyLeftHead,
+                  "left-[600px]",
                 )}
               >
                 สถานะ
@@ -1102,51 +1485,35 @@ export default function StudentsTable({
                   "text-center",
                   stickyTopHead,
                   stickyLeftHead,
-                  "left-[590px]",
-                  "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งกับส่วน scroll
+                  "left-[700px]",
+                  "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]",
                 )}
               >
                 เอกสาร
               </th>
-
-              {/* <th className="px-3 py-2 text-center w-[150px]">
-                ช่องทางรับเอกสาร
-              </th>
-              <th className="px-3 py-2 text-center w-[130px]">
-                วันที่รับเอกสาร
-              </th> */}
-
-              {/* 3.1 */}
-              {/* <th className="px-3 py-2 text-center w-[140px]">
-                ลายเซ็นรับเอกสาร (3.1)
-              </th> */}
-
-              {/* 3.2 */}
-              {/* <th className="px-3 py-2 text-center w-[220px]">
-                นำส่งเอกสาร (3.2)
-              </th> */}
 
               {days.map((d) => (
                 <th
                   key={d}
                   className={cx(
                     TH_BASE,
-                    "text-center bg-[#66ccff]",
+                    "text-center bg-brand-primary",
                     stickyTopHead,
                   )}
+                  title={`Day ${d}`}
                 >
-                  DAY {d}
+                  {getDayLabel(d)}
                 </th>
               ))}
 
               <th
                 className={cx(
                   TH_BASE,
-                  "text-center ",
+                  "text-center",
                   stickyTopHead,
                   stickyRightHead,
                   "right-0",
-                  "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]", // เส้นแบ่งด้านซ้ายของปุ่มจัดการ
+                  "shadow-[-2px_0_0_0_rgba(0,0,0,0.06)]",
                 )}
               >
                 จัดการ
@@ -1160,14 +1527,11 @@ export default function StudentsTable({
               const stuId = getStudentId(stu);
               const checkedRow = !!stuId && sel.includes(stuId);
 
-              const receiveTypeRaw = getReceiveTypeRaw(stu);
-              const receiveTypeText = receiveTypeLabel(receiveTypeRaw);
-              const receivedAt = getReceivedAt(stu);
+              const receiveType = getReceiveTypeRaw(stu);
+              const isEMS = receiveType === "ems";
               const receiveSigUrl = getReceiveSignatureUrl(stu);
 
               const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
-              const staffItems = getStaffReceiveItems(stu);
-              const staffItemsText = staffItemsLabel(staffItems);
               const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
               const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
               const staffDone = !!(
@@ -1178,11 +1542,16 @@ export default function StudentsTable({
 
               const st = studentStatusMeta(getStudentStatusRaw(stu));
 
+              // type (current)
+              const typeNow = normalizeLearnType(getLearnTypeRaw(stu));
+              const tm = learnTypeMeta(typeNow);
+              const editCount = getLearnTypeEditCount(stu);
+
               return (
                 <tr
                   key={stuId || i}
                   className={cx(
-                    "group/row h-16 border-t border-admin-border ",
+                    "group/row h-16 border-t border-admin-border",
                     checkedRow ? "bg-brand-primary/5" : "",
                   )}
                 >
@@ -1199,14 +1568,7 @@ export default function StudentsTable({
                     />
                   </td>
 
-                  <td
-                    className={cx(
-                      TD_BASE,
-
-                      stickyLeft,
-                      "left-[50px]",
-                    )}
-                  >
+                  <td className={cx(TD_BASE, stickyLeft, "left-[50px]")}>
                     {displayName}
                     {shouldShowENLine(stu) && (
                       <div className="text-[11px] text-admin-textMuted">
@@ -1218,7 +1580,7 @@ export default function StudentsTable({
                   <td
                     className={cx(
                       TD_BASE,
-                      "whitespace-normal break-all text-admin-textMuted text-wrap ",
+                      "whitespace-normal break-all text-admin-textMuted text-wrap",
                       stickyLeft,
                       "left-[200px]",
                     )}
@@ -1237,13 +1599,37 @@ export default function StudentsTable({
                     {stu.paymentRef || "-"}
                   </td>
 
-                  {/* status */}
+                  {/* ✅ ประเภท */}
                   <td
                     className={cx(
                       TD_BASE,
                       "text-center",
                       stickyLeft,
                       "left-[490px]",
+                    )}
+                  >
+                    <span
+                      className={cx(
+                        "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold",
+                        tm.className,
+                      )}
+                      title={`learnType: ${tm.key}`}
+                    >
+                      {editCount > 0 && (
+                        <span className="mr-1 text-[10px] font-bold opacity-90">
+                          {editCount}e
+                        </span>
+                      )}
+                      {tm.label}
+                    </span>
+                  </td>
+
+                  <td
+                    className={cx(
+                      TD_BASE,
+                      "text-center",
+                      stickyLeft,
+                      "left-[600px]",
                     )}
                   >
                     <span
@@ -1262,14 +1648,20 @@ export default function StudentsTable({
                       TD_BASE,
                       "align-middle",
                       stickyLeft,
-                      "left-[590px]",
+                      "left-[700px]",
                       "shadow-[2px_0_0_0_rgba(0,0,0,0.06)]",
                     )}
                   >
-                    {/* เอกสาร (สรุป) */}
                     <div className="flex flex-col items-center gap-2">
-                      {/* ปุ่มรับเอกสาร: แสดงเสมอ */}
-                      {receiveSigUrl ? (
+                      {isEMS ? (
+                        <button
+                          type="button"
+                          onClick={() => openReceiveModal(stu)}
+                          className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          รับผ่าน ปณ
+                        </button>
+                      ) : receiveSigUrl ? (
                         <button
                           type="button"
                           onClick={() => openReceiveModal(stu)}
@@ -1287,7 +1679,6 @@ export default function StudentsTable({
                         </button>
                       )}
 
-                      {/* ปุ่มนำส่งเอกสาร: แสดงเฉพาะเมื่อมีข้อมูล */}
                       {staffDone ? (
                         <button
                           type="button"
@@ -1300,98 +1691,78 @@ export default function StudentsTable({
                     </div>
                   </td>
 
-                  {/* <td className="px-3 py-2 text-admin-textMuted text-center">
-                    {receiveTypeText}
-                  </td>
-
-                  <td className="px-3 py-2 text-center text-admin-textMuted">
-                    {receivedAt ? formatDateTH(receivedAt) : "-"}
-                  </td> */}
-
-                  {/* 3.1 */}
-                  {/* <td className="px-3 py-2 text-center">
-                    {receiveSigUrl ? (
-                      <button
-                        type="button"
-                        onClick={() => openReceivePreview(stu)}
-                        className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50"
-                      >
-                        ดูลายเซ็น
-                      </button>
-                    ) : (
-                      <span className="text-admin-textMuted">-</span>
-                    )}
-                  </td> */}
-
-                  {/* 3.2 */}
-                  {/* <td className="px-3 py-2 text-center">
-                    {staffDone ? (
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="flex flex-wrap items-center justify-center gap-2">
-                          {staffCustomerUrl ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openStaffReceivePreview(stu, "customer")
-                              }
-                              className="rounded-full border border-blue-200 bg-white px-3 py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-50"
-                              title="ดูลายเซ็นผู้ส่งเอกสาร (ลูกค้า)"
-                            >
-                              ลูกค้า
-                            </button>
-                          ) : (
-                            <span className="rounded-full border border-admin-border bg-admin-surfaceMuted px-3 py-1 text-[11px] text-admin-textMuted">
-                              ลูกค้า-
-                            </span>
-                          )}
-
-                          {staffStaffUrl ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openStaffReceivePreview(stu, "staff")
-                              }
-                              className="rounded-full border border-purple-200 bg-white px-3 py-1 text-[11px] font-medium text-purple-700 hover:bg-purple-50"
-                              title="ดูลายเซ็นเจ้าหน้าที่รับเอกสาร"
-                            >
-                              จนท.
-                            </button>
-                          ) : (
-                            <span className="rounded-full border border-admin-border bg-admin-surfaceMuted px-3 py-1 text-[11px] text-admin-textMuted">
-                              จนท.-
-                            </span>
-                          )}
-
-                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                            บันทึกแล้ว
-                          </span>
-                        </div>
-
-                        <div className="text-[11px] text-admin-textMuted">
-                          {staffUpdatedAt
-                            ? `เมื่อ ${formatDateTimeTH(staffUpdatedAt)}`
-                            : ""}
-                        </div>
-
-                        {staffItemsText ? (
-                          <div className="text-[11px] text-admin-textMuted">
-                            {staffItemsText}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-semibold text-zinc-700">
-                        ยังไม่บันทึก
-                      </span>
-                    )}
-                  </td> */}
-
                   {days.map((d) => {
+                    const dayYmd = normalizedDayDates?.[Number(d) - 1] || "";
+                    const isToday = !!dayYmd && dayYmd === nowBKK.ymd;
+
+                    const typeForDay = getLearnTypeForDay(stu, d);
+                    const isLive = typeForDay === "live";
+                    const isClassroom = typeForDay === "classroom";
+
                     const checked = getCheckinChecked(stu, d);
                     const timeRaw = getCheckinTimeRaw(stu, d);
                     const timeLabel = formatTimeTH(timeRaw);
 
+                    const { mode, status } = getAttendanceMode(stu, d);
+                    const sigUrl = getCheckinSignatureUrl(stu, d);
+                    const hasSignature = !!sigUrl;
+
+                    // ✅ โหมดพิเศษที่ถูก “บันทึกไว้แล้ว” (จาก backend ในอนาคต)
+                    if (status === "absent") {
+                      return (
+                        <td
+                          key={d}
+                          className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                        >
+                          <div className="inline-flex items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1 text-[11px] font-semibold text-zinc-700">
+                            ไม่เข้าเรียน
+                          </div>
+                        </td>
+                      );
+                    }
+                    if (mode === "live" && !hasSignature) {
+                      return (
+                        <td
+                          key={d}
+                          className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                        >
+                          <div className="inline-flex items-center justify-center rounded-full border border-[#464EB8] bg-[#7B83EB] px-3 py-1 text-[11px] font-semibold text-white">
+                            LIVE CHECK
+                          </div>
+                        </td>
+                      );
+                    }
+
+                    // ✅ ถ้ายังไม่เช็คอิน: ทำ auto display ตามเวลา “วันนี้”
                     if (!checked) {
+                      // Live after 08:30
+                      if (isToday && isLive && nowBKK.minutes >= 8 * 60 + 30) {
+                        return (
+                          <td
+                            key={d}
+                            className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                          >
+                            <div className="inline-flex items-center justify-center rounded-full border border-[#464EB8] bg-[#7B83EB] px-3 py-1 text-[11px] font-semibold text-white">
+                              LIVE CHECK
+                            </div>
+                          </td>
+                        );
+                      }
+
+                      // Classroom absent after 16:00
+                      if (isToday && isClassroom && nowBKK.minutes >= 16 * 60) {
+                        return (
+                          <td
+                            key={d}
+                            className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                          >
+                            <div className="inline-flex items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1 text-[11px] font-semibold text-zinc-700">
+                              ไม่เข้าเรียน
+                            </div>
+                          </td>
+                        );
+                      }
+
                       return (
                         <td
                           key={d}
@@ -1406,8 +1777,20 @@ export default function StudentsTable({
                       );
                     }
 
-                    const sigUrl = getCheckinSignatureUrl(stu, d);
-                    const hasSignature = !!sigUrl;
+                    // ✅ checked แล้ว
+                    // ถ้าเป็น live และไม่มีลายเซ็น -> แสดง LIVE CHECK
+                    if (isLive && !hasSignature) {
+                      return (
+                        <td
+                          key={d}
+                          className="px-3 py-2 h-[90px] text-center group-hover/row:bg-admin-surfaceMuted/70"
+                        >
+                          <div className="inline-flex items-center justify-center rounded-full border border-[#464EB8] bg-[#7B83EB] px-3 py-1 text-[11px] font-semibold text-white">
+                            LIVE CHECK
+                          </div>
+                        </td>
+                      );
+                    }
 
                     const isLateThisDay = getIsLateForDay(stu, d);
                     const statusText = isLateThisDay ? "สาย" : "ตรงเวลา";
@@ -1434,15 +1817,13 @@ export default function StudentsTable({
                           type="button"
                           aria-label={
                             hasSignature
-                              ? `ดูลายเซ็น ${displayName} Day ${d}`
-                              : `เช็กอินแล้ว Day ${d}`
+                              ? `ดูลายเซ็น ${displayName} ${getDayLabel(d)}`
+                              : `เช็กอินแล้ว ${getDayLabel(d)}`
                           }
                           onClick={() =>
                             hasSignature && openCheckinPreview(stu, d)
                           }
-                          className={`${boxBase} ${
-                            isLateThisDay ? lateBox : okBox
-                          }`}
+                          className={`${boxBase} ${isLateThisDay ? lateBox : okBox}`}
                         >
                           <div
                             className={`flex flex-col items-center justify-center transition-opacity duration-150 ${
@@ -1480,7 +1861,6 @@ export default function StudentsTable({
                     );
                   })}
 
-                  {/* actions */}
                   <td
                     className={cx(
                       TD_BASE,
@@ -1495,28 +1875,24 @@ export default function StudentsTable({
                     <div className="relative inline-flex">
                       <button
                         type="button"
-                        onClick={
-                          (e) => {
-                            e.stopPropagation();
-                            const id = stuId;
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const id = stuId;
 
-                            // toggle ปิด
-                            if (menuOpen?.id === id) {
-                              setMenuOpen(null);
-                              return;
-                            }
-
-                            const btnRect =
-                              e.currentTarget.getBoundingClientRect();
-
-                            // ให้เมนูออกด้านล่างปุ่ม
-                            const top = btnRect.bottom + 8;
-                            const left = btnRect.right; // ใช้เป็น anchor ขวา
-
-                            setMenuOpen({ id, top, left, stu });
+                          if (menuOpen?.id === id) {
+                            setMenuOpen(null);
+                            setMenuOpenId("");
+                            return;
                           }
-                          // setMenuOpenId(menuOpenId === stuId ? "" : stuId)
-                        }
+
+                          const btnRect =
+                            e.currentTarget.getBoundingClientRect();
+                          const top = btnRect.bottom + 8;
+                          const left = btnRect.right;
+
+                          setMenuOpenId(id);
+                          setMenuOpen({ id, top, left, stu });
+                        }}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted"
                         aria-label="เมนูนักเรียน"
                         title="จัดการ"
@@ -1533,7 +1909,7 @@ export default function StudentsTable({
               <tr>
                 <td
                   className="px-3 py-10 text-center text-admin-textMuted"
-                  colSpan={10 + days.length}
+                  colSpan={8 + days.length}
                 >
                   ยังไม่มีรายชื่อนักเรียน
                 </td>
@@ -1543,48 +1919,42 @@ export default function StudentsTable({
         </table>
       </div>
 
-      {/* pagination */}
-      {/* {filtered.length > pageSize && (
-        <div className="mt-3 flex items-center justify-end gap-2 text-xs">
-          <button
-            type="button"
-            onClick={goPrev}
-            disabled={currentPage <= 1}
-            className="rounded-lg border border-admin-border px-2 py-1 disabled:opacity-50"
-          >
-            ก่อนหน้า
-          </button>
-          <span className="text-admin-textMuted">
-            หน้า {currentPage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            onClick={goNext}
-            disabled={currentPage >= totalPages}
-            className="rounded-lg border border-admin-border px-2 py-1 disabled:opacity-50"
-          >
-            ถัดไป
-          </button>
-        </div>
-      )} */}
-
       {menuOpen?.id && (
         <div
           className="fixed z-[9999]"
           style={{
             top: menuOpen.top,
             left: menuOpen.left,
-            transform: "translateX(-100%)", // ชิดขวาของปุ่ม
+            transform: "translateX(-100%)",
           }}
-          onMouseLeave={() => setMenuOpen(null)}
+          onMouseLeave={() => {
+            setMenuOpen(null);
+            setMenuOpenId("");
+          }}
         >
-          <div className="w-40 overflow-hidden rounded-xl border border-admin-border bg-white text-xs shadow-lg">
+          <div className="w-44 overflow-hidden rounded-xl border border-admin-border bg-white text-xs shadow-lg">
             <button
               type="button"
               className="w-full px-3 py-2 text-left hover:bg-admin-surfaceMuted"
               onClick={() => openEdit(menuOpen.stu)}
             >
-              แก้ไข / เปลี่ยนสถานะ
+              แก้ไข / เปลี่ยนสถานะ / ประเภท
+            </button>
+
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left hover:bg-admin-surfaceMuted"
+              onClick={() => openLogs(menuOpen.stu)}
+            >
+              ดูประวัติการแก้ไข
+            </button>
+
+            <button
+              type="button"
+              className="w-full px-3 py-2 text-left hover:bg-admin-surfaceMuted"
+              onClick={() => openSigTools(menuOpen.stu)}
+            >
+              ลบลายเซ็น
             </button>
 
             <button
@@ -1598,7 +1968,6 @@ export default function StudentsTable({
         </div>
       )}
 
-      {/* Preview Modal */}
       {preview && preview.url && (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60"
@@ -1618,7 +1987,6 @@ export default function StudentsTable({
             )}
 
             <div className="flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={preview.url}
                 alt={preview.title || "preview"}
@@ -1643,30 +2011,32 @@ export default function StudentsTable({
         open={receiveModal.open}
         stu={receiveModal.stu}
         onClose={closeReceiveModal}
-        onPreview={() => {
-          const s = receiveModal.stu;
-          closeReceiveModal();
-          openReceivePreview(s);
-        }}
       />
 
       <StaffDeliverModal
         open={staffModal.open}
         stu={staffModal.stu}
         onClose={closeStaffModal}
-        onPreviewCustomer={() => {
-          const s = staffModal.stu;
-          closeStaffModal();
-          openStaffReceivePreview(s, "customer");
-        }}
-        onPreviewStaff={() => {
-          const s = staffModal.stu;
-          closeStaffModal();
-          openStaffReceivePreview(s, "staff");
+      />
+
+      <LogsModal
+        open={logsModal.open}
+        stu={logsModal.stu}
+        onClose={closeLogs}
+      />
+
+      <SignatureDeleteModal
+        open={sigModal.open}
+        stu={sigModal.stu}
+        days={days}
+        classId={classId}
+        onClose={closeSigTools}
+        onDeleted={() => {
+          closeSigTools();
+          onReloadRequested?.();
         }}
       />
 
-      {/* Edit Modal */}
       {editOpen && (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40"
@@ -1733,6 +2103,26 @@ export default function StudentsTable({
                 />
               </div>
 
+              {/* ✅ ประเภท */}
+              <div>
+                <label className="block text-[11px] text-admin-textMuted">
+                  ประเภทการเรียน
+                  <span className="ml-2 text-[10px] text-admin-textMuted">
+                    (มีผลตั้งแต่ “วันปัจจุบัน” ของคลาสเป็นต้นไป)
+                  </span>
+                </label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-admin-border px-3 py-1.5 text-xs"
+                  value={editForm.learnType}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, learnType: e.target.value }))
+                  }
+                >
+                  <option value="classroom">Classroom</option>
+                  <option value="live">Live</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] text-admin-textMuted">
@@ -1768,7 +2158,7 @@ export default function StudentsTable({
                       }))
                     }
                   >
-                    <option value="ems">ส่งไปรษณีย์</option>
+                    <option value="ems">รับผ่าน ปณ</option>
                     <option value="on_class">รับ ณ วันอบรม</option>
                   </select>
                 </div>
@@ -1803,11 +2193,11 @@ export default function StudentsTable({
                 </div>
               </div>
 
-              {/* หมายเหตุ */}
-              {/* <div className="pt-1 text-[11px] text-admin-textMuted">
-                * ถ้า API โหลด class ยังไม่ส่ง <code>studentStatus</code> กลับมา
-                UI จะยึดค่า override จากการแก้ล่าสุดเพื่อให้แสดงถูก
-              </div> */}
+              <div className="text-[10px] text-admin-textMuted">
+                * เงื่อนไข LIVE CHECK/ไม่เข้าเรียน ตอนนี้เป็น “การแสดงผล” ใน UI
+                ก่อน เพื่อให้ report/export เห็นเหมือนกัน ต้องทำฝั่ง API/Report
+                ต่อครับ
+              </div>
             </form>
           </div>
         </div>
