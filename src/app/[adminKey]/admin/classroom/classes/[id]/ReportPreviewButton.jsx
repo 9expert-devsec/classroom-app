@@ -124,6 +124,18 @@ function addDaysYmd(startYmd, add) {
   return new Date(t).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
 }
 
+function formatHeaderDateTH(ymd) {
+  if (!ymd) return "";
+  const d = new Date(`${ymd}T00:00:00+07:00`);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 function formatHeaderDateEN(ymd) {
   if (!ymd) return "";
   const d = new Date(`${ymd}T00:00:00+07:00`);
@@ -294,6 +306,54 @@ function getCheckinSignatureUrl(stu, day) {
 function getIsLateForDay(stu, day) {
   const info = getCheckinInfo(stu, day);
   return Boolean(info?.isLate ?? false);
+}
+
+function getLearnTypeForDay(stu, day) {
+  const key = `day${day}`;
+
+  // 1) per-day map
+  const byDay =
+    clean(stu?.learnTypeByDay?.[key]) ||
+    clean(stu?.learnTypePerDay?.[key]) ||
+    clean(stu?.learnTypes?.[key]) ||
+    "";
+
+  if (byDay) return byDay.toLowerCase();
+
+  // 2) timeline (from day X onward)
+  const tl = Array.isArray(stu?.learnTypeTimeline)
+    ? stu.learnTypeTimeline
+    : Array.isArray(stu?.learnTypeHistory)
+      ? stu.learnTypeHistory
+      : [];
+
+  if (tl.length) {
+    const items = tl
+      .map((x) => ({
+        day: Number(
+          x?.day ?? x?.fromDay ?? x?.startDay ?? x?.effectiveDay ?? 0,
+        ),
+        type: clean(x?.learnType ?? x?.type ?? x?.value ?? ""),
+      }))
+      .filter((x) => x.day > 0 && x.type)
+      .sort((a, b) => a.day - b.day);
+
+    let cur = "";
+    for (const it of items) {
+      if (it.day <= day) cur = it.type.toLowerCase();
+      else break;
+    }
+    if (cur) return cur;
+  }
+
+  // 3) fallback
+  return clean(
+    stu?.learnType || stu?.trainingType || stu?.mode || "",
+  ).toLowerCase();
+}
+
+function isLiveForDay(stu, day) {
+  return getLearnTypeForDay(stu, day) === "live";
 }
 
 /* ================= aggregates ================= */
@@ -642,7 +702,12 @@ export default function ReportPreviewButton({
         <th style="text-align:left;">ชื่อ-สกุล</th>
         <th style="text-align:left;">บริษัท</th>
         <th class="nowrap">เช็กอิน (วัน)</th>
-        ${dayMeta.map((x) => `<th class="nowrap">${escapeHtml(x.label)}</th>`).join("")}
+        ${dayMeta
+          .map((x) => {
+            const h = formatHeaderDateTH(x.ymd) || x.label || "";
+            return `<th class="nowrap">${escapeHtml(h)}</th>`;
+          })
+          .join("")}
       </tr>
     `;
 
@@ -655,19 +720,25 @@ export default function ReportPreviewButton({
         const dayCellsCombined = dayMeta
           .map((x) => {
             const d = x.day;
-            if (!getCheckinChecked(stu, d))
+            if (!getCheckinChecked(stu, d)) {
+              if (isLiveForDay(stu, d)) {
+                return `<td class="center"><span class="badgeLive">LIVE CHECK</span></td>`;
+              }
               return `<td class="center muted">-</td>`;
+            }
 
             const t = formatTimeTH(getCheckinTimeRaw(stu, d));
             const isLate = getIsLateForDay(stu, d);
             const url = getCheckinSignatureUrl(stu, d);
-            const mark = isLate ? "⏰" : "✓";
+            const line = isLate
+              ? `<span class="badgeLate">เวลา</span>${t ? ` ${escapeHtml(t)}` : ""} <span class="badgeLate">สาย</span>`
+              : `<span class="badgeOk">✓</span>${t ? ` ${escapeHtml(t)}` : ""}`;
             const cls = isLate ? "badgeLate" : "badgeOk";
 
             return `
               <td class="center">
                 <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
-                  <div><span class="${cls}">${mark}</span>${t ? ` ${escapeHtml(t)}` : ""}</div>
+                  <div><span class="${cls}">${line}</span></div>
                   ${
                     url
                       ? `<img class="sigImgSm" src="${escapeHtml(url)}" alt="sig"/>`
