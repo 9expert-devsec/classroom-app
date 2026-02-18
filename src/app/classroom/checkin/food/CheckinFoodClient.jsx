@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepHeader from "../StepHeader";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+import UserButton from "@/components/ui/UserButton";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
@@ -35,14 +35,21 @@ function safeReturnTo(path, fallback) {
  *  "food"    = เลือกร้าน/เมนู
  */
 
-function QuickChoiceCard({
-  title,
-  subtitle,
-  icon,
-  active,
-  onClick,
-  className = "",
-}) {
+function isImageSrc(x) {
+  const s = String(x ?? "").trim();
+  if (!s) return false;
+  return (
+    s.startsWith("/") ||
+    s.startsWith("http://") ||
+    s.startsWith("https://") ||
+    s.startsWith("data:image/")
+  );
+}
+
+function QuickChoiceCard({ title, subtitle, icon, active, onClick, className = "" }) {
+  const hasIcon = String(icon ?? "").trim().length > 0;
+  const showImg = hasIcon && isImageSrc(icon);
+
   return (
     <button
       type="button"
@@ -56,17 +63,23 @@ function QuickChoiceCard({
       )}
     >
       <div className="flex items-center gap-3">
-        <div
-          className={cx(
-            "flex h-10 w-10 items-center justify-center rounded-2xl",
-            active
-              ? "bg-brand-primary text-white"
-              : "bg-front-bgSoft text-front-text",
+        <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-front-bgSoft grid place-items-center">
+          {!hasIcon ? (
+            <Ban size={60} />
+          ) : showImg ? (
+            <img
+              src={icon}
+              alt={title}
+              className="h-full w-full object-contain"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <span className="text-2xl leading-none">{icon}</span>
           )}
-        >
-          {icon}
         </div>
-        <div className="flex flex-col ">
+
+        <div className="flex flex-col">
           <div className="sm:text-2xl lg:text-base font-semibold text-front-text">
             {title}
           </div>
@@ -75,18 +88,10 @@ function QuickChoiceCard({
           </div>
         </div>
       </div>
-
-      <div
-        className={cx(
-          "h-5 w-5 rounded-full border-2",
-          active
-            ? "border-[#66ccff] bg-[#66ccff]"
-            : "border-brand-border bg-white",
-        )}
-      />
     </button>
   );
 }
+
 
 function AddonCard({ item, active, onClick }) {
   return (
@@ -571,14 +576,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 <QuickChoiceCard
                   title="ไม่รับอาหาร"
                   subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
-                  icon="🍽️"
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
                 />
                 <QuickChoiceCard
-                  title="Coupon"
-                  subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
-                  icon="🎫"
+                  title="Cash Coupon"
+                  subtitle="คูปองส่วนลด 180 บาท"
+                  icon="/coupon.png"
                   active={choiceType === "coupon"}
                   onClick={chooseCoupon}
                 />
@@ -609,13 +613,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   ← ย้อนกลับ
                 </button>
 
-                <PrimaryButton
+                <UserButton
                   onClick={handleSubmit}
                   className="flex-1"
                   disabled={!ready || submitting}
                 >
                   {primaryLabel}
-                </PrimaryButton>
+                </UserButton>
               </div> */}
             </div>
           ) : (
@@ -628,14 +632,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 <QuickChoiceCard
                   title="ไม่รับอาหาร"
                   subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
-                  icon="🍽️"
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
                 />
                 <QuickChoiceCard
-                  title="Coupon"
-                  subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
-                  icon="🎫"
+                  title="Cash Coupon"
+                  subtitle="คูปองส่วนลด 180 บาท"
+                  icon="/coupon.png"
                   active={choiceType === "coupon"}
                   onClick={chooseCoupon}
                 />
@@ -820,13 +823,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
             ← ย้อนกลับ
           </button>
 
-          <PrimaryButton
+          <UserButton
             onClick={handleSubmit}
             className="flex-1 w-full"
             disabled={!ready || submitting}
           >
             {primaryLabel}
-          </PrimaryButton>
+          </UserButton>
         </div>
       </div>
 
@@ -840,13 +843,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
               ← ย้อนกลับ
             </button>
 
-            <PrimaryButton
+            <UserButton
               onClick={handleSubmit}
               className="flex-1"
               disabled={!ready || submitting}
             >
               {primaryLabel}
-            </PrimaryButton>
+            </UserButton>
           </div>
         </div> */}
     </div>
