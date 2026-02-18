@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import StepHeader from "../StepHeader";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+import UserButton from "@/components/ui/UserButton";
 import AnimatedCheck from "@/components/icons/check-success";
 
 function pick(sp, key) {
@@ -71,9 +71,9 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
         </div>
 
         <div className="mt-4 w-full max-w-sm">
-          <PrimaryButton className="w-full" onClick={handleBack}>
+          <UserButton className="w-full" onClick={handleBack}>
             กลับไปหน้าเช็คอิน
-          </PrimaryButton>
+          </UserButton>
         </div>
       </div>
     </div>

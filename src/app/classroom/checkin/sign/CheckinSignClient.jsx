@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import StepHeader from "../StepHeader";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+import UserButton from "@/components/ui/UserButton";
 import SignaturePad from "../../../../components/shared/SignaturePad";
 
 function pick(sp, key) {
@@ -290,13 +290,13 @@ export default function SignPage({ searchParams = {} }) {
             ← ย้อนกลับไปเลือกเมนูอาหาร
           </button>
 
-          <PrimaryButton
+          <UserButton
             className="flex-1 w-full"
             onClick={handleSubmit}
             disabled={submitting || !signature}
           >
             ยืนยัน
-          </PrimaryButton>
+          </UserButton>
         </div>
       </div>
     </div>

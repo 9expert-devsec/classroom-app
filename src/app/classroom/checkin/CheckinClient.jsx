@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import StepHeader from "./StepHeader";
 import TextInput from "@/components/ui/TextInput";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+import UserButton from "@/components/ui/UserButton";
 import SearchResultCard from "./SearchResultCard";
 
 function pick(sp, key) {
@@ -150,9 +150,9 @@ export default function CheckinClient({ searchParams = {} }) {
             onChange={handleKeywordChange}
           />
 
-          <PrimaryButton type="submit" disabled={loading}>
+          <UserButton type="submit" disabled={loading}>
             {loading ? "กำลังค้นหา..." : "ค้นหา"}
-          </PrimaryButton>
+          </UserButton>
         </form>
 
         <div className="mt-6 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
