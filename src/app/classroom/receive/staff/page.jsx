@@ -13,9 +13,7 @@ function clean(x) {
 }
 
 function formatTodayHint(todayYMD) {
-  return todayYMD
-    ? `ระบบจะแสดงเฉพาะผู้ที่เช็คอินแล้วใน “วันนี้” (${todayYMD}) เพื่อให้ค้นหาเร็ว`
-    : "พิมพ์ชื่อ / บริษัท / เลขที่ INV เพื่อค้นหา";
+  return "ค้นหาได้จากชื่อ / บริษัท / เลขที่ INV — จะแสดงเฉพาะผู้ที่เคยเช็คอินแล้ว";
 }
 
 export default function ReceiveStaffSearchPage() {
@@ -72,13 +70,13 @@ export default function ReceiveStaffSearchPage() {
   function goDetail(it) {
     const classId = clean(it?.classId);
     const docId = clean(it?.docIdNormalized || it?.docId);
-    const receiverIndex = Number(it?.receiverIndex || 0);
+    const studentId = clean(it?.studentId);
 
     router.push(
       `/classroom/receive/staff/detail?classId=${encodeURIComponent(
         classId,
-      )}&docId=${encodeURIComponent(docId)}&receiverIndex=${encodeURIComponent(
-        String(receiverIndex),
+      )}&docId=${encodeURIComponent(docId)}&studentId=${encodeURIComponent(
+        studentId,
       )}`,
     );
   }
@@ -205,7 +203,8 @@ export default function ReceiveStaffSearchPage() {
           hasSearched &&
           !loading && (
             <div className="rounded-2xl border border-admin-border bg-white p-4 text-sm text-admin-textMuted">
-              ไม่พบข้อมูลของวันนี้ (หรือยังไม่มีผู้เช็คอินในวันนี้ / หรือคำค้นหาไม่ตรง)
+              ไม่พบข้อมูลของวันนี้ (หรือยังไม่มีผู้เช็คอินในวันนี้ /
+              หรือคำค้นหาไม่ตรง)
             </div>
           )
         )}

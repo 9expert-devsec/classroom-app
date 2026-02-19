@@ -40,6 +40,11 @@ const ReceiverSchema = new mongoose.Schema(
 
 const DocumentReceiptSchema = new mongoose.Schema(
   {
+    sender: {
+      studentId: { type: String, default: "" },
+      name: { type: String, default: "" },
+      company: { type: String, default: "" },
+    },
     type: {
       type: String,
       enum: ["customer_receive", "staff_receive"],
@@ -76,7 +81,10 @@ const DocumentReceiptSchema = new mongoose.Schema(
 );
 
 // 1 คลาส + 1 docId ต้องไม่ซ้ำ
-DocumentReceiptSchema.index({ classId: 1, docId: 1, type: 1 }, { unique: true });
+DocumentReceiptSchema.index(
+  { classId: 1, docId: 1, type: 1 },
+  { unique: true },
+);
 
 export default mongoose.models.DocumentReceipt ||
   mongoose.model("DocumentReceipt", DocumentReceiptSchema);

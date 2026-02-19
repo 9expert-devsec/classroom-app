@@ -1,3 +1,4 @@
+// src/app/classroom/receive/staff/detail/ReceiveStaffDetailClient.jsx
 "use client";
 
 import Link from "next/link";
@@ -40,30 +41,43 @@ export default function ReceiveStaffDetailClient() {
 
   const classId = clean(sp.get("classId"));
   const docId = clean(sp.get("docId"));
-  const receiverIndex = Number(sp.get("receiverIndex") || 0);
+  const studentId = clean(sp.get("studentId"));
 
   const [loading, setLoading] = useState(false);
   const [todayYMD, setTodayYMD] = useState("");
-  const [err, setErr] = useState("");
+
+  // ✅ แยก error: load vs form
+  const [loadErr, setLoadErr] = useState("");
+  const [formErr, setFormErr] = useState("");
+
   const [selected, setSelected] = useState(null);
 
   const [docItems, setDocItems] = useState(DEFAULT_ITEMS);
-  const [senderSig, setSenderSig] = useState("");
   const [staffSig, setStaffSig] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  function goBack() {
+    try {
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        router.back(); // ✅ กลับไปหน้าค้นหาเดิม (ไม่ push หน้าใหม่)
+        return;
+      }
+    } catch {}
+    router.push("/classroom/receive/staff");
+  }
+
   useEffect(() => {
     async function load() {
-      setErr("");
+      setLoadErr("");
+      setFormErr("");
       setSelected(null);
-      setSenderSig("");
       setStaffSig("");
       setDocItems(DEFAULT_ITEMS);
 
-      if (!classId || !docId) {
-        setErr("ลิงก์ไม่ครบ (classId/docId)");
+      if (!classId || !docId || !studentId) {
+        setLoadErr("ลิงก์ไม่ครบ (classId/docId/studentId)");
         return;
       }
 
@@ -77,7 +91,7 @@ export default function ReceiveStaffDetailClient() {
         setTodayYMD(data?.today || "");
 
         if (!res.ok || data?.ok === false) {
-          setErr(data?.error || "โหลดข้อมูลไม่สำเร็จ");
+          setLoadErr(data?.error || "โหลดข้อมูลไม่สำเร็จ");
           return;
         }
 
@@ -87,12 +101,12 @@ export default function ReceiveStaffDetailClient() {
           return (
             clean(it.classId) === classId &&
             itDoc === docId &&
-            Number(it.receiverIndex || 0) === receiverIndex
+            clean(it.studentId) === studentId
           );
         });
 
         if (!found) {
-          setErr("ไม่พบรายการนี้ในวันนี้ (อาจยังไม่ได้เช็คอิน/หรือข้อมูลเปลี่ยน)");
+          setLoadErr("ไม่พบรายการนี้ (อาจยังไม่เคยเช็คอิน/หรือข้อมูลเปลี่ยน)");
           return;
         }
 
@@ -108,7 +122,7 @@ export default function ReceiveStaffDetailClient() {
 
         setSelected(found);
       } catch (e) {
-        setErr("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+        setLoadErr("เกิดข้อผิดพลาดในการโหลดข้อมูล");
       } finally {
         setLoading(false);
       }
@@ -116,26 +130,30 @@ export default function ReceiveStaffDetailClient() {
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [classId, docId, receiverIndex]);
+  }, [classId, docId, studentId]);
 
   const canPreviewOld =
-    !!selected?.staffSignedAt &&
-    (!!clean(selected?.senderSigUrl) || !!clean(selected?.staffSigUrl));
+    !!selected?.staffSignedAt && !!clean(selected?.staffSigUrl);
 
   function validateBeforeSave() {
-    if (!selected) return "กรุณาเลือกผู้ส่งเอกสารก่อน";
+    if (!selected) return "กรุณาเลือกรายการก่อน";
+
     const hasAny =
       !!docItems.check || !!docItems.withholding || !!clean(docItems.other);
     if (!hasAny) return "กรุณาเลือกอย่างน้อย 1 รายการเอกสาร (หรือกรอก 'อื่นๆ')";
-    if (!senderSig) return "กรุณาให้ลูกค้าเซ็นชื่อในช่อง 'ลายเซ็นผู้ส่งเอกสาร'";
-    if (!staffSig) return "กรุณาให้เจ้าหน้าที่เซ็นชื่อในช่อง 'ลายเซ็นเจ้าหน้าที่รับเอกสาร'";
+
+    if (!staffSig)
+      return "กรุณาให้เจ้าหน้าที่เซ็นชื่อในช่อง 'ลายเซ็นเจ้าหน้าที่รับเอกสาร'";
+
     return "";
   }
 
   async function submit() {
+    setFormErr("");
+
     const msg = validateBeforeSave();
     if (msg) {
-      setErr(msg);
+      setFormErr(msg);
       return;
     }
 
@@ -145,11 +163,12 @@ export default function ReceiveStaffDetailClient() {
             selected.staffSignedAt,
           )}\n\nต้องการ "บันทึกทับ/เซ็นใหม่" ใช่หรือไม่?`,
         )
-      : window.confirm("ยืนยันการบันทึกการนำส่งเอกสาร (เซ็น 2 ฝ่าย) ใช่หรือไม่?");
+      : window.confirm(
+          "ยืนยันการบันทึกการนำส่งเอกสาร (เจ้าหน้าที่เซ็น) ใช่หรือไม่?",
+        );
     if (!ok) return;
 
     setSaving(true);
-    setErr("");
 
     try {
       const res = await fetch("/api/classroom/receive/staff/confirm", {
@@ -168,14 +187,14 @@ export default function ReceiveStaffDetailClient() {
             withholding: !!docItems.withholding,
             other: clean(docItems.other),
           },
-          senderSignatureDataUrl: senderSig,
           staffSignatureDataUrl: staffSig,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) {
-        setErr(data?.error || "บันทึกไม่สำเร็จ");
+        // ✅ error ระดับฟอร์ม/บันทึก ไม่ซ่อนฟอร์ม
+        setFormErr(data?.error || "บันทึกไม่สำเร็จ");
         return;
       }
 
@@ -185,7 +204,7 @@ export default function ReceiveStaffDetailClient() {
         )}&name=${encodeURIComponent(selected.name || "")}`,
       );
     } catch (e) {
-      setErr("เกิดข้อผิดพลาดขณะบันทึก");
+      setFormErr("เกิดข้อผิดพลาดขณะบันทึก");
     } finally {
       setSaving(false);
     }
@@ -204,6 +223,10 @@ export default function ReceiveStaffDetailClient() {
           href="/classroom/receive/staff"
           className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-admin-border bg-white text-admin-text hover:bg-admin-surfaceMuted"
           aria-label="ย้อนกลับ"
+          onClick={(e) => {
+            e.preventDefault();
+            goBack();
+          }}
         >
           <ChevronLeft className="h-4 w-4" />
         </Link>
@@ -212,9 +235,13 @@ export default function ReceiveStaffDetailClient() {
           <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
             Sent Doc : detail
           </div>
-          <h1 className="mt-1 text-lg font-semibold text-admin-text">{title}</h1>
+          <h1 className="mt-1 text-lg font-semibold text-admin-text">
+            {title}
+          </h1>
           <div className="mt-1 text-sm text-admin-textMuted">
-            {todayYMD ? `Today: ${todayYMD}` : "ระบบจะแสดงเฉพาะรายการของวันนี้"}
+            {todayYMD
+              ? `Today: ${todayYMD}`
+              : "ค้นหาได้จากผู้ที่เคยเช็คอินแล้ว"}
           </div>
         </div>
 
@@ -233,27 +260,36 @@ export default function ReceiveStaffDetailClient() {
 
       {/* card */}
       <div className="rounded-2xl border border-admin-border bg-white p-4 flex flex-col flex-1 min-h-0 overflow-hidden">
-        {/* status */}
+        {/* status (เฉพาะ loadErr) */}
         <div className="shrink-0">
           {loading ? (
-            <div className="text-sm text-admin-textMuted">กำลังโหลดข้อมูล...</div>
-          ) : err ? (
+            <div className="text-sm text-admin-textMuted">
+              กำลังโหลดข้อมูล...
+            </div>
+          ) : loadErr ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {err}
+              {loadErr}
             </div>
           ) : null}
         </div>
 
         {/* content scroll */}
         <div className="flex-1 min-h-0 overflow-y-auto px-1">
-          {!loading && !err && !selected ? (
+          {!loading && !loadErr && !selected ? (
             <div className="text-sm text-admin-textMuted">ไม่พบข้อมูล</div>
           ) : null}
 
-          {!loading && !err && selected ? (
+          {/* ✅ formErr ต้องโชว์ แต่ไม่ทำให้ฟอร์มหาย */}
+          {!loading && !loadErr && formErr ? (
+            <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formErr}
+            </div>
+          ) : null}
+
+          {!loading && !loadErr && selected ? (
             <>
               {/* Summary */}
-              <div className="rounded-2xl bg-admin-surface p-3 text-sm text-admin-text">
+              <div className="mt-3 rounded-2xl bg-admin-surface p-3 text-sm text-admin-text">
                 <div className="font-semibold">ข้อมูลผู้ส่งเอกสาร</div>
                 <div className="mt-1 text-admin-textMuted">
                   เลขที่เอกสาร:{" "}
@@ -269,7 +305,9 @@ export default function ReceiveStaffDetailClient() {
                   </div>
                   <div>
                     <span className="text-admin-textMuted">บริษัท:</span>{" "}
-                    <span className="font-medium">{selected.company || "-"}</span>
+                    <span className="font-medium">
+                      {selected.company || "-"}
+                    </span>
                   </div>
                 </div>
 
@@ -287,8 +325,8 @@ export default function ReceiveStaffDetailClient() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {selected.staffSignedAt ? (
                     <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-                      เคยบันทึกแล้ว ({formatDateTimeTH(selected.staffSignedAt)}) •
-                      เซ็นใหม่ = บันทึกทับ
+                      เคยบันทึกแล้ว ({formatDateTimeTH(selected.staffSignedAt)})
+                      • เซ็นใหม่ = บันทึกทับ
                     </span>
                   ) : (
                     <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
@@ -348,50 +386,34 @@ export default function ReceiveStaffDetailClient() {
                 </div>
               </div>
 
-              {/* Two signatures */}
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <div className="text-sm font-semibold text-admin-text">
-                    ลายเซ็นผู้ส่งเอกสาร (ลูกค้า)
-                  </div>
-                  <div className="mt-2 rounded-2xl border border-admin-border bg-admin-surfaceMuted/30 p-3">
-                    <div className="relative rounded-2xl bg-white h-[220px] sm:h-[260px]">
-                      <SignaturePad onChange={setSenderSig} />
-                    </div>
-                    <div className="mt-2 text-xs text-admin-textMuted">
-                      ให้ลูกค้าเซ็นชื่อในกรอบนี้
-                    </div>
-                  </div>
+              {/* Staff signature only */}
+              <div className="mt-5">
+                <div className="text-sm font-semibold text-admin-text">
+                  ลายเซ็นเจ้าหน้าที่รับเอกสาร
                 </div>
-
-                <div>
-                  <div className="text-sm font-semibold text-admin-text">
-                    ลายเซ็นเจ้าหน้าที่รับเอกสาร
+                <div className="mt-2 rounded-2xl border border-admin-border bg-admin-surfaceMuted/30 p-3">
+                  <div className="relative rounded-2xl bg-white h-[240px] sm:h-[300px]">
+                    <SignaturePad onChange={setStaffSig} />
                   </div>
-                  <div className="mt-2 rounded-2xl border border-admin-border bg-admin-surfaceMuted/30 p-3">
-                    <div className="relative rounded-2xl bg-white h-[220px] sm:h-[260px]">
-                      <SignaturePad onChange={setStaffSig} />
-                    </div>
-                    <div className="mt-2 text-xs text-admin-textMuted">
-                      เจ้าหน้าที่เซ็นชื่อในกรอบนี้
-                    </div>
+                  <div className="mt-2 text-xs text-admin-textMuted">
+                    เจ้าหน้าที่เซ็นชื่อในกรอบนี้
                   </div>
                 </div>
               </div>
 
               <div className="mt-4 text-xs text-admin-textMuted mb-2">
-                * ต้องเลือกเอกสารอย่างน้อย 1 รายการ และต้องมีลายเซ็น 2 ฝ่าย
+                * ต้องเลือกเอกสารอย่างน้อย 1 รายการ และต้องมีลายเซ็นเจ้าหน้าที่
               </div>
             </>
           ) : null}
         </div>
 
-        {/* action bar fixed bottom */}
+        {/* action bar */}
         <div className="shrink-0 pt-4 bg-white">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
-              onClick={() => router.push("/classroom/receive/staff")}
+              onClick={goBack}
               className="inline-flex h-10 items-center justify-center rounded-xl border border-admin-border bg-white px-4 text-sm font-medium text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-60"
               disabled={saving}
             >
@@ -407,17 +429,24 @@ export default function ReceiveStaffDetailClient() {
               {saving ? "กำลังบันทึก..." : "ยืนยัน"}
             </button>
           </div>
+
+          {/* ✅ ถ้าอยากให้ error อยู่ “ติดปุ่ม” ด้วย (อ่านง่ายตอนอยู่ท้ายหน้า) */}
+          {/* {formErr ? (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formErr}
+            </div>
+          ) : null} */}
         </div>
       </div>
 
-      {/* Preview old modal */}
+      {/* Preview old modal (staff signature only) */}
       {previewOpen && selected ? (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60"
           onClick={() => setPreviewOpen(false)}
         >
           <div
-            className="max-h-[85vh] w-[92vw] max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl"
+            className="max-h-[85vh] w-[92vw] max-w-xl overflow-hidden rounded-2xl bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-admin-border px-4 py-3">
@@ -426,7 +455,8 @@ export default function ReceiveStaffDetailClient() {
                   บันทึกเดิม (โหมด 3.2)
                 </div>
                 <div className="mt-0.5 text-xs text-admin-textMuted">
-                  {selected.name} • {selected.docIdNormalized || selected.docId} •{" "}
+                  {selected.name} • {selected.docIdNormalized || selected.docId}{" "}
+                  •{" "}
                   {selected.staffSignedAt
                     ? formatDateTimeTH(selected.staffSignedAt)
                     : "-"}
@@ -448,25 +478,7 @@ export default function ReceiveStaffDetailClient() {
               </button>
             </div>
 
-            <div className="grid gap-4 p-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-admin-border bg-admin-surfaceMuted/30 p-3">
-                <div className="text-xs font-semibold text-admin-text">
-                  ลายเซ็นผู้ส่งเอกสาร
-                </div>
-                <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-white p-3">
-                  {!!clean(selected.senderSigUrl) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={selected.senderSigUrl}
-                      alt="sender signature"
-                      className="max-h-[45vh] w-auto max-w-full object-contain"
-                    />
-                  ) : (
-                    <div className="text-xs text-admin-textMuted">- ไม่มีข้อมูล -</div>
-                  )}
-                </div>
-              </div>
-
+            <div className="p-4">
               <div className="rounded-2xl border border-admin-border bg-admin-surfaceMuted/30 p-3">
                 <div className="text-xs font-semibold text-admin-text">
                   ลายเซ็นเจ้าหน้าที่
@@ -477,10 +489,12 @@ export default function ReceiveStaffDetailClient() {
                     <img
                       src={selected.staffSigUrl}
                       alt="staff signature"
-                      className="max-h-[45vh] w-auto max-w-full object-contain"
+                      className="max-h-[55vh] w-auto max-w-full object-contain"
                     />
                   ) : (
-                    <div className="text-xs text-admin-textMuted">- ไม่มีข้อมูล -</div>
+                    <div className="text-xs text-admin-textMuted">
+                      - ไม่มีข้อมูล -
+                    </div>
                   )}
                 </div>
               </div>

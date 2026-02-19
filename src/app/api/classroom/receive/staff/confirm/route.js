@@ -1,3 +1,4 @@
+// src/app/api/classroom/receive/staff/confirm/route.js
 import dbConnect from "@/lib/mongoose";
 import DocumentReceipt from "@/models/DocumentReceipt";
 import { uploadSignatureDataUrl } from "@/lib/cloudinaryUpload.server";
@@ -46,7 +47,6 @@ export async function POST(req) {
   const withholding = !!staffReceiveItems?.withholding;
   const other = clean(staffReceiveItems?.other);
 
-  const senderSignatureDataUrl = body?.senderSignatureDataUrl;
   const staffSignatureDataUrl = body?.staffSignatureDataUrl;
 
   if (!classId) {
@@ -69,12 +69,7 @@ export async function POST(req) {
       { status: 400 },
     );
   }
-  if (!senderSignatureDataUrl) {
-    return Response.json(
-      { ok: false, error: "missing senderSignatureDataUrl" },
-      { status: 400 },
-    );
-  }
+
   if (!staffSignatureDataUrl) {
     return Response.json(
       { ok: false, error: "missing staffSignatureDataUrl" },
@@ -84,31 +79,27 @@ export async function POST(req) {
 
   const folder = `classroom/receive/staff/${classId}/${docId}`;
 
-  // ✅ upload 2 signatures (ยังทำก่อน upsert ได้ตามเดิม)
-  const senderUploaded = await uploadSignatureDataUrl(senderSignatureDataUrl, {
-    folder,
-    publicId: "sender",
-  });
-
-  const staffUploaded = await uploadSignatureDataUrl(staffSignatureDataUrl, {
-    folder,
-    publicId: "staff",
-  });
+  // ✅ upload เฉพาะ staff
+  let staffUploaded;
+  try {
+    staffUploaded = await uploadSignatureDataUrl(staffSignatureDataUrl, {
+      folder,
+      publicId: "staff",
+    });
+  } catch (e) {
+    console.error("upload staff signature failed", e);
+    return Response.json(
+      { ok: false, error: "อัปโหลดลายเซ็นไม่สำเร็จ" },
+      { status: 500 },
+    );
+  }
 
   const now = new Date();
 
   const updateDoc = {
-    type: "staff_receive",
     docType: "",
-    receivers: [], // staff_receive ไม่ใช้ receivers (คงไว้เพื่อ schema)
+    receivers: [],
     staffReceiveItems: { check, withholding, other },
-    customerSig: {
-      url: senderUploaded.url,
-      publicId: senderUploaded.publicId,
-      signedAt: now,
-      signerName: senderName,
-      signerRole: "customer",
-    },
     staffSig: {
       url: staffUploaded.url,
       publicId: staffUploaded.publicId,
@@ -116,13 +107,21 @@ export async function POST(req) {
       signerName: "",
       signerRole: "staff",
     },
+    sender: {
+      studentId: clean(sender?.studentId),
+      name: senderName,
+      company: senderCompany,
+    },
   };
 
-  // ✅ 핵: ใช้ upsert atomic กัน dup key
   try {
     const receipt = await DocumentReceipt.findOneAndUpdate(
-      { classId, docId }, // classId+docId unique
-      { $set: updateDoc, $setOnInsert: { classId, docId } },
+      { classId, docId, type: "staff_receive" },
+      {
+        $set: updateDoc,
+        $unset: { customerSig: "" }, // ✅ ให้แน่ใจว่าไม่มีลายเซ็นลูกค้าใน staff_receive
+        $setOnInsert: { classId, docId, type: "staff_receive" },
+      },
       { new: true, upsert: true },
     ).lean();
 
@@ -133,7 +132,6 @@ export async function POST(req) {
         classId: String(receipt.classId),
         docId: receipt.docId,
         signedAt: now,
-        senderSigUrl: senderUploaded.url,
         staffSigUrl: staffUploaded.url,
         staffReceiveItems: receipt.staffReceiveItems,
         senderName,
@@ -141,11 +139,10 @@ export async function POST(req) {
       },
     });
   } catch (err) {
-    // ✅ กันเคส race แบบ “หลุด” จริงๆ: ถ้า dup key ให้ retry update อีกรอบ
     if (isDupKey(err)) {
       const receipt = await DocumentReceipt.findOneAndUpdate(
-        { classId, docId },
-        { $set: updateDoc },
+        { classId, docId, type: "staff_receive" },
+        { $set: updateDoc, $unset: { customerSig: "" } },
         { new: true },
       ).lean();
 
@@ -157,7 +154,6 @@ export async function POST(req) {
             classId: String(receipt.classId),
             docId: receipt.docId,
             signedAt: now,
-            senderSigUrl: senderUploaded.url,
             staffSigUrl: staffUploaded.url,
             staffReceiveItems: receipt.staffReceiveItems,
             senderName,
