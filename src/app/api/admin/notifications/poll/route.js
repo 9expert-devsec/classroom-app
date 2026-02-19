@@ -19,6 +19,35 @@ function clean(x) {
   return String(x || "").trim();
 }
 
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeDocId(x) {
+  let s = String(x || "")
+    .trim()
+    .toUpperCase();
+
+  // collapse spaces
+  s = s.replace(/\s+/g, " ");
+  // normalize hyphen spaces: "INV - 001" -> "INV-001"
+  s = s.replace(/\s*-\s*/g, "-");
+
+  // normalize "INV 001" -> "INV-001"
+  let m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+
+  // normalize "INV001" -> "INV-001"
+  m = s.match(/^([A-Z]{2,10})([0-9]{1,20})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+
+  return s;
+}
+
+function pickStudentDisplayName(stu) {
+  return clean(stu?.name) || clean(stu?.thaiName) || clean(stu?.engName) || "";
+}
+
 function formatTimeBKK(d) {
   if (!d) return "";
   const dt = new Date(d);
@@ -97,7 +126,7 @@ function pickLatestReceiptEvent(doc) {
   };
 }
 
-function pickCustomerFromDoc(doc) {
+function pickCustomerFromDoc(doc, studentByDocKey) {
   const receivers = Array.isArray(doc?.receivers) ? doc.receivers : [];
 
   let best = null;
@@ -116,15 +145,38 @@ function pickCustomerFromDoc(doc) {
 
   const r0 = best || receivers[0] || null;
 
-  const senderName =
-    clean(r0?.name) || clean(doc?.customerSig?.signerName) || "ลูกค้า";
-  const senderCompany =
-    clean(r0?.company) || clean(doc?.customerSig?.signerCompany || "");
+  let senderName =
+    clean(r0?.name) ||
+    clean(doc?.customerSig?.signerName) ||
+    clean(doc?.customerSig?.name) ||
+    clean(doc?.customerSig?.fullName) ||
+    clean(doc?.customerName) ||
+    "ลูกค้า";
+
+  let senderCompany =
+    clean(r0?.company) ||
+    clean(doc?.customerSig?.signerCompany) ||
+    clean(doc?.customerSig?.company) ||
+    clean(doc?.customerCompany || "");
+
+  // ✅ fallback: ถ้ายังเป็น "ลูกค้า" และมี map studentByDocKey → ดึงชื่อจริงจาก Student
+  if (studentByDocKey && (!senderName || senderName === "ลูกค้า")) {
+    const clsId = String(doc?.classId || "");
+    const docNorm = normalizeDocId(doc?.docId);
+    const key = `${clsId}__${docNorm}`;
+    const stu = studentByDocKey.get(key);
+    if (stu) {
+      const nm = pickStudentDisplayName(stu);
+      const comp = clean(stu.company);
+      if (nm) senderName = nm;
+      if (!senderCompany && comp) senderCompany = comp;
+    }
+  }
 
   return { senderName, senderCompany };
 }
 
-function pickLatestSendEvent(doc) {
+function pickLatestSendEvent(doc, studentByDocKey) {
   const staffAt = doc?.staffSig?.signedAt
     ? new Date(doc.staffSig.signedAt)
     : null;
@@ -143,7 +195,10 @@ function pickLatestSendEvent(doc) {
   const signedAt = hasStaffAt ? staffAt : fallbackAt;
   if (!signedAt) return null;
 
-  const { senderName, senderCompany } = pickCustomerFromDoc(doc);
+  const { senderName, senderCompany } = pickCustomerFromDoc(
+    doc,
+    studentByDocKey,
+  );
 
   return {
     signedAt,
@@ -208,7 +263,8 @@ async function getPrimeCursorKey() {
   }
 
   if (latestSendDoc) {
-    const ev = pickLatestSendEvent(latestSendDoc);
+    // prime cursor ไม่ต้องใช้ชื่อ → ไม่ต้อง preload student map
+    const ev = pickLatestSendEvent(latestSendDoc, null);
     if (ev?.signedAt && !Number.isNaN(ev.signedAt.getTime())) {
       const iso = ev.signedAt.toISOString();
       candidates.push(cursorKeyOf(iso, "send", latestSendDoc._id));
@@ -350,6 +406,25 @@ async function buildReceiptAndSendEvents(
     .limit(limitDocs)
     .lean();
 
+  // ✅ preload students สำหรับ fallback ชื่อใน send event
+  const classIds = [
+    ...new Set(rows.map((d) => String(d.classId || "")).filter(Boolean)),
+  ];
+  const students = classIds.length
+    ? await Student.find({ classId: { $in: classIds } })
+        .select("classId paymentRef name thaiName engName company")
+        .lean()
+    : [];
+
+  const studentByDocKey = new Map(); // key = classId__DOCNORM
+  for (const s of students) {
+    const clsId = String(s.classId || "");
+    const docNorm = normalizeDocId(s.paymentRef);
+    if (!clsId || !docNorm) continue;
+    const key = `${clsId}__${docNorm}`;
+    if (!studentByDocKey.has(key)) studentByDocKey.set(key, s);
+  }
+
   const receiptEvents = [];
   const sendEvents = [];
 
@@ -376,8 +451,8 @@ async function buildReceiptAndSendEvents(
       }
     }
 
-    // send
-    const sEv = pickLatestSendEvent(doc);
+    // send (ใช้ fallback ชื่อจาก Student ถ้าใน doc ไม่มีชื่อ)
+    const sEv = pickLatestSendEvent(doc, studentByDocKey);
     if (sEv?.signedAt && !Number.isNaN(sEv.signedAt.getTime())) {
       const cursorIso = sEv.signedAt.toISOString();
       const cKey = cursorKeyOf(cursorIso, "send", doc._id);
@@ -507,6 +582,7 @@ export async function GET(req) {
       const classTitle = clean(cl.title) || "ไม่ระบุคลาส";
       const company = e.senderCompany ? ` (${e.senderCompany})` : "";
       const ref = e.docId ? ` ${e.docId}` : "";
+      const displayName = clean(e.senderName) || "ลูกค้า";
 
       return {
         type: "send",
@@ -514,7 +590,7 @@ export async function GET(req) {
         eventId: e.eventId,
         cursor: e.cursor,
         cursorKey: e.cursorKey,
-        message: `คุณ ${e.senderName}${company} ได้นำส่งเอกสาร${ref} เรียบร้อย เวลา ${e.timeText} จาก class ${classTitle}`,
+        message: `คุณ ${displayName}${company} ได้นำส่งเอกสาร${ref} เรียบร้อย เวลา ${e.timeText} จาก class ${classTitle}`,
       };
     });
 
