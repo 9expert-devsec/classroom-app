@@ -566,7 +566,7 @@ export default function ReportPreviewButton({
       "ลายเซ็นรับเอกสาร (3.1) (URL)",
       "บันทึกเมื่อ (3.2)",
       "รายการ (3.2)",
-      "ลายเซ็นลูกค้า (3.2) (URL)",
+
       "ลายเซ็นจนท. (3.2) (URL)",
     ];
 
@@ -577,7 +577,7 @@ export default function ReportPreviewButton({
 
       const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
       const staffItemsText = staffItemsLabel(getStaffReceiveItems(stu));
-      const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
+      // const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
       const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
 
       return [
@@ -590,7 +590,7 @@ export default function ReportPreviewButton({
         receiveSigUrl || "",
         staffUpdatedAt ? formatDateTimeTH(staffUpdatedAt) : "",
         staffItemsText || "",
-        staffCustomerUrl || "",
+        // staffCustomerUrl || "",
         staffStaffUrl || "",
       ];
     });
@@ -827,7 +827,7 @@ export default function ReportPreviewButton({
 
         <th class="nowrap">นำส่งเอกสารเมื่อ</th>
         <th class="nowrap">รายการนำส่ง</th>
-        <th class="nowrap">ลายเซ็นลูกค้า</th>
+
         <th class="nowrap">ลายเซ็นจนท.</th>
       </tr>
     `;
@@ -843,7 +843,7 @@ export default function ReportPreviewButton({
 
         const staffUpdatedAt = getStaffReceiveUpdatedAt(stu);
         const staffItemsText = staffItemsLabel(getStaffReceiveItems(stu));
-        const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
+        // const staffCustomerUrl = getStaffReceiveCustomerSigUrl(stu);
         const staffStaffUrl = getStaffReceiveStaffSigUrl(stu);
 
         return `
@@ -885,11 +885,7 @@ export default function ReportPreviewButton({
             }</td>
             <td class="center">${escapeHtml(staffItemsText || "-")}</td>
 
-            <td class="center">${
-              staffCustomerUrl
-                ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(staffCustomerUrl)}" alt="sig"/>`
-                : `<span class="muted">-</span>`
-            }</td>
+
 
             <td class="center">${
               staffStaffUrl
@@ -1188,7 +1184,7 @@ export default function ReportPreviewButton({
                     <col style={{ width: 160 }} />
                     <col style={{ width: 180 }} />
                     <col style={{ width: 180 }} />
-                    <col style={{ width: 180 }} />
+
                   </colgroup>
 
                   <thead className="sticky top-0 z-20 bg-[#0a1f33] text-xs text-white h-8">
@@ -1219,9 +1215,9 @@ export default function ReportPreviewButton({
                       <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
                         รายการนำส่ง
                       </th>
-                      <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
+                      {/* <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
                         ลายเซ็นลูกค้า
-                      </th>
+                      </th> */}
                       <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
                         ลายเซ็นจนท.
                       </th>
@@ -1298,7 +1294,7 @@ export default function ReportPreviewButton({
                             {staffItemsText || "-"}
                           </td>
 
-                          <td className="border border-admin-border px-2 py-1 text-center">
+                          {/* <td className="border border-admin-border px-2 py-1 text-center">
                             {staffCustomerUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
@@ -1309,7 +1305,7 @@ export default function ReportPreviewButton({
                             ) : (
                               <span className="text-admin-textMuted">-</span>
                             )}
-                          </td>
+                          </td> */}
 
                           <td className="border border-admin-border px-2 py-1 text-center">
                             {staffStaffUrl ? (

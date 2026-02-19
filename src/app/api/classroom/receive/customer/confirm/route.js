@@ -1,4 +1,3 @@
-// src/app/api/classroom/receive/customer/confirm/route.js
 import dbConnect from "@/lib/mongoose";
 import DocumentReceipt from "@/models/DocumentReceipt";
 import Student from "@/models/Student";
@@ -22,8 +21,29 @@ function normalizeDocId(x) {
   return s;
 }
 
-function getStudentName(stu) {
+function pickName(stu) {
   return clean(stu?.name) || clean(stu?.thaiName) || clean(stu?.engName) || "-";
+}
+
+async function buildReceiversFromStudents({ classId, docId }) {
+  const students = await Student.find({ classId })
+    .select("_id name thaiName engName company paymentRef documentReceiveType")
+    .lean();
+
+  const matched = (students || []).filter((s) => {
+    const pay = normalizeDocId(clean(s?.paymentRef));
+    return !!pay && pay === docId;
+  });
+
+  matched.sort((a, b) => pickName(a).localeCompare(pickName(b), "th"));
+
+  return matched.map((s) => ({
+    receiverId: String(s._id),
+    name: pickName(s),
+    company: clean(s.company),
+    documentReceiveType: clean(s.documentReceiveType),
+    receiptSig: { signerRole: "customer" }, // default
+  }));
 }
 
 export async function POST(req) {
@@ -33,6 +53,7 @@ export async function POST(req) {
 
   const classId = clean(body?.classId);
   const docId = normalizeDocId(body?.docId);
+  const receiverIndex = Number(body?.receiverIndex || 0);
   const signatureDataUrl = body?.signatureDataUrl;
 
   if (!classId) {
@@ -54,130 +75,98 @@ export async function POST(req) {
     );
   }
 
-  // 1) หา receipt ก่อน
-  let receipt = await DocumentReceipt.findOne({ classId, docId });
+  // ✅ 1) หา receipt แบบ “ล็อก type customer_receive” เท่านั้น
+  let receipt = await DocumentReceipt.findOne({
+    classId,
+    docId,
+    type: "customer_receive",
+  })
+    .select("_id classId docId type receivers updatedAt")
+    .lean();
 
-  // 2) ✅ ถ้าไม่มี -> สร้าง receipt อัตโนมัติจาก Student (บริษัทจ่ายใบเดียวหลายคน)
-  if (!receipt) {
-    const students = await Student.find({ classId })
-      .select(
-        "_id name thaiName engName company paymentRef documentReceiveType",
-      )
-      .lean();
-
-    const matched = (students || []).filter((s) => {
-      const pay = clean(s?.paymentRef);
-      return normalizeDocId(pay) === docId || pay.toUpperCase() === docId;
-    });
-
-    if (!matched.length) {
+  // ✅ 2) ถ้าไม่เจอ หรือ receivers ว่าง → rebuild จาก Student.paymentRef
+  if (
+    !receipt ||
+    !Array.isArray(receipt.receivers) ||
+    receipt.receivers.length === 0
+  ) {
+    const receivers = await buildReceiversFromStudents({ classId, docId });
+    if (!receivers.length) {
       return Response.json(
-        { ok: false, error: "receipt not found" },
-        { status: 404 },
+        { ok: false, error: "no receivers in receipt" },
+        { status: 400 },
       );
     }
 
-    const receivers = matched.map((s) => ({
-      receiverId: String(s._id),
-      name: getStudentName(s),
-      company: clean(s.company),
-      documentReceiveType: clean(s.documentReceiveType) || "",
-      receiptSig: {
-        url: "",
-        publicId: "",
-        signedAt: null,
-        signerName: "",
-        signerRole: "customer",
-      },
-      withholdingSig: {
-        url: "",
-        publicId: "",
-        signedAt: null,
-        signerName: "",
-        signerRole: "customer",
-      },
-    }));
-
-    // NOTE: ฟิลด์อื่น ๆ (docType, staffReceiveItems, customerSig, staffSig)
-    // ถ้า schema มีอยู่จะถูกเก็บ, ถ้าไม่มีจะถูก ignore ตาม strict ของ schema
-    receipt = await DocumentReceipt.create({
-      type: "customer_receive",
-      classId,
-      docId,
-      docType: "",
-      receivers,
-      staffReceiveItems: { check: false, withholding: false, other: "" },
-      customerSig: null,
-      staffSig: null,
-    });
+    if (!receipt) {
+      // create ใหม่
+      const created = await DocumentReceipt.create({
+        type: "customer_receive",
+        classId,
+        docId,
+        receivers,
+      });
+      receipt = {
+        _id: created._id,
+        classId: created.classId,
+        docId: created.docId,
+        type: created.type,
+        receivers: created.receivers,
+      };
+    } else {
+      // มี doc แต่ receivers ว่าง → set receivers ให้ถูกต้อง
+      await DocumentReceipt.updateOne(
+        { _id: receipt._id },
+        { $set: { receivers } },
+      );
+      receipt.receivers = receivers;
+    }
   }
 
-  const receivers = Array.isArray(receipt.receivers) ? receipt.receivers : [];
-  if (!receivers.length) {
-    return Response.json(
-      { ok: false, error: "no receivers in receipt" },
-      { status: 400 },
-    );
-  }
-
-  // 3) upload signature "ครั้งเดียว" ต่อใบ
-  const folder = `classroom/receive/${classId}/${docId}`;
-  const publicId = `receive-all`; // ต่อ docId
-
+  // ✅ 3) upload ลายเซ็น (ใช้ publicId เดียวเพื่อ “ทับ” ได้)
+  const folder = `classroom/receive/customer/${classId}/${docId}`;
   const uploaded = await uploadSignatureDataUrl(signatureDataUrl, {
     folder,
-    publicId,
+    publicId: "receipt", // overwrite
   });
 
   const now = new Date();
 
-  // 4) เซฟลง receiptSig ให้ทุก receiver (ทุกคนในใบนี้ = รับเอกสารแล้ว)
-  for (let i = 0; i < receivers.length; i++) {
-    receipt.receivers[i].receiptSig = {
-      url: uploaded.url,
-      publicId: uploaded.publicId,
-      signedAt: now,
-      signerName: "",
-      signerRole: "customer",
-    };
-  }
+  // signerName: ใช้คนที่เลือกใน receiverIndex (ถ้าเกิน range ก็ fallback คนแรก)
+  const idx =
+    receiverIndex >= 0 && receiverIndex < receipt.receivers.length
+      ? receiverIndex
+      : 0;
 
-  await receipt.save();
+  const signerName = clean(receipt.receivers[idx]?.name);
 
-  // 5) ✅ Sync ไป Student ทุกคนในใบนี้
-  const receiverIds = receivers
-    .map((r) => clean(r?.receiverId))
-    .filter(Boolean);
+  const sigObj = {
+    url: uploaded.url,
+    publicId: uploaded.publicId,
+    signedAt: now,
+    signerName,
+    signerRole: "customer",
+  };
 
-  if (receiverIds.length) {
-    await Student.updateMany(
-      { _id: { $in: receiverIds } },
-      {
-        $set: {
-          documentReceiptSigUrl: uploaded.url,
-          documentReceiptSignedAt: now,
-        },
-      },
-    ).catch(() => {});
-  }
-
-  // 6) ✅ (ตาม requirement) ทำให้ทั้งใบ = รับเอกสารแล้ว
-  if (receiverIds.length) {
-    await Student.updateMany(
-      { _id: { $in: receiverIds }, documentReceivedAt: null },
-      { $set: { documentReceivedAt: now } },
-    ).catch(() => {});
-  }
+  // ✅ 4) ตาม policy “INV เดียวหลายคน” → เซ็นครั้งเดียว = apply ให้ทุก receiver
+  const updated = await DocumentReceipt.findOneAndUpdate(
+    { classId, docId, type: "customer_receive" },
+    { $set: { "receivers.$[].receiptSig": sigObj } },
+    { new: true },
+  ).lean();
 
   return Response.json({
     ok: true,
     item: {
-      id: String(receipt._id),
-      classId: String(receipt.classId),
-      docId: receipt.docId,
+      id: String(updated?._id || receipt._id),
+      classId: String(updated?.classId || classId),
+      docId,
       signedAt: now,
-      url: uploaded.url,
-      appliedReceivers: receivers.length,
+      signedUrl: uploaded.url,
+      signerName,
+      receiverCount: Array.isArray(updated?.receivers)
+        ? updated.receivers.length
+        : 0,
     },
   });
 }
