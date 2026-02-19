@@ -888,14 +888,14 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <meta charset="utf-8" />
           <title>Food Report</title>
           <style>
-            @page { size: A4 portrait; margin: 0; }
+            @page { size: A4 portrait;  margin: 10mm 9mm 10mm 17mm;  }
             body {
               font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
               font-size: 12px;
               color: #111827;
               margin: 0;
             }
-            .page { padding: 0; }
+            .page { padding: 0; margin: 0; }
             .page-break { page-break-after: always; break-after: page; height: 0; }
 
             .class-table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
@@ -907,19 +907,19 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             .class-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
             .class-sub { font-size: 11px; color: #6b7280; }
 
-            .th, .td { border: 1px solid #111827; padding: 5px 6px; font-size: 11px; vertical-align: top; overflow: hidden; word-break: break-word;}
+            .th, .td { border: 1px solid #111827; padding: 5px 6px; font-size: 12px; vertical-align: top; overflow: hidden; word-break: break-word;}
             .th { background: #f3f4f6; font-weight: 700; }
             .num { width: 54px; text-align: right; }
             .empty { text-align: center; color: #6b7280; padding: 10px; }
 
             .footer { margin-top: 8px; font-size: 11px; color: #6b7280; text-align: right; }
 
-            .c-num     { width: 6%; }
-            .c-student { width: 20%; }
-            .c-menu   { width: 16%; }
-            .c-addon   { width: 14%; }
+            .c-num     { width: 4%; }
+            .c-student { width: 30%; }
+            .c-menu   { width: 24%; }
+            .c-addon   { width: 12%; }
             .c-drink   { width: 10%; }
-            .c-note    { width: 34%; }
+            .c-note    { width: 20%; }
 
             .trunc{white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
