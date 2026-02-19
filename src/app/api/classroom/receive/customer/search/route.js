@@ -399,39 +399,99 @@ export async function GET(req) {
     new Set(draft.map((x) => clean(x.docIdNormalized)).filter(Boolean)),
   );
 
-  const receiptByKey = new Map(); // classId__docId
+  function nameKey(s) {
+    return clean(s).replace(/\s+/g, " ").toLowerCase();
+  }
+
+  const receiptByKey = new Map(); // classId__docId -> receipt
+  const receiptIndexByKey = new Map(); // classId__docId -> { byRid, byName, sharedSigUrl, sharedSignedAt }
+
   if (docIdsToLoad.length) {
     const recs = await DocumentReceipt.find({
       classId: { $in: classIds },
       docId: { $in: docIdsToLoad },
+      type: "customer_receive", // ✅ กันไปหยิบ staff_receive มาปน
     })
-      .select("_id classId docId receivers")
+      .select("_id classId docId receivers updatedAt")
       .lean();
 
     for (const r of recs || []) {
-      receiptByKey.set(`${String(r.classId)}__${String(r.docId)}`, r);
+      const k = `${String(r.classId)}__${String(r.docId)}`;
+      receiptByKey.set(k, r);
+
+      const byRid = new Map(); // receiverId -> index
+      const byName = new Map(); // normalized name -> index
+
+      const receivers = Array.isArray(r.receivers) ? r.receivers : [];
+      let sharedSigUrl = "";
+      let sharedSignedAt = null;
+
+      receivers.forEach((rcv, idx) => {
+        const rid = clean(rcv?.receiverId);
+        const nm = nameKey(rcv?.name);
+
+        if (rid) byRid.set(String(rid), idx);
+        if (nm) byName.set(nm, idx);
+
+        const url = clean(rcv?.receiptSig?.url);
+        const at = rcv?.receiptSig?.signedAt || null;
+
+        // ✅ หา "ลายเซ็นร่วม" อันแรกของ docId นี้ (ถือว่า INV เดียวกัน เซ็นแทนกันได้)
+        if (!sharedSigUrl && url) {
+          sharedSigUrl = url;
+          sharedSignedAt = at || r.updatedAt || null;
+        }
+      });
+
+      receiptIndexByKey.set(k, { byRid, byName, sharedSigUrl, sharedSignedAt });
     }
   }
 
   for (const it of draft) {
-    const rec = receiptByKey.get(`${it.classId}__${it.docIdNormalized}`);
-    if (!rec || !Array.isArray(rec.receivers)) continue;
+    const key = `${it.classId}__${it.docIdNormalized}`;
+    const rec = receiptByKey.get(key);
+    const meta = receiptIndexByKey.get(key);
 
-    const idx = rec.receivers.findIndex((x) => {
-      const rid = clean(x?.receiverId);
-      const nm = clean(x?.name);
-      if (rid && String(rid) === String(it.studentId)) return true;
-      return nm && nm === clean(it.name);
-    });
+    if (!rec || !meta) continue;
+
+    const receivers = Array.isArray(rec.receivers) ? rec.receivers : [];
+
+    // ✅ หา receiverIndex ให้ถูกคน (กันล็อกคนแรก)
+    let idx = -1;
+
+    if (meta.byRid?.has(String(it.studentId))) {
+      idx = meta.byRid.get(String(it.studentId));
+    } else {
+      const nk = nameKey(it.name);
+      if (nk && meta.byName?.has(nk)) idx = meta.byName.get(nk);
+    }
 
     if (idx >= 0) {
       it.receiverIndex = idx;
-      const rcv = rec.receivers[idx] || {};
-      const urlFromReceipt = clean(rcv?.receiptSig?.url);
-      const atFromReceipt = rcv?.receiptSig?.signedAt || null;
 
-      if (!it.signedUrl && urlFromReceipt) it.signedUrl = urlFromReceipt;
-      if (!it.signedAt && atFromReceipt) it.signedAt = atFromReceipt;
+      const rcv = receivers[idx] || {};
+      const urlFromReceiver = clean(rcv?.receiptSig?.url);
+      const atFromReceiver = rcv?.receiptSig?.signedAt || null;
+
+      // ✅ signedUrl/signedAt: ถ้าคนนี้ไม่มี แต่ docId เดียวกันมีลายเซ็น → กระจายให้
+      if (!it.signedUrl)
+        it.signedUrl = urlFromReceiver || meta.sharedSigUrl || "";
+      if (!it.signedAt)
+        it.signedAt = atFromReceiver || meta.sharedSignedAt || null;
+
+      // ✅ documentReceivedAt: ให้ "เขียว" ตามลายเซ็นร่วม (ถ้า student ยังไม่มีวันที่รับ)
+      if (!it.documentReceivedAt) {
+        it.documentReceivedAt = atFromReceiver || meta.sharedSignedAt || null;
+      }
+    } else {
+      // ✅ ถ้าหา index ไม่เจอ ก็ยัง “เขียว” ได้ถ้า docId นี้มีลายเซ็นอยู่แล้ว
+      if (!it.signedUrl && meta.sharedSigUrl) it.signedUrl = meta.sharedSigUrl;
+      if (!it.signedAt && meta.sharedSignedAt)
+        it.signedAt = meta.sharedSignedAt;
+
+      if (!it.documentReceivedAt && meta.sharedSignedAt) {
+        it.documentReceivedAt = meta.sharedSignedAt;
+      }
     }
   }
 
