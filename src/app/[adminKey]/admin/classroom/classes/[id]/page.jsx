@@ -362,8 +362,8 @@ function getLearnTypeRaw(stu) {
   return (
     stu?.learnType ||
     stu?.studyType ||
-    stu?.trainingType ||   // ✅ เพิ่ม (หลายระบบใช้ชื่อนี้ตอน import)
-    stu?.channel ||        // ✅ บางที import ใช้ channel=live
+    stu?.trainingType || // ✅ เพิ่ม (หลายระบบใช้ชื่อนี้ตอน import)
+    stu?.channel || // ✅ บางที import ใช้ channel=live
     stu?.type ||
     ""
   );
@@ -848,6 +848,12 @@ export default function ClassDetailPage() {
   const courseTitle =
     classData.courseTitle || classData.course_name || classData.title || "";
 
+  const courseName =
+    classData.courseName || // ✅ ชื่อหลักสูตรที่คุณต้องการ
+    classData.course_name || // เผื่อ field เก่า
+    classData.course?.course_name || // เผื่อ nested
+    "";
+
   const courseCode =
     classData.courseCode || classData.course_code || classData.code || "";
 
@@ -1112,7 +1118,7 @@ export default function ClassDetailPage() {
             <div className=" text-base text-admin-textMuted">
               {courseCode && (
                 <>
-                  รหัสคอร์ส: <span className="font-medium">{courseCode}</span>
+                  รหัสคอร์ส : <span className="font-medium">{courseCode}</span>
                 </>
               )}
               {classCode && (
@@ -1120,6 +1126,17 @@ export default function ClassDetailPage() {
                   {" "}
                   • รอบที่: <span className="font-medium">{classCode}</span>
                 </>
+              )}
+            </div>
+
+            <div className=" text-base text-admin-textMuted">
+              {courseName && (
+                <div>
+                  หลักสูตร :{" "}
+                  <span className="font-medium">
+                    {courseName}
+                  </span>
+                </div>
               )}
             </div>
 

@@ -462,6 +462,15 @@ export default function ReportPreviewButton({
   const courseTitle =
     classInfo?.courseTitle || classInfo?.course_name || classInfo?.title || "";
 
+  const reportTitleCheckin = "รายงานเช็กอิน";
+  const reportTitleSignature = "รายงานลายเซ็น";
+
+  const courseName =
+    classInfo?.courseName || // ✅ ชื่อหลักสูตรที่คุณต้องการ
+    classInfo?.course_name || // เผื่อ field เก่า
+    classInfo?.course?.course_name || // เผื่อ nested
+    "";
+
   const courseCode =
     classInfo?.courseCode || classInfo?.course_code || classInfo?.code || "";
 
@@ -477,6 +486,24 @@ export default function ReportPreviewButton({
     classInfo?.roomInfo?.nameTH ||
     classInfo?.roomInfo?.name ||
     "";
+
+  const trainerName =
+    clean(classInfo?.trainerName) ||
+    clean(classInfo?.trainer) ||
+    clean(classInfo?.instructorName) ||
+    clean(classInfo?.instructor) ||
+    (Array.isArray(classInfo?.instructors)
+      ? classInfo.instructors
+          .map((t) =>
+            typeof t === "string" ? t : t?.name || t?.fullname || "",
+          )
+          .filter(Boolean)
+          .join(", ")
+      : "");
+
+  const rightCode = courseCode || "";
+  const batch = classCode || "";
+  const logoUrl = "/logo-9experttraining-color.png"; // เปลี่ยนเป็นโลโก้ที่ต้องการ
 
   function openReport() {
     setTab("checkin");
@@ -622,58 +649,186 @@ export default function ReportPreviewButton({
   }
 
   /* ================= Print ================= */
-
-  function buildPrintHead({ title, subtitle, generatedAt }) {
-    return `
-      <div class="topline">
-        <div>${escapeHtml(generatedAt)}</div>
-        <div>${escapeHtml(title)}</div>
-      </div>
-      <div class="titleblock">
-        <div class="h1">${escapeHtml(title)}</div>
-        ${subtitle ? `<div class="sub">${escapeHtml(subtitle)}</div>` : ""}
-      </div>
-    `;
+  async function waitFonts(win, timeoutMs = 1500) {
+    try {
+      await Promise.race([
+        win.document.fonts.ready,
+        new Promise((r) => setTimeout(r, timeoutMs)),
+      ]);
+    } catch {}
   }
 
-  function basePrintCss() {
+  function buildPrintHead({
+    title, // ชื่อรายงาน/รหัสรายงาน (ตัวใหญ่ซ้าย)
+    generatedAt, // วันเวลาออกรายงาน
+    courseName, // ชื่อหลักสูตร
+    batch, // รอบอบรม
+    trainerName, // วิทยากร
+    logoUrl, // โลโก้
+    rightCode, // ขวาบน (เช่น H-PUB-...)
+    detailLine,
+  }) {
     return `
-      <style>
-        @page { size: A4 portrait; margin: 14mm; }
-        body {
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          font-size: 12px;
-          color: #111827;
-        }
-        .topline{
-          display:flex;
-          justify-content:space-between;
-          font-size:11px;
-          color:#6b7280;
-          margin-bottom:8px;
-        }
-        .titleblock{ margin-bottom:10px; }
-        .h1{ font-size:18px; font-weight:800; margin:0; }
-        .sub{ margin-top:4px; font-size:12px; color:#374151; }
-        table{ border-collapse:collapse; width:100%; }
-        th, td{ border:1px solid #e5e7eb; padding:5px 6px; vertical-align:top; }
-        th{ background:#f3f4f6; font-size:11px; text-align:center; }
-        td{ font-size:11px; }
-        .right{ text-align:right; }
-        .center{ text-align:center; }
-        .muted{ color:#6b7280; }
-        .badgeLate{ color:#b91c1c; font-weight:800; }
-        .badgeOk{ color:#047857; font-weight:800; }
-        .sigImgSm{
-          display:block;
-          height:30px;
-          width:100px;
-          object-fit:contain;
-          margin:0 auto;
-        }
-        .nowrap{ white-space:nowrap; }
-      </style>
-    `;
+    <div class="print-header">
+      <div class="head">
+        <div class="head-left">
+          ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
+          <div class="head-main">
+            <div class="head-title">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
+            <div class="head-meta">
+              
+              ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+              ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
+            </div>
+            <div class="head-meta">
+            ${detailLine ? `<span>${escapeHtml(detailLine)}</span>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="head-right">
+          ${rightCode ? `<div class="head-code">${escapeHtml(rightCode)}</div>` : ""}
+          <div class="head-date">${escapeHtml(generatedAt || "")}</div>
+        </div>
+      </div>
+    </div>
+    
+  `;
+  }
+
+  function basePrintCss({ landscape } = {}) {
+    return `
+  <style>
+    :root{
+      --page-m: 5mm;
+    }
+
+    @page{
+      size: A4 ${landscape ? "landscape" : "portrait"};
+      margin: var(--page-m);
+    }
+
+    @font-face{
+      font-family:"GoogleSans";
+      src:url("/fonts/GoogleSans-Regular.ttf") format("truetype");
+      font-weight:400;
+      font-style:normal;
+    }
+    @font-face{
+      font-family:"GoogleSans";
+      src:url("/fonts/GoogleSans-Bold.ttf") format("truetype");
+      font-weight:700;
+      font-style:normal;
+    }
+
+    body{
+      margin:0;
+      font-family:"GoogleSans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size:11px;
+      color:#111827;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* ✅ ทำให้ thead ซ้ำทุกหน้า = หัวกระดาษ + หัวตาราง */
+    thead{ display: table-header-group; }
+    tfoot{ display: table-footer-group; }
+
+    table{
+      border-collapse:collapse;
+      width:100%;
+      table-layout:auto;
+    }
+
+    th, td{
+      border:1px solid #e5e7eb;
+      padding:5px 6px;
+      vertical-align:middle;
+      white-space:normal;
+      word-break:break-word;
+    }
+
+    tbody tr{ break-inside: avoid; page-break-inside: avoid; }
+
+    /* หัวตาราง */
+    .tblHead th{
+      background:#0a1f33;
+      color:#fff;
+      font-weight:800;
+      line-height:1.15;
+      text-align:center;
+      vertical-align:middle;
+      padding:6px 6px;
+    }
+    .tblHead th.th-accent{
+      background:#66ccff;
+      color:#0a1f33;
+    }
+      td.center, th.center{
+  text-align: center;
+  vertical-align: middle;
+}
+
+    /* ===== หัวกระดาษที่อยู่ใน thead ===== */
+    .paperHead{
+      border: none !important;
+      padding: 0 0 6mm 0 !important; /* เว้นระยะหัว -> ตาราง */
+    }
+    .paperHeadWrap{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .paperLeft{
+      display:flex;
+      align-items:flex-start;
+      gap:10px;
+      min-width:0;
+    }
+    .logo{
+      width:140px;
+      object-fit:contain;
+      flex:0 0 auto;
+    }
+    .paperTitle{
+      font-size:18px;
+      font-weight:800;
+      line-height:1.1;
+    }
+    .paperMeta{
+      margin-top:4px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px 12px;
+      font-size:11px;
+      color:#374151;
+    }
+    .paperRight{
+      text-align:right;
+      white-space:nowrap;
+    }
+    .paperCode{
+      font-size:11px;
+      font-weight:700;
+      color:#374151;
+    }
+    .paperDate{
+      margin-top:2px;
+      font-size:11px;
+      color:#6b7280;
+    }
+
+    .sigImgSm{
+  display:block;
+  height:70px;
+  width:100%;
+  max-width:120px;
+  object-fit:contain;
+  margin:0 auto;
+}
+  </style>
+  `;
   }
 
   function printCheckinReport() {
@@ -687,17 +842,43 @@ export default function ReportPreviewButton({
       timeZone: "Asia/Bangkok",
     });
 
-    const title = courseTitle || courseCode || "รายงานเช็กอิน";
+    const title = reportTitleCheckin;
     const scopeLabel =
       scope === "selected" && hasSelection
         ? `เฉพาะที่เลือก ${activeStudents.length} คน`
         : `ตามตัวกรอง ${activeStudents.length} คน`;
-    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}${
-      totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""
-    }`;
+
+    const detailLine =
+      `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}` +
+      `${totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""}`;
+
+    const headRow = `
+<tr>
+  <th class="paperHead" colspan="10">
+    <div class="paperHeadWrap">
+      <div class="paperLeft">
+        ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
+        <div>
+          <div class="paperTitle">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
+          <div class="paperMeta">
+            ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+            ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
+          </div>
+          ${detailLine ? `<div class="paperMeta"><span>${escapeHtml(detailLine)}</span></div>` : ""}
+        </div>
+      </div>
+      <div class="paperRight">
+        ${rightCode ? `<div class="paperCode">${escapeHtml(rightCode)}</div>` : ""}
+        <div class="paperDate">${escapeHtml(generatedAt || "")}</div>
+      </div>
+    </div>
+  </th>
+</tr>
+`;
 
     const thead = `
-      <tr>
+    ${headRow}
+      <tr class="tblHead">
         <th style="width:24px;">ลำดับ</th>
         <th style="text-align:left;">ชื่อ-สกุล</th>
         <th style="text-align:left;">บริษัท</th>
@@ -775,10 +956,9 @@ export default function ReportPreviewButton({
         <head>
           <meta charSet="utf-8" />
           <title>Check-in Report</title>
-          ${basePrintCss()}
+          ${basePrintCss({ landscape: true })}
         </head>
         <body>
-          ${buildPrintHead({ title, subtitle, generatedAt })}
           <table>
             <thead>${thead}</thead>
             <tbody>${rows}</tbody>
@@ -795,7 +975,7 @@ export default function ReportPreviewButton({
     waitImagesThenPrint(w, 1800);
   }
 
-  function printSignatureReport() {
+  async function printSignatureReport() {
     const w = window.open("", "_blank");
     if (!w) return;
 
@@ -806,30 +986,73 @@ export default function ReportPreviewButton({
       timeZone: "Asia/Bangkok",
     });
 
-    const title = courseTitle || courseCode || "รายงานลายเซ็น";
+    const title = reportTitleSignature;
     const scopeLabel =
       scope === "selected" && hasSelection
         ? `เฉพาะที่เลือก ${activeStudents.length} คน`
         : `ตามตัวกรอง ${activeStudents.length} คน`;
-    const subtitle = `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}${
-      totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""
-    }`;
+
+    const detailLine =
+      `${roomName ? `ห้อง ${roomName} • ` : ""}${scopeLabel}` +
+      `${totalCount ? ` (จากทั้งหมด ${totalCount} คน)` : ""}`;
+
+    const headRow = `
+<tr>
+  <th class="paperHead" colspan="10">
+    <div class="paperHeadWrap">
+      <div class="paperLeft">
+        ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
+        <div>
+          <div class="paperTitle">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
+          <div class="paperMeta">
+            ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+            ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
+          </div>
+          ${detailLine ? `<div class="paperMeta"><span>${escapeHtml(detailLine)}</span></div>` : ""}
+        </div>
+      </div>
+      <div class="paperRight">
+        ${rightCode ? `<div class="paperCode">${escapeHtml(rightCode)}</div>` : ""}
+        <div class="paperDate">${escapeHtml(generatedAt || "")}</div>
+      </div>
+    </div>
+  </th>
+</tr>
+`;
 
     const thead = `
-      <tr>
-        <th style="width:24px;">ลำดับ</th>
-        <th style="text-align:left;">ชื่อ-สกุล</th>
-        <th style="text-align:left;">บริษัท</th>
-        <th class="nowrap">เลขที่ QT/IV/RP</th>
+${headRow}
+<tr class="tblHead">
+  <th rowspan="2">ลำดับ</th>
+  <th rowspan="2">ชื่อ-สกุล</th>
+  <th rowspan="2">บริษัท</th>
+  <th rowspan="2" class="nowrap">เลขที่เอกสาร</th>
+  <th rowspan="2">รูปแบบการส่ง/รับเอกสาร</th>
+  <th colspan="2">ส่วนของผู้อบรม</th>
+  <th colspan="3" class="th-accent">ส่วนของ 9Expert</th>
+</tr>
+<tr class="tblHead">
+  <th class="nowrap">ลายเซ็นผู้รับ</th>
+  <th class="minDate nowrap">วันที่รับ</th>
+  <th class="th-accent">เอกสารที่ผู้อบรมส่งเพิ่มเติม</th>
+  <th class="nowrap th-accent">ลายเซ็นผู้รับ</th>
+  <th class="minDate nowrap th-accent">วันที่รับ</th>
+</tr>
+`;
 
-        <th class="nowrap">ช่องทางรับเอกสาร</th>
-        <th class="nowrap">ลายเซ็นรับเอกสาร</th>
-
-        <th class="nowrap">นำส่งเอกสารเมื่อ</th>
-        <th class="nowrap">รายการนำส่ง</th>
-
-        <th class="nowrap">ลายเซ็นจนท.</th>
-      </tr>
+    const colgroup = `
+    <colgroup>
+      <col style="width:4%" />    <!-- ลำดับ -->
+      <col style="width:16%" />   <!-- ชื่อ-สกุล -->
+      <col style="width:12%" />   <!-- บริษัท -->
+      <col style="width:10%" />    <!-- เลขที่เอกสาร -->
+      <col style="width:10%" />   <!-- รูปแบบการส่ง/รับ -->
+      <col style="width:10%" />   <!-- ลายเซ็นผู้รับ (ผู้อบรม) -->
+      <col style="width:11%" />   <!-- วันที่รับ (ผู้อบรม) -->
+      <col style="width:10%" />   <!-- เอกสารที่ผู้อบรมส่งเพิ่มเติม -->
+      <col style="width:10%" />   <!-- ลายเซ็นผู้รับ (9Expert) -->
+      <col style="width:11%" />   <!-- วันที่รับ (9Expert) -->
+    </colgroup>
     `;
 
     const rows = activeStudents
@@ -848,7 +1071,7 @@ export default function ReportPreviewButton({
 
         return `
           <tr>
-            <td class="right">${idx + 1}</td>
+            <td class="center">${idx + 1}</td>
             <td>
               <div>${escapeHtml(name)}</div>
               ${
@@ -866,32 +1089,36 @@ export default function ReportPreviewButton({
               <div style="display:flex;flex-direction:column;gap:6px;align-items:center;">
                   ${
                     receiveSigUrl
-                      ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(receiveSigUrl)}" alt="sig"/>`
+                      ? `<img class="sigImgSm" src="${escapeHtml(receiveSigUrl)}" alt="sig"/>`
                       : `<span class="muted">-</span>`
                   }
 
-                  ${
-                    receivedAt
-                      ? `<div class="muted nowrap">${escapeHtml(formatDateTimeTH(receivedAt))}</div>`
-                      : ""
-                  }
+                  
               </div>
             </td>
 
-            <td class="center">${
-              staffUpdatedAt
-                ? escapeHtml(formatDateTimeTH(staffUpdatedAt))
-                : "-"
-            }</td>
+           
+                   <td class="center">${
+                     receivedAt
+                       ? `<div class="nowrap">${escapeHtml(formatDateTimeTH(receivedAt))}</div>`
+                       : "-"
+                   }</td>
+           
             <td class="center">${escapeHtml(staffItemsText || "-")}</td>
 
 
 
             <td class="center">${
               staffStaffUrl
-                ? `<img style="height:38px;width:120px;object-fit:contain;display:block;margin:0 auto;" src="${escapeHtml(staffStaffUrl)}" alt="sig"/>`
+                ? `<img class="sigImgSm" src="${escapeHtml(staffStaffUrl)}" alt="sig"/>`
                 : `<span class="muted">-</span>`
             }</td>
+
+             <td class="center">${
+               staffUpdatedAt
+                 ? escapeHtml(formatDateTimeTH(staffUpdatedAt))
+                 : "-"
+             }</td>
           </tr>
         `;
       })
@@ -903,13 +1130,14 @@ export default function ReportPreviewButton({
         <head>
           <meta charSet="utf-8" />
           <title>Signature Report</title>
-          ${basePrintCss()}
+          ${basePrintCss({ landscape: true })}
         </head>
         <body>
-          ${buildPrintHead({ title, subtitle, generatedAt })}
+          
           <table>
-            <thead>${thead}</thead>
-            <tbody>${rows}</tbody>
+            ${colgroup}
+              <thead>${thead}</thead>
+              <tbody>${rows}</tbody>
           </table>
         </body>
       </html>
@@ -920,6 +1148,7 @@ export default function ReportPreviewButton({
     w.document.close();
     w.focus();
 
+    await waitFonts(w, 2000);
     waitImagesThenPrint(w, 2200);
   }
 
@@ -934,7 +1163,7 @@ export default function ReportPreviewButton({
   const modalTag = "PREVIEW • รายงาน";
 
   const colSpanCheckin = 4 + dayMeta.length;
-  const colSpanSignature = 11;
+  const colSpanSignature = 10;
 
   const scopeLabelShort =
     scope === "selected" && hasSelection
@@ -975,7 +1204,7 @@ export default function ReportPreviewButton({
                 </DialogDescription>
 
                 {/* ✅ Toggle scope ถ้ามี selection */}
-                {hasSelection && (
+                {/* {hasSelection && (
                   <div className="mt-2 inline-flex overflow-hidden rounded-lg border border-admin-border bg-white text-[11px]">
                     <button
                       type="button"
@@ -1000,7 +1229,7 @@ export default function ReportPreviewButton({
                       ตามตัวกรอง ({students.length})
                     </button>
                   </div>
-                )}
+                )} */}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-4">
@@ -1184,42 +1413,73 @@ export default function ReportPreviewButton({
                     <col style={{ width: 160 }} />
                     <col style={{ width: 180 }} />
                     <col style={{ width: 180 }} />
-
+                    <col style={{ width: 180 }} />
                   </colgroup>
 
-                  <thead className="sticky top-0 z-20 bg-[#0a1f33] text-xs text-white h-8">
-                    <tr>
-                      <th className="border border-admin-border px-2 py-1 text-center">
+                  <thead className="sticky top-0 z-20 text-xs text-white ">
+                    <tr className="bg-[#0a1f33]">
+                      <th
+                        rowSpan={2}
+                        className="border border-admin-border px-2 py-1 text-center"
+                      >
                         ลำดับ
                       </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
+                      <th
+                        rowSpan={2}
+                        className="border border-admin-border px-2 py-1 text-left"
+                      >
                         ชื่อ-สกุล
                       </th>
-                      <th className="border border-admin-border px-2 py-1 text-left">
+                      <th
+                        rowSpan={2}
+                        className="border border-admin-border px-2 py-1 text-left"
+                      >
                         บริษัท
                       </th>
-                      <th className="border border-admin-border px-2 py-1 text-center">
-                        เลขที่ QT/IV/RP
+                      <th
+                        rowSpan={2}
+                        className="border border-admin-border px-2 py-1 text-center"
+                      >
+                        เลขที่เอกสาร
                       </th>
 
+                      <th
+                        rowSpan={2}
+                        className="border border-admin-border px-2 py-1 text-center"
+                      >
+                        รูปแบบการส่ง/รับเอกสาร
+                      </th>
+
+                      <th colSpan={2} className="border ... text-center">
+                        ส่วนของผู้อบรม
+                      </th>
+                      <th
+                        colSpan={3}
+                        className="border ... text-center bg-[#66ccff] text-[#0a1f33]"
+                      >
+                        ส่วนของ 9Expert
+                      </th>
+                    </tr>
+
+                    <tr className="bg-[#0a1f33]">
                       <th className="border border-admin-border px-2 py-1 text-center">
-                        ช่องทางรับเอกสาร
+                        ลายเซ็นผู้รับ
                       </th>
                       <th className="border border-admin-border px-2 py-1 text-center">
-                        ลายเซ็นรับเอกสาร
+                        วันที่รับ
                       </th>
 
                       <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
-                        นำส่งเอกสารเมื่อ
+                        เอกสารที่ผู้อบรมส่งเพิ่มเติม
                       </th>
                       <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
-                        รายการนำส่ง
+                        ลายเซ็นผู้รับ
                       </th>
                       {/* <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
                         ลายเซ็นลูกค้า
                       </th> */}
                       <th className="border border-admin-border px-2 py-1 text-center bg-[#66ccff] text-[#0a1f33]">
-                        ลายเซ็นจนท.
+                        วันที่รับ
                       </th>
                     </tr>
                   </thead>
@@ -1279,15 +1539,11 @@ export default function ReportPreviewButton({
                               ) : (
                                 <span className="text-admin-textMuted">-</span>
                               )}
-
-                              {receivedAt ? formatDateTimeTH(receivedAt) : ""}
                             </div>
                           </td>
 
                           <td className="border border-admin-border px-2 py-1 text-center">
-                            {staffUpdatedAt
-                              ? formatDateTimeTH(staffUpdatedAt)
-                              : "-"}
+                            {receivedAt ? formatDateTimeTH(receivedAt) : "-"}
                           </td>
 
                           <td className="border border-admin-border px-2 py-1 text-center">
@@ -1318,6 +1574,12 @@ export default function ReportPreviewButton({
                             ) : (
                               <span className="text-admin-textMuted">-</span>
                             )}
+                          </td>
+
+                          <td className="border border-admin-border px-2 py-1 text-center">
+                            {staffUpdatedAt
+                              ? formatDateTimeTH(staffUpdatedAt)
+                              : "-"}
                           </td>
                         </tr>
                       );
