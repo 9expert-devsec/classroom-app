@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad from "@/components/shared/SignaturePad";
-import PrimaryButton from "@/components/ui/PrimaryButton";
+import UserButton from "@/components/ui/UserButton";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -297,13 +297,13 @@ export default function EventCheckinClient({ searchParams }) {
                 ย้อนกลับ
               </button>
 
-              <PrimaryButton
+              <UserButton
                 className="h-11 flex-1 rounded-xl"
                 onClick={confirm}
                 disabled={loading}
               >
                 {loading ? "กำลังบันทึก..." : "บันทึกการเข้าร่วม"}
-              </PrimaryButton>
+              </UserButton>
             </div>
           </div>
         </div>
