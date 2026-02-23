@@ -1382,7 +1382,7 @@ export default function StudentsTable({
   return (
     <>
       {/* ===== Toolbar (Filter + Day + Selection) ===== */}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      {/* <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-xs text-admin-textMuted">Filter:</div>
 
@@ -1445,7 +1445,7 @@ export default function StudentsTable({
             </button>
           )}
         </div>
-      </div>
+      </div> */}
 
       <div
         ref={viewportRef}

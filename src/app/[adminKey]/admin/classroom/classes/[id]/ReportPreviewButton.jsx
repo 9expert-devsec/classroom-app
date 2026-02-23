@@ -71,6 +71,27 @@ function formatTimeTH(input) {
   });
 }
 
+function formatGeneratedAtTH(input) {
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return "";
+
+  const date = d.toLocaleDateString("th-TH", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  });
+
+  const time = d.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+
+  return `${date} ${time} น.`;
+}
+
 function downloadCsv(csvText, filename) {
   const bom = "\uFEFF";
   const blob = new Blob([bom + csvText], { type: "text/csv;charset=utf-8;" });
@@ -418,6 +439,7 @@ export default function ReportPreviewButton({
   totalStudentsCount, // total ทั้งคลาส
   dayCount = 1,
   dayDates = [], // ✅ source of truth จาก page.jsx
+  trainingRangeLabel = "",
   classInfo,
 }) {
   const [open, setOpen] = useState(false);
@@ -667,6 +689,7 @@ export default function ReportPreviewButton({
     logoUrl, // โลโก้
     rightCode, // ขวาบน (เช่น H-PUB-...)
     detailLine,
+    trainingRangeLabel,
   }) {
     return `
     <div class="print-header">
@@ -676,8 +699,11 @@ export default function ReportPreviewButton({
           <div class="head-main">
             <div class="head-title">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
             <div class="head-meta">
-              
-              ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+             ${
+               trainingRangeLabel
+                 ? `<span><b>รอบอบรม :</b> ${escapeHtml(trainingRangeLabel)}</span>`
+                 : ""
+             }
               ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
             </div>
             <div class="head-meta">
@@ -836,11 +862,7 @@ export default function ReportPreviewButton({
     if (!w) return;
 
     const now = new Date();
-    const generatedAt = now.toLocaleString("th-TH", {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "Asia/Bangkok",
-    });
+    const generatedAt = formatGeneratedAtTH(now);
 
     const title = reportTitleCheckin;
     const scopeLabel =
@@ -861,7 +883,11 @@ export default function ReportPreviewButton({
         <div>
           <div class="paperTitle">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
           <div class="paperMeta">
-            ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+            ${
+              trainingRangeLabel
+                ? `<span><b>รอบอบรม :</b> ${escapeHtml(trainingRangeLabel)}</span>`
+                : ""
+            }
             ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
           </div>
           ${detailLine ? `<div class="paperMeta"><span>${escapeHtml(detailLine)}</span></div>` : ""}
@@ -980,11 +1006,7 @@ export default function ReportPreviewButton({
     if (!w) return;
 
     const now = new Date();
-    const generatedAt = now.toLocaleString("th-TH", {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "Asia/Bangkok",
-    });
+    const generatedAt = formatGeneratedAtTH(now);
 
     const title = reportTitleSignature;
     const scopeLabel =
@@ -1005,7 +1027,11 @@ export default function ReportPreviewButton({
         <div>
           <div class="paperTitle">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
           <div class="paperMeta">
-            ${batch ? `<span><b>รอบอบรม:</b> ${escapeHtml(batch)}</span>` : ""}
+             ${
+              trainingRangeLabel
+                ? `<span><b>รอบอบรม :</b> ${escapeHtml(trainingRangeLabel)}</span>`
+                : ""
+            }
             ${trainerName ? `<span><b>วิทยากร :</b> ${escapeHtml(trainerName)}</span>` : ""}
           </div>
           ${detailLine ? `<div class="paperMeta"><span>${escapeHtml(detailLine)}</span></div>` : ""}

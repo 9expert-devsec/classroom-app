@@ -131,6 +131,36 @@ function monthYearEN(ymd) {
   });
 }
 
+function formatDateTH_YMD(ymd) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: BKK_TZ,
+  }); // เช่น "23 ก.พ. 2569"
+}
+
+function monthShortTH(ymd) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString("th-TH", {
+    month: "short",
+    timeZone: BKK_TZ,
+  }); // "ก.พ."
+}
+
+function monthYearTH(ymd) {
+  const dt = ymdToUTCDate(ymd);
+  if (!dt) return "";
+  return dt.toLocaleDateString("th-TH", {
+    month: "short",
+    year: "numeric",
+    timeZone: BKK_TZ,
+  }); // "ก.พ. 2569"
+}
+
 /**
  * สร้างข้อความช่วงวันอบรมจาก list ของวันจริง
  */
@@ -205,6 +235,92 @@ function buildTrainingRangeLabel(dayYMDs) {
       }
       const aStr = formatDateEN(start);
       const bStr = formatDateEN(end);
+      return start === end ? aStr : `${aStr} - ${bStr}`;
+    })
+    .join(" , ");
+
+  return parts;
+}
+
+function buildTrainingRangeLabelTH(dayYMDs) {
+  const list = (dayYMDs || []).map((x) => ymdFromAnyBKK(x)).filter(Boolean);
+  if (!list.length) return "";
+
+  const uniq = Array.from(new Set(list)).sort();
+
+  // group วันติดกัน
+  const segs = [];
+  let start = uniq[0];
+  let prev = uniq[0];
+
+  for (let i = 1; i < uniq.length; i++) {
+    const cur = uniq[i];
+    const diff = diffDaysYMD(prev, cur);
+    if (diff === 1) {
+      prev = cur;
+      continue;
+    }
+    segs.push({ start, end: prev });
+    start = cur;
+    prev = cur;
+  }
+  segs.push({ start, end: prev });
+
+  const years = new Set(uniq.map((d) => d.slice(0, 4)));
+  const monthYears = new Set(uniq.map((d) => d.slice(0, 7)));
+  const sameYear = years.size === 1;
+  const sameMonthYear = monthYears.size === 1;
+
+  const fmtDay = (ymd) => String(Number(String(ymd).slice(8, 10)));
+
+  // ✅ เดือน/ปีเดียวกัน: "23 - 24 ก.พ. 2569"
+  if (sameMonthYear) {
+    const my = monthYearTH(uniq[0]);
+    const parts = segs
+      .map(({ start, end }) => {
+        const a = fmtDay(start);
+        const b = fmtDay(end);
+        return start === end ? a : `${a} - ${b}`;
+      })
+      .join(" , ");
+    return `${parts} ${my}`;
+  }
+
+  // ✅ ปีเดียวกัน แต่ข้ามเดือน: "30 ม.ค. - 2 ก.พ. 2569"
+  if (sameYear) {
+    const parts = segs
+      .map(({ start, end }) => {
+        const aDay = fmtDay(start);
+        const bDay = fmtDay(end);
+        const aMon = monthShortTH(start);
+        const bMon = monthShortTH(end);
+
+        if (start === end) return `${aDay} ${aMon}`;
+        if (aMon === bMon) return `${aDay} - ${bDay} ${aMon}`;
+        return `${aDay} ${aMon} - ${bDay} ${bMon}`;
+      })
+      .join(" , ");
+
+    // ปี พ.ศ. (ดึงจาก format ไทยของวันแรก)
+    const y = formatDateTH_YMD(uniq[0]).split(" ").at(-1) || "";
+    return y ? `${parts} ${y}` : parts;
+  }
+
+  // ✅ ข้ามปี: ใส่วันเต็มทุกช่วง: "31 ธ.ค. 2568 - 1 ม.ค. 2569"
+  const parts = segs
+    .map(({ start, end }) => {
+      const aMY = start.slice(0, 7);
+      const bMY = end.slice(0, 7);
+
+      if (aMY === bMY) {
+        const my = monthYearTH(start);
+        const a = fmtDay(start);
+        const b = fmtDay(end);
+        return start === end ? `${a} ${my}` : `${a} - ${b} ${my}`;
+      }
+
+      const aStr = formatDateTH_YMD(start);
+      const bStr = formatDateTH_YMD(end);
       return start === end ? aStr : `${aStr} - ${bStr}`;
     })
     .join(" , ");
@@ -725,6 +841,10 @@ export default function ClassDetailPage() {
     return buildTrainingRangeLabel(dayDates);
   }, [dayDates]);
 
+  const trainingRangeLabelTH = useMemo(() => {
+  return buildTrainingRangeLabelTH(dayDates); // ✅ TH
+}, [dayDates]);
+
   // ✅ NEW: inject LIVE CHECK / ABSENT สำหรับ “วันนี้” เข้า students แบบชั่วคราว (ใช้กับ table + report)
   const students = useMemo(() => {
     return applyAutoAttendance(rawStudents, dayDates, nowBKK);
@@ -1068,6 +1188,7 @@ export default function ClassDetailPage() {
               totalStudentsCount={studentsCount} // total ทั้งคลาส
               dayCount={dayCount}
               dayDates={dayDates} // ✅ ใช้วันจริงชุดเดียวกับตาราง
+              trainingRangeLabel={trainingRangeLabelTH}
               classInfo={classData}
             />
 
@@ -1141,13 +1262,13 @@ export default function ClassDetailPage() {
             </div>
 
             <div className=" text-base text-admin-textMuted">
-              ห้อง {roomName || "-"}
+              ห้อง : {roomName || "-"}
               {dateRangeText && <> • {dateRangeText}</>}
             </div>
 
             {timeRangeText && (
               <div className=" text-base text-admin-textMuted">
-                เวลาอบรม: {timeRangeText}
+                เวลาอบรม : {timeRangeText}
               </div>
             )}
 
