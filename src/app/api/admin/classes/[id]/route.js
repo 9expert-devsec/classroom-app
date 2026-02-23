@@ -54,8 +54,13 @@ function normalizeDocId(x) {
   s = s.replace(/\s+/g, " ");
   // normalize hyphen spaces: "INV - 001" -> "INV-001"
   s = s.replace(/\s*-\s*/g, "-");
+
   // normalize "INV 001" -> "INV-001"
-  const m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
+  let m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+
+  // ✅ normalize "INV001" / "RP2026020071" -> "INV-001" / "RP-2026020071"
+  m = s.match(/^([A-Z]{2,10})([0-9]{1,20})$/);
   if (m) return `${m[1]}-${m[2]}`;
 
   return s;
@@ -70,7 +75,10 @@ function getStudentName(stu) {
 // GET /api/admin/classes/[id]
 export async function GET(req, { params }) {
   await dbConnect();
-  const { id } = params;
+
+  // รองรับทั้ง params แบบ object และ Promise (Next บางเวอร์ชัน)
+  const p = await Promise.resolve(params);
+  const id = p?.id;
 
   const cls = await Class.findById(id).lean();
   if (!cls) {
@@ -89,19 +97,17 @@ export async function GET(req, { params }) {
         "company",
         "paymentRef",
 
-        "type",
-        "typeTimeline",
-        "typeEditCount",
-        "editLogs",
-
+        // learnType shapes
         "learnType",
         "studyType",
         "type",
         "learnTypeTimeline",
         "typeTimeline",
         "learnTypeHistory",
+        "typeEditCount",
+        "editLogs",
 
-        // ✅ IMPORTANT: ส่งสถานะผู้เรียนไปให้ FE ด้วย
+        // ✅ status
         "studentStatus",
 
         // receive (3.1) cached fields
@@ -140,6 +146,7 @@ export async function GET(req, { params }) {
         "type",
         "classId",
         "docId",
+        "sender",
         "receivers",
         "staffReceiveItems",
         "customerSig",
@@ -153,6 +160,7 @@ export async function GET(req, { params }) {
   // map receipts by docId + type
   const receiptCustomerByDoc = new Map(); // docId -> receipt(customer_receive)
   const receiptStaffByDoc = new Map(); // docId -> receipt(staff_receive)
+
   for (const r of receipts || []) {
     const doc = normalizeDocId(r?.docId);
     if (!doc) continue;
@@ -170,11 +178,20 @@ export async function GET(req, { params }) {
     }
   }
 
+  // ✅ pick receiptSig + signer meta
   function pickCustomerReceiptSigFromReceivers(receipt, stu) {
     const receivers = Array.isArray(receipt?.receivers)
       ? receipt.receivers
       : [];
-    if (!receivers.length) return { url: "", signedAt: null };
+    if (!receivers.length) {
+      return {
+        url: "",
+        signedAt: null,
+        signerStudentId: "",
+        signerName: "",
+        signerCompany: "",
+      };
+    }
 
     const sid = String(stu?._id || "");
     const name = getStudentName(stu);
@@ -183,13 +200,23 @@ export async function GET(req, { params }) {
     if (idx < 0 && name)
       idx = receivers.findIndex((x) => clean(x?.name) === name);
 
-    if (idx < 0) return { url: "", signedAt: null };
+    // ถ้าไม่เจอ receiver ของคนนี้ ให้ fallback ไปตัวแรกที่มีลายเซ็น (หรือ receivers[0])
+    const rcv =
+      idx >= 0
+        ? receivers[idx]
+        : receivers.find((x) => clean(x?.receiptSig?.url)) ||
+          receivers[0] ||
+          {};
 
-    const rcv = receivers[idx] || {};
     const sig = rcv?.receiptSig || {};
+
     return {
       url: clean(sig?.url),
       signedAt: sig?.signedAt || null,
+
+      signerStudentId: clean(sig?.signerStudentId),
+      signerName: clean(sig?.signerName),
+      signerCompany: clean(sig?.signerCompany),
     };
   }
 
@@ -231,24 +258,49 @@ export async function GET(req, { params }) {
     let docSigUrl = clean(s.documentReceiptSigUrl);
     let docSignedAt = s.documentReceiptSignedAt || null;
 
-    if (!docSigUrl && docIdNorm) {
+    let signerStudentId = "";
+    let signerName = "";
+    let signerCompany = "";
+
+    // ✅ ดึง signer meta จาก DocumentReceipt เสมอ (แม้ docSigUrl จะมี cache แล้ว)
+    if (docIdNorm) {
       const rc = receiptCustomerByDoc.get(docIdNorm);
       if (rc) {
         const picked = pickCustomerReceiptSigFromReceivers(rc, stu);
-        if (picked.url) docSigUrl = picked.url;
+
+        // url/signedAt เติมเฉพาะตอนยังไม่มี เพื่อกันทับ cache ของ Student
+        if (!docSigUrl && picked.url) docSigUrl = picked.url;
         if (!docSignedAt && picked.signedAt) docSignedAt = picked.signedAt;
+
+        signerStudentId = picked.signerStudentId || "";
+        signerName = picked.signerName || "";
+        signerCompany = picked.signerCompany || "";
       }
     }
 
     s.documentReceiptSigUrl = docSigUrl;
     s.documentReceiptSignedAt = docSignedAt;
+
+    // ✅ ส่ง object ที่ FE ใช้ได้เลย (มี signer meta)
     s.documentReceiptSig = docSigUrl
-      ? { url: docSigUrl, signedAt: docSignedAt }
+      ? {
+          url: docSigUrl,
+          signedAt: docSignedAt,
+          signerStudentId,
+          signerName,
+          signerCompany,
+        }
       : null;
+
+    // ✅ optional (ช่วย debug/อ่านง่าย)
+    s.documentReceiptSignerStudentId = signerStudentId;
+    s.documentReceiptSignerName = signerName;
+    s.documentReceiptSignerCompany = signerCompany;
 
     // ---- staff receive (3.2) ----
     if (docIdNorm) {
       const rs = receiptStaffByDoc.get(docIdNorm);
+
       if (rs) {
         s.staffReceiveItems = rs.staffReceiveItems || null;
 
@@ -262,6 +314,12 @@ export async function GET(req, { params }) {
         s.staffReceiveStaffSignedAt = rs?.staffSig?.signedAt || null;
 
         s.staffReceiveUpdatedAt = rs.updatedAt || rs.createdAt || null;
+
+        // ✅ ตัวแทนนำส่ง (sender)
+        s.staffReceiveSender = rs.sender || null;
+        s.staffReceiveSenderStudentId = clean(rs?.sender?.studentId);
+        s.staffReceiveSenderName = clean(rs?.sender?.name);
+        s.staffReceiveSenderCompany = clean(rs?.sender?.company);
       } else {
         s.staffReceiveItems = null;
         s.staffReceiveCustomerSig = null;
@@ -271,6 +329,12 @@ export async function GET(req, { params }) {
         s.staffReceiveStaffSigUrl = "";
         s.staffReceiveStaffSignedAt = null;
         s.staffReceiveUpdatedAt = null;
+
+        // ✅ เคลียร์ sender ด้วย
+        s.staffReceiveSender = null;
+        s.staffReceiveSenderStudentId = "";
+        s.staffReceiveSenderName = "";
+        s.staffReceiveSenderCompany = "";
       }
     }
 
@@ -290,9 +354,10 @@ export async function GET(req, { params }) {
 // PATCH /api/admin/classes/[id]
 export async function PATCH(req, { params }) {
   await dbConnect();
-  const { id } = params;
-  const body = await req.json().catch(() => ({}));
+  const p = await Promise.resolve(params);
+  const { id } = p;
 
+  const body = await req.json().catch(() => ({}));
   const update = {};
 
   if (body.title !== undefined) {
@@ -399,7 +464,8 @@ export async function PATCH(req, { params }) {
 // DELETE /api/admin/classes/[id]
 export async function DELETE(req, { params }) {
   await dbConnect();
-  const { id } = params;
+  const p = await Promise.resolve(params);
+  const { id } = p;
 
   try {
     const cls = await Class.findByIdAndDelete(id);

@@ -36,6 +36,7 @@ export default function ReceiveCustomerSignClient() {
   const classId = clean(sp.get("classId"));
   const docId = clean(sp.get("docId"));
   const receiverIndex = Number(sp.get("receiverIndex") || 0);
+  const signerStudentId = clean(sp.get("signerStudentId"));
 
   const [loading, setLoading] = useState(false);
   const [todayYMD, setTodayYMD] = useState("");
@@ -72,17 +73,30 @@ export default function ReceiveCustomerSignClient() {
         }
 
         const items = Array.isArray(data?.items) ? data.items : [];
-        const found = items.find((it) => {
-          const itDoc = clean(it.docIdNormalized || it.docId);
-          return (
-            clean(it.classId) === classId &&
-            itDoc === docId &&
-            Number(it.receiverIndex || 0) === receiverIndex
-          );
-        });
+        const found =
+          (signerStudentId
+            ? items.find((it) => {
+                const itDoc = clean(it.docIdNormalized || it.docId);
+                return (
+                  clean(it.classId) === classId &&
+                  itDoc === docId &&
+                  clean(it.studentId) === signerStudentId
+                );
+              })
+            : null) ||
+          items.find((it) => {
+            const itDoc = clean(it.docIdNormalized || it.docId);
+            return (
+              clean(it.classId) === classId &&
+              itDoc === docId &&
+              Number(it.receiverIndex || 0) === receiverIndex
+            );
+          });
 
         if (!found) {
-          setErr("ไม่พบรายการนี้ในวันนี้ (อาจยังไม่ได้เช็คอิน/หรือข้อมูลเปลี่ยน)");
+          setErr(
+            "ไม่พบรายการนี้ในวันนี้ (อาจยังไม่ได้เช็คอิน/หรือข้อมูลเปลี่ยน)",
+          );
           return;
         }
 
@@ -121,6 +135,11 @@ export default function ReceiveCustomerSignClient() {
           docId: selected.docIdNormalized || selected.docId,
           receiverIndex: Number(selected.receiverIndex || 0),
           signatureDataUrl: sigDataUrl,
+
+          // ✅ เพิ่ม 3 field นี้
+          signerStudentId: selected.studentId,
+          signerName: selected.name,
+          signerCompany: selected.company || "",
         }),
       });
 
@@ -164,7 +183,9 @@ export default function ReceiveCustomerSignClient() {
           <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
             Receive Doc : detail
           </div>
-          <h1 className="mt-1 text-lg font-semibold text-admin-text">{title}</h1>
+          <h1 className="mt-1 text-lg font-semibold text-admin-text">
+            {title}
+          </h1>
           <div className="mt-1 text-sm text-admin-textMuted">
             {todayYMD ? `Today: ${todayYMD}` : "ระบบจะแสดงเฉพาะรายการของวันนี้"}
           </div>
@@ -176,7 +197,9 @@ export default function ReceiveCustomerSignClient() {
         {/* status */}
         <div className="shrink-0">
           {loading ? (
-            <div className="text-sm text-admin-textMuted">กำลังโหลดข้อมูล...</div>
+            <div className="text-sm text-admin-textMuted">
+              กำลังโหลดข้อมูล...
+            </div>
           ) : err ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {err}
@@ -205,7 +228,9 @@ export default function ReceiveCustomerSignClient() {
                 <div className="mt-3 font-semibold">ข้อมูลผู้รับเอกสาร</div>
                 <div className="mt-1 text-admin-textMuted">
                   ชื่อ:{" "}
-                  <span className="font-medium text-admin-text">{selected.name}</span>
+                  <span className="font-medium text-admin-text">
+                    {selected.name}
+                  </span>
                 </div>
                 <div className="mt-1 text-admin-textMuted">
                   บริษัท:{" "}
@@ -228,7 +253,8 @@ export default function ReceiveCustomerSignClient() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {selected.documentReceivedAt ? (
                     <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      รับเอกสารแล้ว ({formatDateTH(selected.documentReceivedAt)})
+                      รับเอกสารแล้ว ({formatDateTH(selected.documentReceivedAt)}
+                      )
                     </span>
                   ) : (
                     <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-700">
@@ -269,7 +295,9 @@ export default function ReceiveCustomerSignClient() {
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-admin-textMuted">
               {sigDataUrl ? (
-                <span className="font-semibold text-emerald-700">มีลายเซ็นแล้ว</span>
+                <span className="font-semibold text-emerald-700">
+                  มีลายเซ็นแล้ว
+                </span>
               ) : (
                 <span>ยังไม่ได้เซ็น</span>
               )}

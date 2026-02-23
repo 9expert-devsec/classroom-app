@@ -88,16 +88,23 @@ export default function ReceiveCustomerSearchPage() {
     const classId = it.classId;
     const docId = it.docIdNormalized || it.docId || "";
     const receiverIndex = String(Number(it.receiverIndex || 0));
+    const signerStudentId = clean(it.studentId);
+
     if (!classId || !docId) {
       setErr("ข้อมูลรายการไม่ครบ (classId/docId)");
       return;
     }
+    if (!signerStudentId) {
+      setErr("ข้อมูลรายการไม่ครบ (studentId)");
+      return;
+    }
+
     router.push(
       `/classroom/receive/customer/sign?classId=${encodeURIComponent(
         classId,
       )}&docId=${encodeURIComponent(docId)}&receiverIndex=${encodeURIComponent(
         receiverIndex,
-      )}`,
+      )}&signerStudentId=${encodeURIComponent(signerStudentId)}`,
     );
   }
 
@@ -119,7 +126,9 @@ export default function ReceiveCustomerSearchPage() {
           <h1 className="mt-1 sm:text-2xl lg:text-lg font-semibold text-admin-text">
             รับเอกสาร (ลูกค้ารับเอกสาร)
           </h1>
-          <div className="mt-1 sm:text-lg lg:text-sm text-admin-textMuted">{hintText}</div>
+          <div className="mt-1 sm:text-lg lg:text-sm text-admin-textMuted">
+            {hintText}
+          </div>
         </div>
       </div>
 
@@ -241,14 +250,16 @@ export default function ReceiveCustomerSearchPage() {
           hasSearched &&
           !loading && (
             <div className="rounded-2xl border border-admin-border bg-white p-4 text-sm text-admin-textMuted">
-              ไม่พบข้อมูลของวันนี้ (หรือยังไม่มีผู้เช็คอินในวันนี้ / หรือไม่พบเลขเอกสารในระบบ)
+              ไม่พบข้อมูลของวันนี้ (หรือยังไม่มีผู้เช็คอินในวันนี้ /
+              หรือไม่พบเลขเอกสารในระบบ)
             </div>
           )
         )}
       </div>
 
       <div className="mt-4 text-xs text-admin-textMuted">
-        Notes: หน้านี้จะแสดงเฉพาะ “รอบอบรมวันนี้” และ “ผู้ที่เช็คอินแล้วในวันนี้”
+        Notes: หน้านี้จะแสดงเฉพาะ “รอบอบรมวันนี้” และ
+        “ผู้ที่เช็คอินแล้วในวันนี้”
       </div>
     </div>
   );

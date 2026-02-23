@@ -1,6 +1,7 @@
 // src/app/api/classroom/receive/staff/confirm/route.js
 import dbConnect from "@/lib/mongoose";
 import DocumentReceipt from "@/models/DocumentReceipt";
+import Student from "@/models/Student";
 import { uploadSignatureDataUrl } from "@/lib/cloudinaryUpload.server";
 
 export const runtime = "nodejs";
@@ -16,8 +17,15 @@ function normalizeDocId(x) {
     .toUpperCase();
   s = s.replace(/\s+/g, " ");
   s = s.replace(/\s*-\s*/g, "-");
-  const m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
+
+  // "INV 001" -> "INV-001"
+  let m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
   if (m) return `${m[1]}-${m[2]}`;
+
+  // ✅ "INV001" / "RP2026020071" -> "INV-001" / "RP-2026020071"
+  m = s.match(/^([A-Z]{2,10})([0-9]{1,20})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+
   return s;
 }
 
@@ -38,9 +46,14 @@ export async function POST(req) {
   const classId = clean(body?.classId);
   const docId = normalizeDocId(body?.docId);
 
-  const sender = body?.sender || {};
-  const senderName = clean(sender?.name);
-  const senderCompany = clean(sender?.company);
+  // ✅ รับ senderStudentId แบบเดียวกับ 3.1 (fallback ไป sender.studentId)
+  const senderStudentIdReq =
+    clean(body?.senderStudentId) || clean(body?.sender?.studentId);
+
+  // (fallback) เผื่อ client ส่งชื่อ/บริษัทมา แต่เราจะใช้ต่อเมื่อ lookup ไม่เจอ
+  const senderFromClient = body?.sender || {};
+  const senderNameClient = clean(senderFromClient?.name);
+  const senderCompanyClient = clean(senderFromClient?.company);
 
   const staffReceiveItems = body?.staffReceiveItems || {};
   const check = !!staffReceiveItems?.check;
@@ -77,6 +90,57 @@ export async function POST(req) {
     );
   }
 
+  // ✅ resolve sender จาก Student ในคลาส (กัน spoof + ได้ข้อมูลถูก)
+  let senderObj = { studentId: "", name: "", company: "" };
+
+  if (senderStudentIdReq) {
+    const senderStu = await Student.findOne({
+      _id: senderStudentIdReq,
+      classId,
+    })
+      .select("_id name thaiName engName company paymentRef")
+      .lean();
+
+    if (senderStu) {
+      // (optional) ถ้าต้องการบังคับว่า sender ต้องอยู่ในกลุ่มเลข doc เดียวกันจริง
+      // ถ้าอยาก strict ให้เปิด if นี้
+      // const prNorm = normalizeDocId(senderStu.paymentRef);
+      // if (prNorm && prNorm !== docId) {
+      //   return Response.json(
+      //     { ok: false, error: "senderStudentId ไม่อยู่ในกลุ่มเลขเอกสารนี้" },
+      //     { status: 400 },
+      //   );
+      // }
+
+      senderObj = {
+        studentId: String(senderStu._id),
+        name:
+          clean(senderStu.name) ||
+          clean(senderStu.thaiName) ||
+          clean(senderStu.engName) ||
+          "-",
+        company: clean(senderStu.company),
+      };
+    }
+  }
+
+  // fallback: ถ้า lookup ไม่เจอ แต่ client ส่งชื่อมา ก็ยังเก็บไว้เป็นตัวแทนได้
+  if (!senderObj.name && (senderNameClient || senderCompanyClient)) {
+    senderObj = {
+      studentId: senderObj.studentId || senderStudentIdReq || "",
+      name: senderNameClient,
+      company: senderCompanyClient,
+    };
+  }
+
+  // ถ้าคุณต้องการ “บังคับต้องรู้ตัวแทนเสมอ” ให้เปิด validation นี้
+  // if (!senderObj.name) {
+  //   return Response.json(
+  //     { ok: false, error: "missing sender (senderStudentId/name)" },
+  //     { status: 400 },
+  //   );
+  // }
+
   const folder = `classroom/receive/staff/${classId}/${docId}`;
 
   // ✅ upload เฉพาะ staff
@@ -107,11 +171,9 @@ export async function POST(req) {
       signerName: "",
       signerRole: "staff",
     },
-    sender: {
-      studentId: clean(sender?.studentId),
-      name: senderName,
-      company: senderCompany,
-    },
+
+    // ✅ ตัวแทนนำส่งเอกสาร
+    sender: senderObj,
   };
 
   try {
@@ -134,8 +196,9 @@ export async function POST(req) {
         signedAt: now,
         staffSigUrl: staffUploaded.url,
         staffReceiveItems: receipt.staffReceiveItems,
-        senderName,
-        senderCompany,
+
+        // ✅ ส่งกลับให้ FE ใช้โชว์ได้ทันที
+        sender: receipt.sender || senderObj,
       },
     });
   } catch (err) {
@@ -156,8 +219,7 @@ export async function POST(req) {
             signedAt: now,
             staffSigUrl: staffUploaded.url,
             staffReceiveItems: receipt.staffReceiveItems,
-            senderName,
-            senderCompany,
+            sender: receipt.sender || senderObj,
           },
         });
       }

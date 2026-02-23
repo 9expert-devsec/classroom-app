@@ -49,6 +49,8 @@ export async function POST(req) {
   const receiverIndex = Number(body?.receiverIndex ?? 0);
   const signatureDataUrl = body?.signatureDataUrl;
 
+  const signerStudentIdReq = clean(body?.signerStudentId);
+
   if (!classId) {
     return Response.json(
       { ok: false, error: "missing classId" },
@@ -87,6 +89,22 @@ export async function POST(req) {
     );
   }
 
+  // ✅ หา signer จาก group จริง (กัน spoof จาก client)
+  const signerStudent = signerStudentIdReq
+    ? group.find((s) => String(s?._id) === signerStudentIdReq)
+    : null;
+
+  // fallback ถ้าไม่เจอ: ใช้คนแรกของ group (หรือจะใช้ receiverIndex ก็ได้)
+  const signer = signerStudent || group[0];
+
+  const signerStudentId = signer ? String(signer._id) : "";
+  const signerName =
+    clean(signer?.name) ||
+    clean(signer?.thaiName) ||
+    clean(signer?.engName) ||
+    "-";
+  const signerCompany = clean(signer?.company);
+
   // 2) upload signature
   const folder = `classroom/receive/customer/${classId}/${docId}`;
   const uploaded = await uploadSignatureDataUrl(signatureDataUrl, {
@@ -102,6 +120,10 @@ export async function POST(req) {
     signedAt: now,
     signerName: "", // ถ้าจะใส่ชื่อคนเซ็นจริง ค่อยเติมจาก receiverIndex ได้
     signerRole: "customer",
+
+    signerStudentId,
+    signerName,
+    signerCompany,
   };
 
   // 3) ensure receipt (customer_receive เท่านั้น)
@@ -168,6 +190,10 @@ export async function POST(req) {
           documentReceiptSigUrl: uploaded.url,
           documentReceiptSignedAt: now,
           documentReceivedAt: now, // ✅ ทำให้ทุกคนขึ้น “รับเอกสารแล้ว”
+
+          documentReceiptSignerStudentId: signerStudentId,
+          documentReceiptSignerName: signerName,
+          documentReceiptSignerCompany: signerCompany,
         },
       },
     );
@@ -184,6 +210,8 @@ export async function POST(req) {
         signedUrl: uploaded.url,
         receiverIndex: Number.isFinite(receiverIndex) ? receiverIndex : 0,
         groupCount: group.length,
+
+        signer: { signerStudentId, signerName, signerCompany },
       },
     });
   } catch (err) {

@@ -287,6 +287,8 @@ function ReceiveDocModal({ open, stu, onClose }) {
   const typeRaw = getReceiveTypeRaw(stu);
   const isEMS = typeRaw === "ems";
   const qtNo = stu?.paymentRef || "-";
+  const signer = getReceiveSignerMeta(stu);
+  const hasSigner = !!(signer.signerName || signer.signerCompany);
 
   return (
     <div
@@ -367,12 +369,25 @@ function ReceiveDocModal({ open, stu, onClose }) {
               </div>
 
               {sig ? (
-                <div className="mt-2 flex items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 ">
+                <div className="mt-2 flex flex-col p-2 items-center justify-center rounded-xl border border-admin-border bg-admin-surfaceMuted/40 ">
                   <img
                     src={sig}
                     alt="ลายเซ็นรับเอกสาร"
                     className="max-h-[240px] w-auto max-w-full object-contain"
                   />
+                  {!isEMS && sig && (
+                    <div className="mt-3 ml-auto flex flex-col min-w-40 rounded-xl border border-admin-border bg-white p-3">
+                      <div className="text-sm text-admin-textMuted">
+                        ตัวแทนผู้เซ็นรับเอกสาร
+                      </div>
+                      <div className="mt-1 text-base font-semibold text-admin-text">
+                        {hasSigner ? signer.signerName || "-" : "-"}
+                      </div>
+                      <div className="mt-0.5 text-sm text-admin-textMuted">
+                        บริษัท: {hasSigner ? signer.signerCompany || "-" : "-"}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="mt-2 flex items-center justify-center rounded-xl border border-dashed border-admin-border bg-admin-surfaceMuted/30 p-6 text-admin-textMuted">
@@ -418,6 +433,35 @@ function getReceiveSignatureUrl(stu) {
   );
 }
 
+function getReceiveSignerMeta(stu) {
+  // รองรับหลาย shape กันพัง (เพราะ API อาจส่งมาได้หลายแบบ)
+  const sigObj =
+    stu?.documentReceiptSig ||
+    stu?.documentReceiptSigObj ||
+    stu?.documentReceiptSigMeta ||
+    null;
+
+  const signerStudentId =
+    clean(stu?.documentReceiptSignerStudentId) ||
+    clean(sigObj?.signerStudentId) ||
+    clean(sigObj?.receiptSig?.signerStudentId) ||
+    "";
+
+  const signerName =
+    clean(stu?.documentReceiptSignerName) ||
+    clean(sigObj?.signerName) ||
+    clean(sigObj?.receiptSig?.signerName) ||
+    "";
+
+  const signerCompany =
+    clean(stu?.documentReceiptSignerCompany) ||
+    clean(sigObj?.signerCompany) ||
+    clean(sigObj?.receiptSig?.signerCompany) ||
+    "";
+
+  return { signerStudentId, signerName, signerCompany };
+}
+
 /* ================= Staff receive helpers (3.2 staff_receive) ================= */
 
 function StaffDeliverModal({ open, stu, onClose }) {
@@ -429,6 +473,11 @@ function StaffDeliverModal({ open, stu, onClose }) {
 
   const customerUrl = getStaffReceiveCustomerSigUrl(stu);
   const staffUrl = getStaffReceiveStaffSigUrl(stu);
+
+  const sender = getStaffReceiveSenderMeta(stu);
+  const senderText = sender.name
+    ? `${sender.name}${sender.company ? ` • ${sender.company}` : ""}`
+    : "-";
 
   return (
     <div
@@ -446,6 +495,12 @@ function StaffDeliverModal({ open, stu, onClose }) {
             </div>
             <div className="mt-0.5 text-sm text-admin-textMuted">
               {getStudentName(stu)}
+            </div>
+            <div>
+              <div className="text-sm text-admin-textMuted">
+                ตัวแทนนำส่งเอกสาร
+              </div>
+              <div className="mt-0.5 text-base">{senderText}</div>
             </div>
           </div>
 
@@ -540,6 +595,16 @@ function getStaffReceiveCustomerSigUrl(stu) {
     clean(stu?.staffReceiveCustomerSig?.receiptSig?.url) ||
     ""
   );
+}
+
+function getStaffReceiveSenderMeta(stu) {
+  const senderObj = stu?.staffReceiveSender || null;
+  const name = clean(stu?.staffReceiveSenderName) || clean(senderObj?.name);
+  const company =
+    clean(stu?.staffReceiveSenderCompany) || clean(senderObj?.company);
+  const studentId =
+    clean(stu?.staffReceiveSenderStudentId) || clean(senderObj?.studentId);
+  return { studentId, name, company };
 }
 
 function getStaffReceiveStaffSigUrl(stu) {

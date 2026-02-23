@@ -1,6 +1,7 @@
 // src/models/DocumentReceipt.js
 import mongoose from "mongoose";
 
+/** ใช้กับช่อง sig เก่า/อื่น ๆ (customerSig/staffSig/withholdingSig) */
 const SigSchema = new mongoose.Schema(
   {
     url: { type: String, default: "" },
@@ -13,19 +14,34 @@ const SigSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/** ✅ ช่องลายเซ็นรับเอกสารหลัก (receiptSig) + เก็บตัวแทนคนเซ็น */
+const ReceiptSigSchema = new mongoose.Schema(
+  {
+    url: { type: String, default: "" },
+    publicId: { type: String, default: "" },
+    signedAt: { type: Date, default: null },
+    signerRole: { type: String, default: "" },
+
+    // ✅ เพิ่มใหม่
+    signerStudentId: { type: String, default: "" },
+    signerName: { type: String, default: "" },
+    signerCompany: { type: String, default: "" },
+  },
+  { _id: false },
+);
+
 const ReceiverSchema = new mongoose.Schema(
   {
     receiverId: { type: String, default: "" }, // optional
     name: { type: String, default: "" },
     company: { type: String, default: "" },
 
-    // ✅ เพิ่ม field นี้ เพื่อโชว์ช่องทางรับเอกสารจาก Student.documentReceiveType
-    // ตัวอย่าง: "on_class" | "ems" (อนาคตคุณจะ map เป็น "มารับ ณ วันอบรม" | "ส่งปณ")
+    // ✅ ช่องทางรับเอกสารจาก Student.documentReceiveType
     documentReceiveType: { type: String, default: "" },
 
-    // เราใช้ receiptSig เป็น "ลายเซ็นรับเอกสาร" ช่องเดียวแล้ว (ตามที่คุณตัด type ออก)
+    // ✅ ใช้ receiptSig เป็น "ลายเซ็นรับเอกสาร" ช่องเดียว
     receiptSig: {
-      type: SigSchema,
+      type: ReceiptSigSchema,
       default: () => ({ signerRole: "customer" }),
     },
 
@@ -45,6 +61,7 @@ const DocumentReceiptSchema = new mongoose.Schema(
       name: { type: String, default: "" },
       company: { type: String, default: "" },
     },
+
     type: {
       type: String,
       enum: ["customer_receive", "staff_receive"],
@@ -74,13 +91,15 @@ const DocumentReceiptSchema = new mongoose.Schema(
       withholding: { type: Boolean, default: false },
       other: { type: String, default: "" },
     },
+
+    // legacy/optional
     customerSig: { type: SigSchema, default: null },
     staffSig: { type: SigSchema, default: null },
   },
   { timestamps: true },
 );
 
-// 1 คลาส + 1 docId ต้องไม่ซ้ำ
+// 1 คลาส + 1 docId + type ต้องไม่ซ้ำ
 DocumentReceiptSchema.index(
   { classId: 1, docId: 1, type: 1 },
   { unique: true },
