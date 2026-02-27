@@ -1,23 +1,34 @@
 // src/utils/auth.js
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-
-if (!JWT_SECRET) {
-  throw new Error("JWT_SECRET is not set in environment variables");
-}
- 
-// สร้าง token สำหรับ admin
-export function signAdminToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: EXPIRES_IN });
-}
-
-// ตรวจสอบ token
-export function verifyAdminToken(token) {
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (err) {
-    return null;
+function getSecret() {
+  const raw = String(process.env.JWT_SECRET || "").trim();
+  if (!raw && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is required in production");
   }
+  const s = raw || "dev-jwt-secret";
+  return new TextEncoder().encode(s);
+}
+
+function getExpires() {
+  const v = String(process.env.JWT_EXPIRES_IN || "").trim();
+  // jose รับ format แบบ "7d", "12h", "30m" ฯลฯ
+  return v || "7d";
+}
+
+export async function signAdminToken(payload) {
+  const secret = getSecret();
+  const exp = getExpires();
+
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(exp)
+    .sign(secret);
+}
+
+export async function verifyAdminToken(token) {
+  const secret = getSecret();
+  const { payload } = await jwtVerify(token, secret);
+  return payload;
 }

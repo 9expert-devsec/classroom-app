@@ -1,7 +1,8 @@
-// src/app/api/admin/classes/[id]/students/[studentId]/signatures/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/dbConnect";
-import { requireAdmin } from "@/lib/adminAuth.server";
+import { requirePerm } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
+import { writeAuditLog } from "@/lib/auditLog.server";
 
 import Student from "@/models/Student";
 import Checkin from "@/models/Checkin";
@@ -20,6 +21,18 @@ function clean(s) {
   return String(s ?? "").trim();
 }
 
+function safeBool(x) {
+  return !!x;
+}
+
+async function safeAudit(payload) {
+  try {
+    await writeAuditLog(payload);
+  } catch (e) {
+    console.error("writeAuditLog failed:", e?.message || e);
+  }
+}
+
 function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -31,11 +44,9 @@ function normalizeDocId(x) {
   s = s.replace(/\s+/g, " ");
   s = s.replace(/\s*-\s*/g, "-");
 
-  // "INV 001" -> "INV-001"
   let m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
   if (m) return `${m[1]}-${m[2]}`;
 
-  // "INV001" -> "INV-001"
   m = s.match(/^([A-Z]{2,10})([0-9]{1,20})$/);
   if (m) return `${m[1]}-${m[2]}`;
 
@@ -70,11 +81,17 @@ function buildDocLooseRegex(docNorm) {
     return new RegExp(`^\\s*${raw}\\s*$`, "i");
   }
   const { prefix, num } = parts;
-  // ^ INV\s*[- ]?\s*001 $
   return new RegExp(
     `^\\s*${escapeRegExp(prefix)}\\s*[- ]?\\s*${escapeRegExp(num)}\\s*$`,
     "i",
   );
+}
+
+function getStudentLabel(stu) {
+  const name =
+    clean(stu?.name) || clean(stu?.thaiName) || clean(stu?.engName) || "-";
+  const company = clean(stu?.company);
+  return company ? `${name} (${company})` : name;
 }
 
 // ถ้ามี helper ลบ Cloudinary ของคุณอยู่แล้ว ให้เปลี่ยนมาใช้ของคุณแทน
@@ -98,11 +115,11 @@ async function tryDeleteCloudinary(publicId) {
 //  | { kind:"staff_3_2", who:"customer"|"staff" }
 export async function DELETE(req, ctx) {
   try {
-    const admin = await requireAdmin();
+    const adminCtx = await requirePerm(PERM.CLASSES_WRITE);
     await dbConnect();
 
     const p = await ctx?.params;
-    const classId = clean(p?.classId || p?.id); // route is [id]
+    const classId = clean(p?.classId || p?.id);
     const studentId = clean(p?.studentId);
 
     if (!classId || !studentId)
@@ -112,9 +129,11 @@ export async function DELETE(req, ctx) {
     const kind = clean(body?.kind);
     if (!kind) return jsonError("missing kind");
 
-    // โหลด student ไว้ใช้หลายเคส
     const student = await Student.findOne({ _id: studentId, classId });
     if (!student) return jsonError("student not found in this class", 404);
+
+    const studentLabel = getStudentLabel(student);
+    const paymentNorm = normalizeDocId(student.paymentRef);
 
     /* ===== 1) delete checkin signature ===== */
     if (kind === "checkin") {
@@ -131,10 +150,10 @@ export async function DELETE(req, ctx) {
         clean(checkin.publicId) ||
         "";
 
-      // ✅ 1) ลบ checkin record ของวันนั้น
+      // ✅ ลบ checkin record ของวันนั้น
       await Checkin.deleteOne({ _id: checkin._id });
 
-      // ✅ 2) รีเซ็ต flag ใน Student
+      // ✅ รีเซ็ต flag ใน Student
       const dayKey = `day${day}`;
       if (
         student.checkinStatus &&
@@ -143,17 +162,16 @@ export async function DELETE(req, ctx) {
         student.checkinStatus[dayKey] = false;
       }
 
-      // ✅ 3) เคลียร์ fallback signature บน Student ถ้าตรงกับของเดิม
+      // ✅ เคลียร์ fallback signature บน Student ถ้าตรงกับของเดิม
       if (oldUrl && clean(student.signatureUrl) === oldUrl) {
         student.signatureUrl = "";
       }
 
-      // ✅ 4) recompute lastCheckinAt / isLate จากวันอื่นที่ยังเหลือ
+      // ✅ recompute lastCheckinAt / isLate จากวันอื่นที่ยังเหลือ
       const remain = await Checkin.find({ classId, studentId })
         .select("time isLate signatureUrl createdAt")
         .lean();
 
-      // ถ้า time เป็น string HH:mm อาจ parse ไม่ได้ → fallback ใช้ createdAt
       const times = (remain || [])
         .map((r) => {
           const t = r?.time ? new Date(r.time).getTime() : NaN;
@@ -168,13 +186,12 @@ export async function DELETE(req, ctx) {
         : null;
       student.isLate = (remain || []).some((r) => !!r?.isLate);
 
-      // (optional) log
       student.editLogs = Array.isArray(student.editLogs)
         ? student.editLogs
         : [];
       student.editLogs.push({
         at: new Date(),
-        by: clean(admin?.email || admin?.name || ""),
+        by: clean(adminCtx?.user?.name || adminCtx?.user?.username || ""),
         action: "ลบเช็คอิน",
         field: `checkin.day${day}`,
         from: oldUrl ? "signed" : "checked",
@@ -185,15 +202,44 @@ export async function DELETE(req, ctx) {
       await student.save();
 
       if (oldPid) await tryDeleteCloudinary(oldPid);
+
+      // ✅ audit
+      await safeAudit({
+        ctx: adminCtx,
+        req,
+        action: "delete",
+        entityType: "signature",
+        entityId: `${studentId}__checkin__day${day}`,
+        entityLabel: `${studentLabel} • checkin day ${day}`,
+        before: {
+          kind: "checkin",
+          day,
+          hadSignature: safeBool(oldUrl || oldPid),
+          signatureUrl: oldUrl,
+          publicId: oldPid,
+          classId,
+          studentId,
+        },
+        after: {
+          kind: "checkin",
+          day,
+          hadSignature: false,
+          signatureUrl: "",
+          publicId: "",
+          classId,
+          studentId,
+        },
+        meta: { classId, studentId, kind: "checkin", day },
+      });
+
       return NextResponse.json({ ok: true });
     }
 
     /* ===== 2) delete receive (3.1) signature ===== */
     if (kind === "receive_3_1") {
-      const docNorm = normalizeDocId(student.paymentRef);
+      const docNorm = paymentNorm;
       if (!docNorm) return jsonError("student has no paymentRef/docId");
 
-      // ✅ สำคัญ: (3.1) ต้องเป็น type: customer_receive เท่านั้น
       const variants = buildDocVariants(docNorm);
       const docRegex = buildDocLooseRegex(docNorm);
 
@@ -216,53 +262,90 @@ export async function DELETE(req, ctx) {
         : [];
       if (!receivers.length) return jsonError("no receivers in receipt", 404);
 
-      // ลบทุก receiver ของ doc เดียวกัน (เพราะระบบ treat เป็นลายเซ็น shared ของ INV)
       const oldPidSet = new Set();
+      const oldUrlSet = new Set();
 
-      receipt.receivers = receivers.map((x) => {
-        const sig = x?.receiptSig || null;
+      for (const rcv of receivers) {
+        const sig = rcv?.receiptSig || null;
         if (sig?.publicId) oldPidSet.add(sig.publicId);
+        if (sig?.url) oldUrlSet.add(clean(sig.url));
+      }
 
-        return {
-          ...x,
-          receiptSig: {
-            url: "",
-            publicId: "",
-            signedAt: null,
-            signerName: "",
-            signerRole: "customer",
-          },
-        };
-      });
+      receipt.receivers = receivers.map((x) => ({
+        ...x,
+        receiptSig: {
+          url: "",
+          publicId: "",
+          signedAt: null,
+          signerName: "",
+          signerRole: "customer",
+        },
+      }));
 
       await receipt.save();
 
-      // ✅ ล้าง cache บน Student “ทุกคนที่ paymentRef เดียวกัน” ใน class เดียวกัน
+      // ล้าง cache บน Student ทุกคนที่ paymentRef เดียวกัน
       const payRegex = buildDocLooseRegex(docNorm);
 
-      await Student.updateMany(
+      const upd = await Student.updateMany(
         { classId, paymentRef: payRegex },
         {
           $set: {
             documentReceiptSigUrl: "",
             documentReceiptSigPublicId: "",
             documentReceiptSignedAt: null,
-            documentReceivedAt: null, // ให้สถานะเขียวหายไปพร้อมกัน
+            documentReceivedAt: null,
           },
         },
       );
 
-      // กัน doc ที่โหลดมาก่อน ถูก save ทับค่าเก่า
+      // กันตัวที่โหลดมาก่อนถูก save ทับค่าเก่า
       student.documentReceiptSigUrl = "";
       student.documentReceiptSigPublicId = "";
       student.documentReceiptSignedAt = null;
       student.documentReceivedAt = null;
       await student.save();
 
-      // ลบไฟล์ (ถ้ามี)
       for (const pid of oldPidSet) {
         await tryDeleteCloudinary(pid);
       }
+
+      await safeAudit({
+        ctx: adminCtx,
+        req,
+        action: "delete",
+        entityType: "signature",
+        entityId: `${studentId}__receive_3_1__${docNorm}`,
+        entityLabel: `${studentLabel} • receive 3.1 • ${docNorm}`,
+        before: {
+          kind: "receive_3_1",
+          docId: docNorm,
+          receiptId: String(receipt._id),
+          hadSignature: oldPidSet.size > 0 || oldUrlSet.size > 0,
+          sigCount: oldPidSet.size || oldUrlSet.size,
+          classId,
+          studentId,
+        },
+        after: {
+          kind: "receive_3_1",
+          docId: docNorm,
+          receiptId: String(receipt._id),
+          hadSignature: false,
+          sigCount: 0,
+          classId,
+          studentId,
+        },
+        meta: {
+          classId,
+          studentId,
+          kind: "receive_3_1",
+          docId: docNorm,
+          receiptId: String(receipt._id),
+          clearedStudents:
+            Number(upd?.modifiedCount ?? upd?.nModified ?? 0) || undefined,
+          oldPidCount: oldPidSet.size,
+        },
+      });
 
       return NextResponse.json({ ok: true });
     }
@@ -273,13 +356,12 @@ export async function DELETE(req, ctx) {
       if (who !== "customer" && who !== "staff")
         return jsonError("missing who");
 
-      const docNorm = normalizeDocId(student.paymentRef);
+      const docNorm = paymentNorm;
       if (!docNorm) return jsonError("student has no paymentRef/docId");
 
       const variants = buildDocVariants(docNorm);
       const docRegex = buildDocLooseRegex(docNorm);
 
-      // ✅ สำคัญ: (3.2) ต้องเป็น type: staff_receive เท่านั้น
       const receipt =
         (await DocumentReceipt.findOne({
           classId,
@@ -299,6 +381,11 @@ export async function DELETE(req, ctx) {
           ? clean(receipt?.customerSig?.publicId)
           : clean(receipt?.staffSig?.publicId);
 
+      const oldUrl =
+        who === "customer"
+          ? clean(receipt?.customerSig?.url)
+          : clean(receipt?.staffSig?.url);
+
       if (who === "customer") {
         receipt.customerSig = {
           url: "",
@@ -315,12 +402,10 @@ export async function DELETE(req, ctx) {
         };
       }
 
-      // ✅ ถ้าลบแล้ว “ไม่มีลายเซ็นเหลือเลย” ให้ลบทั้งเอกสาร เพื่อให้สถานะ "เอกสารนำส่ง" หายแน่นอน
       const staffUrlAfter =
         who === "staff" ? "" : clean(receipt?.staffSig?.url);
       const custUrlAfter =
         who === "customer" ? "" : clean(receipt?.customerSig?.url);
-
       const hasAnySigAfter = !!staffUrlAfter || !!custUrlAfter;
 
       if (hasAnySigAfter) {
@@ -329,20 +414,58 @@ export async function DELETE(req, ctx) {
         await DocumentReceipt.deleteOne({ _id: receipt._id });
       }
 
-      // ✅ ล้าง cache บน Student “ทุกคนที่ paymentRef เดียวกัน” เพื่อให้ status เอกสารนำส่งไม่ค้าง
-      // (ตารางมักอ่านจาก receiveType/receiveDate แบบ legacy)
+      // ล้าง cache บน Student ทุกคนที่ paymentRef เดียวกัน
       const payRegex = buildDocLooseRegex(docNorm);
-      await Student.updateMany(
+      const upd = await Student.updateMany(
         { classId, paymentRef: payRegex },
-        {
-          $set: {
-            receiveType: "",
-            receiveDate: null,
-          },
-        },
+        { $set: { receiveType: "", receiveDate: null } },
       );
 
       if (oldPid) await tryDeleteCloudinary(oldPid);
+
+      await safeAudit({
+        ctx: adminCtx,
+        req,
+        action: "delete",
+        entityType: "signature",
+        entityId: `${studentId}__staff_3_2__${who}__${docNorm}`,
+        entityLabel: `${studentLabel} • staff 3.2 (${who}) • ${docNorm}`,
+        before: {
+          kind: "staff_3_2",
+          who,
+          docId: docNorm,
+          receiptId: String(receipt._id),
+          hadSignature: safeBool(oldUrl || oldPid),
+          signatureUrl: oldUrl,
+          publicId: oldPid,
+          classId,
+          studentId,
+        },
+        after: {
+          kind: "staff_3_2",
+          who,
+          docId: docNorm,
+          receiptId: hasAnySigAfter ? String(receipt._id) : "",
+          hadSignature: false,
+          signatureUrl: "",
+          publicId: "",
+          classId,
+          studentId,
+          receiptDeleted: !hasAnySigAfter,
+        },
+        meta: {
+          classId,
+          studentId,
+          kind: "staff_3_2",
+          who,
+          docId: docNorm,
+          receiptId: String(receipt._id),
+          receiptDeleted: !hasAnySigAfter,
+          clearedStudents:
+            Number(upd?.modifiedCount ?? upd?.nModified ?? 0) || undefined,
+        },
+      });
+
       return NextResponse.json({ ok: true });
     }
 

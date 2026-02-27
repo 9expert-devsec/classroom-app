@@ -7,6 +7,10 @@ import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 import FoodEditLog from "@/models/FoodEditLog";
 
+// ✅ audit (best-effort)
+import { requireAdmin } from "@/lib/adminAuth.server";
+import { writeAuditLog } from "@/lib/auditLog.server";
+
 export const dynamic = "force-dynamic";
 
 /* ---------------- helpers ---------------- */
@@ -44,14 +48,10 @@ function normalizeChoiceType({
   restaurantId,
   menuId,
 }) {
-  // explicit flags มาก่อน
   if (coupon === true || lower(choiceType) === "coupon") return "coupon";
   if (noFood === true || lower(choiceType) === "nofood") return "noFood";
 
-  // ถ้าไม่มีเมนู/ร้าน ให้ถือว่าไม่รับอาหาร (กันพัง + UI บางหน้าส่งมาไม่ครบ)
   if (!clean(restaurantId) && !clean(menuId)) return "noFood";
-
-  // default = food
   return "food";
 }
 
@@ -69,16 +69,41 @@ function normalizeFoodSnapshot(food) {
     addonIds,
     drinkId: clean(f.drinkId),
 
-    // legacy (ไม่เอามาเทียบเยอะ เดี๋ยวต่างเพราะชื่อ)
     note: clean(f.note),
   });
 }
 
+function pickFoodAudit(food) {
+  const f = food || {};
+  return {
+    noFood: !!f.noFood,
+    choiceType: clean(f.choiceType),
+    classId: clean(f.classId),
+    day: Number.isFinite(Number(f.day)) ? Number(f.day) : null,
+
+    restaurantId: clean(f.restaurantId),
+    menuId: clean(f.menuId),
+    addonIds: uniqStrArr(f.addonIds).sort(),
+    drinkId: clean(f.drinkId),
+
+    note: clean(f.note),
+  };
+}
+
+async function safeAudit(payload) {
+  try {
+    await writeAuditLog(payload);
+  } catch (e) {
+    console.warn("[food] writeAuditLog failed:", e?.message || e);
+  }
+}
+
+// 기존: FoodEditLog (ยังคงไว้)
 async function writeFoodEditLog({ student, nextFood, prevFood, source = "" }) {
   try {
     const before = normalizeFoodSnapshot(prevFood);
     const after = normalizeFoodSnapshot(nextFood);
-    if (before === after) return; // ไม่เปลี่ยนจริง → ไม่ยิง log
+    if (before === after) return;
 
     await FoodEditLog.create({
       studentId: String(student?._id || ""),
@@ -99,8 +124,51 @@ async function writeFoodEditLog({ student, nextFood, prevFood, source = "" }) {
       source: clean(source),
     });
   } catch (e) {
-    // ไม่ให้พัง flow หลัก
     console.warn("[food] writeFoodEditLog failed:", e?.message || e);
+  }
+}
+
+// ✅ ใหม่: AuditLog (central) — best-effort และไม่ทำให้ flow พัง
+async function writeFoodAuditLog({
+  adminCtx,
+  req,
+  student,
+  nextFood,
+  prevFood,
+  source = "",
+}) {
+  try {
+    const before = normalizeFoodSnapshot(prevFood);
+    const after = normalizeFoodSnapshot(nextFood);
+    if (before === after) return;
+
+    const sid = String(student?._id || "");
+    const cid = clean(nextFood?.classId);
+    const day = Number.isFinite(Number(nextFood?.day))
+      ? Number(nextFood?.day)
+      : null;
+
+    await safeAudit({
+      ctx: adminCtx || {},
+      req,
+      action: "update",
+      entityType: "food",
+      entityId: `${sid}__${cid || "noClass"}__day${day || 0}`,
+      entityLabel:
+        `${pickStudentName(student)} • food day ${day || "-"}`.trim(),
+      before: pickFoodAudit(prevFood),
+      after: pickFoodAudit(nextFood),
+      meta: {
+        studentId: sid,
+        classId: cid,
+        day,
+        source: clean(source),
+      },
+      // ไม่ต้อง ignore อะไรมาก เพราะ snapshot เล็กอยู่แล้ว
+      ignorePaths: [],
+    });
+  } catch (e) {
+    console.warn("[food] writeFoodAuditLog failed:", e?.message || e);
   }
 }
 
@@ -108,6 +176,14 @@ async function writeFoodEditLog({ student, nextFood, prevFood, source = "" }) {
 
 export async function POST(req) {
   await dbConnect();
+
+  // ✅ optional admin context (มี cookie ก็จะ track ผู้แก้ไขได้)
+  let adminCtx = null;
+  try {
+    adminCtx = await requireAdmin();
+  } catch {
+    adminCtx = null; // public flow ก็ยังทำงานต่อ
+  }
 
   let body;
   try {
@@ -128,7 +204,7 @@ export async function POST(req) {
     noFood,
     choiceType = "",
     coupon,
-    source = "", // optional: "edit-user" | "checkin" | ""
+    source = "",
 
     // selections (legacy)
     restaurantId,
@@ -195,7 +271,7 @@ export async function POST(req) {
 
     const nextFood = {
       noFood: true,
-      coupon: isCoupon, // เผื่อ compat
+      coupon: isCoupon, // compat
       choiceType: finalChoiceType,
 
       classId: safeClassId || "",
@@ -219,6 +295,14 @@ export async function POST(req) {
     await student.save();
 
     await writeFoodEditLog({ student, nextFood, prevFood, source });
+    await writeFoodAuditLog({
+      adminCtx,
+      req,
+      student,
+      nextFood,
+      prevFood,
+      source,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -236,7 +320,6 @@ export async function POST(req) {
     : null;
 
   if (!menuDoc) {
-    // เมนูไม่ถูกต้อง → กันพังด้วย noFood
     const nextFood = {
       noFood: true,
       coupon: false,
@@ -257,6 +340,14 @@ export async function POST(req) {
     await student.save();
 
     await writeFoodEditLog({ student, nextFood, prevFood, source });
+    await writeFoodAuditLog({
+      adminCtx,
+      req,
+      student,
+      nextFood,
+      prevFood,
+      source,
+    });
 
     return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
@@ -293,13 +384,7 @@ export async function POST(req) {
     if (hit?._id) finalDrinkId = String(hit._id);
   }
 
-  const needDrink = false;
-
-  // ต้องมีเมนู + ร้าน + (ถ้าต้องเลือก drink -> ต้องมี drinkId)
-  const hasCompleteFood =
-    !!finalRestaurantId &&
-    !!clean(menuId) &&
-    true;
+  const hasCompleteFood = !!finalRestaurantId && !!clean(menuId) && true;
 
   if (!hasCompleteFood) {
     const nextFood = {
@@ -322,6 +407,14 @@ export async function POST(req) {
     await student.save();
 
     await writeFoodEditLog({ student, nextFood, prevFood, source });
+    await writeFoodAuditLog({
+      adminCtx,
+      req,
+      student,
+      nextFood,
+      prevFood,
+      source,
+    });
 
     return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
@@ -367,6 +460,14 @@ export async function POST(req) {
   await student.save();
 
   await writeFoodEditLog({ student, nextFood, prevFood, source });
+  await writeFoodAuditLog({
+    adminCtx,
+    req,
+    student,
+    nextFood,
+    prevFood,
+    source,
+  });
 
   return NextResponse.json({
     ok: true,

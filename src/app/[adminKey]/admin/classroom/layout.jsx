@@ -19,8 +19,9 @@ import {
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import localFont from "next/font/local";
+import { PERM } from "@/lib/acl";
 
 /** โครงสร้างเมนู (ใช้ path แบบ relative ภายใต้ /admin) */
 const NAV = [
@@ -28,54 +29,64 @@ const NAV = [
     label: "Dashboard",
     href: "/classroom",
     icon: LayoutDashboard,
+    perm: PERM.DASHBOARD_VIEW,
   },
   {
-    label: "Classes (จาก DB)",
+    label: "Classes (ตารางสอน)",
     href: "/classroom/classes",
     icon: BookOpen,
+    perm: PERM.CLASSES_READ,
     children: [
       {
         label: "Class ทั้งหมด",
         href: "/classroom/classes",
         icon: Users2,
+        perm: PERM.CLASSES_READ,
       },
       {
         label: "Import จาก schedule",
         href: "/classroom/classes/from-schedule",
         icon: Upload,
+        perm: PERM.CLASSES_IMPORT,
       },
       {
         label: "New Class (manual)",
         href: "/classroom/classes/new",
         icon: PlusCircle,
+        perm: PERM.CLASSES_WRITE,
       },
       {
         label: "Import CSV Students",
         href: "/classroom/import",
         icon: Upload,
+        perm: PERM.CLASSES_IMPORT,
       },
     ],
   },
 
   {
-    label: "Food Menu",
+    label: "Food Menu (อาหาร)",
     href: "/classroom/food",
     icon: UtensilsCrossed,
+    perm: PERM.FOOD_READ,
     children: [
       {
         label: "Food Menu",
         href: "/classroom/food/restaurants",
         icon: UtensilsCrossed,
+        perm: PERM.FOOD_WRITE,
       },
       {
         label: "Food Calendar",
         href: "/classroom/food/calendar",
         icon: CalendarDays,
+        perm: PERM.FOOD_WRITE,
       },
       {
         label: "Food Report",
         href: "/classroom/food/report",
         icon: Soup,
+        perm: PERM.FOOD_REPORT,
       },
     ],
   },
@@ -84,28 +95,68 @@ const NAV = [
     label: "Event",
     href: "/classroom/event",
     icon: CalendarDays,
+    perm: PERM.EVENTS_READ,
     children: [
       {
         label: "จัดการ Event",
         href: "/classroom/event",
         icon: CalendarDays,
+        perm: PERM.EVENTS_READ,
       },
       {
         label: "Create Event",
         href: "/classroom/event/new",
         icon: PlusCircle,
+        perm: PERM.EVENTS_WRITE,
       },
       {
         label: "Import CSV ผู้เข้าร่วม",
         href: "/classroom/event/import",
         icon: Upload,
+        perm: PERM.EVENTS_IMPORT,
       },
       {
         label: "Event Report",
         href: "/classroom/event/report",
         icon: Soup,
+        perm: PERM.EVENTS_READ,
       },
     ],
+  },
+
+  {
+    label: "Accounts",
+    href: "/classroom/accounts",
+    icon: Users2,
+    perm: PERM.ACCOUNTS_MANAGE,
+    children: [
+      {
+        label: "ผู้ใช้ทั้งหมด",
+        href: "/classroom/accounts/users",
+        icon: Users2,
+        perm: PERM.ACCOUNTS_MANAGE,
+      },
+      {
+        label: "บทบาทและสิทธิ์",
+        href: "/classroom/accounts/roles",
+        icon: LayoutDashboard,
+        perm: PERM.ACCOUNTS_MANAGE,
+      },
+    ],
+  },
+
+  {
+    label: "Audit Logs",
+    href: "/classroom/audit",
+    icon: Soup, // หรือเปลี่ยนเป็น icon อื่นได้
+    perm: PERM.AUDIT_READ,
+  },
+
+  {
+    label: "My Account",
+    href: "/classroom/my-account",
+    icon: Users2,
+    perm: PERM.MY_ACCOUNT,
   },
 ];
 
@@ -121,9 +172,39 @@ function joinAdminBase(adminBase, href) {
 function getAdminBaseFromPathname(pathname) {
   const p = String(pathname || "");
   const m = p.match(/^\/([^/]+)\/admin(\/.*)?$/);
-  if (!m) return "/admin"; // fallback (ไม่ควรเกิดในหน้านี้)
+  if (!m) return "/admin";
   const adminKey = m[1];
   return `/${adminKey}/admin`;
+}
+
+function filterNavByPerm(items, permSet) {
+  if (!permSet) return [];
+
+  const out = [];
+  for (const item of items) {
+    const hasChildren =
+      Array.isArray(item.children) && item.children.length > 0;
+
+    if (!hasChildren) {
+      if (!item.perm || permSet.has(item.perm)) out.push(item);
+      continue;
+    }
+
+    const children = item.children.filter(
+      (c) => !c.perm || permSet.has(c.perm),
+    );
+    const canSeeParent = !item.perm || permSet.has(item.perm);
+
+    // ถ้าพ่อผ่านและยังมีลูกเหลือ → แสดง
+    if (canSeeParent && children.length > 0) {
+      out.push({ ...item, children });
+      continue;
+    }
+
+    // ถ้าพ่อผ่านแต่ไม่มีลูก → ซ่อนทั้งก้อน (กันเมนูโล่งๆ)
+    // ถ้าพ่อไม่ผ่าน → ซ่อน
+  }
+  return out;
 }
 
 function SectionItem({ item, adminBase, collapsed }) {
@@ -140,7 +221,6 @@ function SectionItem({ item, adminBase, collapsed }) {
 
   const Icon = item.icon;
 
-  // --------- ไม่มี children -> ลิงก์ธรรมดา ---------
   if (!hasChildren) {
     return (
       <div className="mb-2">
@@ -176,14 +256,13 @@ function SectionItem({ item, adminBase, collapsed }) {
     );
   }
 
-  // --------- มี children -> ปุ่ม + submenu ---------
   return (
     <div className="mb-2">
       <button
         type="button"
         title={item.label}
         onClick={() => {
-          if (collapsed) return; // ตอนย่อ ไม่ต้องกาง submenu
+          if (collapsed) return;
           setOpen((o) => !o);
         }}
         className={`group flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm transition
@@ -256,30 +335,14 @@ function SectionItem({ item, adminBase, collapsed }) {
 const lineSeedSansTH = localFont({
   src: [
     {
-      // path: "../../../../public/fonts/LINESeedSansTH_W_Rg.woff2",
       path: "../../../../../public/fonts/GoogleSans-Regular.ttf",
       weight: "400",
     },
-    {
-      // path: "../../../../public/fonts/LINESeedSansTH_W_Bd.woff2",
-      path: "../../../../../public/fonts/GoogleSans-Bold.ttf",
-      weight: "700",
-    },
-    // {
-    //   path: "../../../../public/fonts/LINESeedSansTH_W_XBd.woff2",
-    //   weight: "800",
-    // },
-    // {
-    //   path: "../../../../public/fonts/LINESeedSansTH_W_He.woff2",
-    //   weight: "900",
-    // },
-    // {
-    //   path: "../../../../public/fonts/LINESeedSansTH_W_Th.woff2",
-    //   weight: "200",
-    // },
+    { path: "../../../../../public/fonts/GoogleSans-Bold.ttf", weight: "700" },
   ],
   display: "swap",
 });
+
 export default function AdminClassroomLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -290,6 +353,44 @@ export default function AdminClassroomLayout({ children }) {
     () => getAdminBaseFromPathname(pathname),
     [pathname],
   );
+
+  const [permSet, setPermSet] = useState(null);
+  const [meLoading, setMeLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMe() {
+      try {
+        setMeLoading(true);
+        const res = await fetch("/api/admin/me", { cache: "no-store" });
+        if (!alive) return;
+
+        if (res.status === 401) {
+          router.push(`${adminBase}/login`);
+          return;
+        }
+
+        const data = await res.json();
+        if (!alive) return;
+
+        if (!data?.ok) throw new Error(data?.error || "Failed to load me");
+        const perms = Array.isArray(data.permissions) ? data.permissions : [];
+        setPermSet(new Set(perms));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (alive) setMeLoading(false);
+      }
+    }
+
+    loadMe();
+    return () => {
+      alive = false;
+    };
+  }, [adminBase, router]);
+
+  const visibleNav = useMemo(() => filterNavByPerm(NAV, permSet), [permSet]);
 
   async function handleLogout() {
     try {
@@ -340,17 +441,28 @@ export default function AdminClassroomLayout({ children }) {
               "min-h-0",
             ].join(" ")}
           >
-            {NAV.map((item) => (
-              <SectionItem
-                key={item.label}
-                item={item}
-                adminBase={adminBase}
-                collapsed={collapsed}
-              />
-            ))}
+            {meLoading && (
+              <div className="space-y-2 animate-pulse px-2 py-2">
+                <div className="h-9 rounded-2xl bg-white/10" />
+                <div className="h-9 rounded-2xl bg-white/10" />
+                <div className="h-9 rounded-2xl bg-white/10" />
+                <div className="h-9 rounded-2xl bg-white/10" />
+                <div className="h-9 rounded-2xl bg-white/10" />
+              </div>
+            )}
+
+            {!meLoading &&
+              visibleNav.map((item) => (
+                <SectionItem
+                  key={item.label}
+                  item={item}
+                  adminBase={adminBase}
+                  collapsed={collapsed}
+                />
+              ))}
           </nav>
 
-          {/* Collapse button (bottom of same box) */}
+          {/* Collapse button */}
           <div className="mt-auto pt-3">
             <button
               type="button"
@@ -372,26 +484,8 @@ export default function AdminClassroomLayout({ children }) {
           </div>
         </div>
 
-        {/* ปุ่ม Logout ด้านล่าง sidebar */}
+        {/* Logout */}
         <div className={collapsed ? "mx-2 mb-4 mt-3" : "mx-3 mb-4 mt-3"}>
-          {/* <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            className={[
-              "flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium hover:bg-white/10",
-              collapsed ? "justify-center" : "justify-start",
-            ].join(" ")}
-            aria-label={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
-            title={collapsed ? "ขยายเมนู" : "ย่อเมนู"}
-          >
-            {collapsed ? (
-              <PanelLeftOpen className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-            {!collapsed && <span>{collapsed ? "ขยายเมนู" : "ย่อเมนู"}</span>}
-          </button> */}
-
           <button
             type="button"
             onClick={handleLogout}

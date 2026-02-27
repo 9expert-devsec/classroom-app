@@ -1,10 +1,22 @@
 "use client";
 
-export default function SearchResultCard({ student, onClick }) {
-  const { thaiName, engName, company, classInfo } = student || {};
+function clean(x) {
+  return String(x ?? "").trim();
+}
 
-  const classTitle = classInfo?.courseName || "";
-  const room = classInfo?.room || "";
+function getDisplayName(stu) {
+  return clean(stu?.name) || clean(stu?.thaiName) || clean(stu?.engName) || "-";
+}
+
+export default function SearchResultCard({ student, onClick }) {
+  const displayName = getDisplayName(student);
+  const thaiName = clean(student?.thaiName);
+  const engName = clean(student?.engName);
+  const company = clean(student?.company);
+  const classInfo = student?.classInfo || {};
+
+  const classTitle = clean(classInfo?.courseName) || "";
+  const room = clean(classInfo?.room) || "";
   const startDate = classInfo?.date ? new Date(classInfo.date) : null;
 
   // ---------------------------
@@ -13,36 +25,31 @@ export default function SearchResultCard({ student, onClick }) {
   let dayLabel = "";
   let dayNumber = null;
 
-  if (startDate) {
+  if (startDate && !Number.isNaN(startDate.getTime())) {
     const today = new Date();
-    
-    // Normalize (ตัดเวลาออกทั้งคู่)
+
     const d0 = new Date(
       startDate.getFullYear(),
       startDate.getMonth(),
-      startDate.getDate()
+      startDate.getDate(),
     );
-    const d1 = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+    const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
     const diffDays = Math.floor((d1 - d0) / (1000 * 60 * 60 * 24));
-
     if (diffDays >= 0) {
-      dayNumber = diffDays + 1; // Day 1,2,3...
+      dayNumber = diffDays + 1;
       dayLabel = `วันนี้คือ Day ${dayNumber}`;
     }
   }
 
-  const dateLabel = startDate
-    ? startDate.toLocaleDateString("th-TH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "";
+  const dateLabel =
+    startDate && !Number.isNaN(startDate.getTime())
+      ? startDate.toLocaleDateString("th-TH", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "";
 
   return (
     <button
@@ -51,14 +58,22 @@ export default function SearchResultCard({ student, onClick }) {
       className="w-full text-left rounded-2xl p-4 shadow-sm transition
                  bg-white ring-1 ring-[#48B0FF] hover:bg-front-bgSoft/80"
     >
-      <div className="sm:text-3xl lg:text-base font-semibold text-[#0D1B2A]">{thaiName}</div>
+      {/* ✅ ใช้ชื่อที่แก้จากแอดมินได้ทันที */}
+      <div className="sm:text-3xl lg:text-base font-semibold text-[#0D1B2A]">
+        {displayName}
+      </div>
 
-      {engName && (
-        <div className="sm:text-base lg:text-xs text-front-textMuted">{engName}</div>
+      {/* แสดงชื่อรอง (optional) เพื่อช่วยตรวจสอบ */}
+      {engName && displayName !== engName && (
+        <div className="sm:text-base lg:text-xs text-front-textMuted">
+          {engName}
+        </div>
       )}
 
       {company && (
-        <div className="mt-1 sm:text-xl lg:text-sm text-front-textMuted">{company}</div>
+        <div className="mt-1 sm:text-xl lg:text-sm text-front-textMuted">
+          {company}
+        </div>
       )}
 
       {classTitle && (
@@ -72,7 +87,6 @@ export default function SearchResultCard({ student, onClick }) {
             {room && <> • ห้อง: {room}</>}
           </div>
 
-          {/* แสดง Day */}
           {dayNumber && (
             <div className="sm:text-xl lg:text-sm text-[#005CFF] font-bold">
               {dayLabel}
