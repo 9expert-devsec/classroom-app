@@ -1,0 +1,8 @@
+// src/app/m/dashboard/page.jsx
+import DashboardClient from "./DashboardClient";
+
+export const dynamic = "force-dynamic";
+
+export default function Page() {
+  return <DashboardClient />;
+}

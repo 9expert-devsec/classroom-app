@@ -84,7 +84,7 @@ export default function SignPage({ searchParams = {} }) {
           signature,
         }),
       });
-      const dataSign = await resSign.json();
+      const dataSign = await resSign.json().catch(() => ({}));
       if (!resSign.ok) {
         console.error("sign error:", dataSign);
         throw new Error(dataSign.error || "sign failed");
@@ -100,14 +100,39 @@ export default function SignPage({ searchParams = {} }) {
           day,
         }),
       });
-      const dataComplete = await resComplete.json();
+      const dataComplete = await resComplete.json().catch(() => ({}));
       if (!resComplete.ok) {
         console.error("complete error:", dataComplete);
         throw new Error(dataComplete.error || "complete checkin failed");
       }
 
-      // 3) ไปหน้า success
-      router.push(`/classroom/checkin/success?sid=${studentId}`);
+      // ✅ 2.5) ถ้าเลือก coupon -> ออกคูปองหลัง complete สำเร็จ
+      let couponPublicId = "";
+      const choiceType = preview?.food?.choiceType || "";
+      if (choiceType === "coupon") {
+        const resCoupon = await fetch("/api/coupon/issue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId,
+            classId,
+            day,
+          }),
+        });
+        const dataCoupon = await resCoupon.json().catch(() => ({}));
+        if (!resCoupon.ok || !dataCoupon.ok) {
+          console.error("issue coupon error:", dataCoupon);
+          throw new Error(dataCoupon.error || "issue coupon failed");
+        }
+        couponPublicId = dataCoupon.publicId || "";
+      }
+
+      // 3) ไปหน้า success (ถ้ามี cp ให้ส่งไปด้วย)
+      const qp = new URLSearchParams();
+      qp.set("sid", studentId);
+      if (couponPublicId) qp.set("cp", couponPublicId);
+
+      router.push(`/classroom/checkin/success?${qp.toString()}`);
     } catch (err) {
       console.error(err);
       alert("บันทึกข้อมูลไม่สำเร็จ");
@@ -140,7 +165,7 @@ export default function SignPage({ searchParams = {} }) {
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
           {/* --------- กล่องสรุปข้อมูลผู้เรียน & อาหาร --------- */}
-          <div className=" rounded-2xl border border-brand-border bg-white px-4 py-3 text-sm shadow-sm">
+          <div className="rounded-2xl border border-brand-border bg-white px-4 py-3 text-sm shadow-sm">
             <h3 className="mb-2 sm:text-xl lg:text-base font-semibold">
               สรุปข้อมูลผู้เรียน &amp; เมนูอาหาร
             </h3>
