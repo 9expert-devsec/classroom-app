@@ -21,11 +21,36 @@ function toYMD_BKK(dateInput) {
   return `${bkk.getFullYear()}-${pad2(bkk.getMonth() + 1)}-${pad2(bkk.getDate())}`;
 }
 
+// YYYY-MM-DD ของ “วันนี้” เวลาไทย
+function todayYMD_BKK() {
+  // ใช้ en-CA ได้รูปแบบ YYYY-MM-DD
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+}
+
 // เพิ่มวันให้ YYYY-MM-DD (คง timezone +07:00)
 function addDaysYMD(ymd, addDays) {
   const base = new Date(`${ymd}T00:00:00+07:00`);
   base.setDate(base.getDate() + (Number(addDays) || 0));
   return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
+}
+
+function getDayCount(klass) {
+  if (Array.isArray(klass?.days) && klass.days.length > 0)
+    return klass.days.length;
+  const n = Number(klass?.dayCount || 0);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+// list วันอบรมทั้งหมดของคลาสเป็น YYYY-MM-DD
+function buildTrainingDaysYMD(klass) {
+  if (Array.isArray(klass?.days) && klass.days.length > 0) {
+    return klass.days.map((x) => String(x).slice(0, 10));
+  }
+  const startYMD = toYMD_BKK(klass?.date || new Date());
+  const n = getDayCount(klass);
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(addDaysYMD(startYMD, i));
+  return out;
 }
 
 // หา “วันที่อบรมของ day นั้น”
@@ -35,7 +60,6 @@ function resolveTrainingYMD(klass, day) {
   const d = Math.max(1, Number(day || 1));
 
   if (Array.isArray(klass?.days) && klass.days[d - 1]) {
-    // เก็บเป็น YYYY-MM-DD อยู่แล้วก็ได้ หรือเป็น date string ก็ slice ได้
     return String(klass.days[d - 1]).slice(0, 10);
   }
 
@@ -45,7 +69,6 @@ function resolveTrainingYMD(klass, day) {
 
 // สร้าง cutoff เวลา 09:00 ของวันนั้น (เวลาไทย)
 function buildCutoff0900BKK(ymd) {
-  // 09:00:00 เวลาไทยของวันนั้น
   return new Date(`${ymd}T09:00:00+07:00`);
 }
 
@@ -54,12 +77,13 @@ function buildCutoff0900BKK(ymd) {
 export async function POST(req) {
   await dbConnect();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const { studentId, classId, day } = body || {};
 
-  if (!studentId || !classId || !day) {
+  // ✅ day ไม่บังคับแล้ว (ให้ server ตัดสินเอง)
+  if (!studentId || !classId) {
     return NextResponse.json(
-      { ok: false, error: "missing studentId / classId / day" },
+      { ok: false, error: "missing studentId / classId" },
       { status: 400 },
     );
   }
@@ -74,28 +98,40 @@ export async function POST(req) {
     );
   }
 
+  // ---------------------------------------------------
+  // ✅ FIX: ตัดสิน day จาก “วันนี้ (BKK)” เทียบกับวันอบรมของคลาส
+  // - ถ้าวันนี้อยู่ใน klass.days[]/computed days -> override day ให้ถูก
+  // - ถ้าวันนี้ไม่ใช่วันอบรม -> fallback ใช้ day ที่ส่งมา หรือ 1
+  // ---------------------------------------------------
+  const todayYMD = todayYMD_BKK();
+  const dayList = buildTrainingDaysYMD(klass);
+  const idxToday = dayList.findIndex((x) => x === todayYMD);
+  const computedDay = idxToday >= 0 ? idxToday + 1 : null;
+
+  const fallbackDay = Math.max(1, Number(day || 1));
+  const effectiveDay = computedDay || fallbackDay;
+
   const now = new Date();
 
   // ---------------------------------------------------
   // ✅ โลจิก “สายหรือไม่สาย” (รายวัน)
-  // - ของทุกๆวันนับใหม่
-  // - ถ้าเวลาไทย <= 09:00 ไม่สาย
-  // - ถ้าเวลาไทย > 09:00 สาย
   // ---------------------------------------------------
   let isLate = false;
   let lateMeta = null;
 
   try {
-    const ymd = resolveTrainingYMD(klass, day);
+    const ymd = resolveTrainingYMD(klass, effectiveDay);
     const cutoff = buildCutoff0900BKK(ymd);
-
-    // now เป็นเวลาปัจจุบัน (UTC ภายใน) แต่เทียบกับ cutoff ที่ fix +07 ได้ตรง
     isLate = now > cutoff;
 
     lateMeta = {
       trainingYMD: ymd,
       cutoffISO: cutoff.toISOString(),
       nowISO: now.toISOString(),
+      effectiveDay,
+      todayYMD,
+      dayList,
+      inputDay: day ?? null,
     };
   } catch (e) {
     console.error("late check error:", e);
@@ -113,7 +149,7 @@ export async function POST(req) {
     {
       studentId: student._id,
       classId: klass._id,
-      day: Number(day),
+      day: Number(effectiveDay),
     },
     {
       time: now,
@@ -128,7 +164,7 @@ export async function POST(req) {
   // อัปเดตสถานะใน Student (รายวันผ่าน checkinStatus)
   // ---------------------------------------------------
   const checkinStatus = student.checkinStatus || {};
-  checkinStatus[`day${day}`] = true;
+  checkinStatus[`day${effectiveDay}`] = true;
 
   await Student.findByIdAndUpdate(studentId, {
     $set: {
@@ -142,7 +178,8 @@ export async function POST(req) {
   return NextResponse.json({
     ok: true,
     item: checkinDoc,
+    effectiveDay,
     isLate,
-    lateMeta, // debug ได้ (จะเอาออกทีหลังก็ได้)
+    lateMeta, // debug ได้ (ค่อยเอาออกทีหลังก็ได้)
   });
 }

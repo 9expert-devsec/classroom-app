@@ -15,6 +15,21 @@ function fmtMoney(n) {
   return x.toLocaleString("th-TH", { maximumFractionDigits: 0 });
 }
 
+function fmtDateTimeTH(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleString("th-TH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 export default function RedeemClient({ searchParams }) {
   const router = useRouter();
   const c = useMemo(() => pick(searchParams, "c"), [searchParams]);
@@ -24,6 +39,10 @@ export default function RedeemClient({ searchParams }) {
   const [spentAmount, setSpentAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  // ✅ UX หลังยืนยัน
+  const [justRedeemed, setJustRedeemed] = useState(false);
+  const [redeemReceipt, setRedeemReceipt] = useState(null);
 
   const couponPrice = item?.couponPrice ?? 180;
   const spentNum = Number(spentAmount);
@@ -40,7 +59,7 @@ export default function RedeemClient({ searchParams }) {
         router.replace(`/m/login?next=${next}`);
         return;
       }
-      const j = await r.json();
+      const j = await r.json().catch(() => ({}));
       if (!j?.ok) {
         const next = encodeURIComponent(`/m/redeem?c=${encodeURIComponent(c)}`);
         router.replace(`/m/login?next=${next}`);
@@ -55,6 +74,9 @@ export default function RedeemClient({ searchParams }) {
     if (!me || !c) return;
     setErr("");
     setItem(null);
+    setJustRedeemed(false);
+    setRedeemReceipt(null);
+
     (async () => {
       const r = await fetch("/api/merchant/coupon/verify", {
         method: "POST",
@@ -67,7 +89,7 @@ export default function RedeemClient({ searchParams }) {
         return;
       }
       setItem(j.item);
-      setSpentAmount(""); // ให้กรอกใหม่ทุกครั้ง
+      setSpentAmount("");
     })();
   }, [me, c]);
 
@@ -89,13 +111,24 @@ export default function RedeemClient({ searchParams }) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || "REDEEM_FAILED");
 
-      // แสดงผลลัพธ์ทันที
+      // ✅ ทำให้ UX ชัดเจนว่า "ใช้สำเร็จ"
+      setJustRedeemed(true);
+      setRedeemReceipt({
+        spentAmount: j.item?.spentAmount,
+        diffAmount: j.item?.diffAmount,
+        redeemedAt: j.item?.redeemedAt,
+      });
+
+      // อัปเดต state ให้ status กลายเป็น redeemed
       setItem((prev) => ({
         ...(prev || {}),
         status: "redeemed",
         spentAmount: j.item?.spentAmount,
         diffAmount: j.item?.diffAmount,
         redeemedAt: j.item?.redeemedAt,
+        redeemedRestaurant: prev?.redeemedRestaurant || {
+          name: me?.restaurant?.name || "",
+        },
       }));
     } catch (e) {
       setErr(String(e?.message || "REDEEM_FAILED"));
@@ -114,6 +147,12 @@ export default function RedeemClient({ searchParams }) {
         >
           ไปสแกน QR
         </button>
+        <button
+          className="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2 font-semibold"
+          onClick={() => router.push("/m/dashboard")}
+        >
+          กลับ Dashboard
+        </button>
       </div>
     );
   }
@@ -124,6 +163,7 @@ export default function RedeemClient({ searchParams }) {
     <div className="min-h-screen bg-slate-950 text-white p-4">
       <div className="max-w-xl mx-auto">
         <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 p-5">
+          {/* Top bar */}
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-sm text-white/60">ร้านค้า</div>
@@ -131,9 +171,24 @@ export default function RedeemClient({ searchParams }) {
                 {me?.restaurant?.name || "-"}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm text-white/60">คูปอง</div>
-              <div className="font-semibold">{item?.displayCode || "-"}</div>
+
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-xl bg-white/10 hover:bg-white/15 px-3 py-2 text-sm font-semibold"
+                onClick={() => router.push("/m/dashboard")}
+              >
+                Dashboard
+              </button>
+              <button
+                className="rounded-xl bg-emerald-500/80 hover:bg-emerald-500 px-3 py-2 text-sm font-semibold"
+                onClick={() => router.push("/m/scan")}
+              >
+                สแกนใบถัดไป
+              </button>
+              <div className="text-right ml-2">
+                <div className="text-sm text-white/60">คูปอง</div>
+                <div className="font-semibold">{item?.displayCode || "-"}</div>
+              </div>
             </div>
           </div>
 
@@ -158,68 +213,123 @@ export default function RedeemClient({ searchParams }) {
                 </div>
               </div>
 
+              {/* ✅ สถานะไม่พร้อมใช้งาน / หรือสำเร็จหลัง redeem */}
               {status !== "issued" ? (
-                <div className="rounded-xl bg-amber-500/10 ring-1 ring-amber-400/30 p-3 text-sm">
-                  <div className="font-semibold">คูปองไม่พร้อมใช้งาน</div>
-                  <div className="text-white/70 mt-1">
-                    สถานะ: <b>{status}</b>
-                  </div>
-                  {item.redeemedRestaurant ? (
+                justRedeemed ? (
+                  <div className="rounded-xl bg-emerald-500/10 ring-1 ring-emerald-400/30 p-3 text-sm">
+                    <div className="font-semibold">✅ ใช้คูปองสำเร็จ</div>
                     <div className="text-white/70 mt-1">
-                      ใช้แล้วที่ร้าน: <b>{item.redeemedRestaurant.name}</b>
+                      ยอดจริง:{" "}
+                      <b>
+                        {fmtMoney(
+                          redeemReceipt?.spentAmount ?? item.spentAmount,
+                        )}
+                      </b>{" "}
+                      บาท
                     </div>
-                  ) : null}
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-xl bg-black/30 ring-1 ring-white/10 p-3">
-                    <div className="text-sm text-white/60">ยอดคูปอง</div>
-                    <div className="text-2xl font-bold">
-                      {fmtMoney(couponPrice)} บาท
-                    </div>
-
-                    <label className="block mt-3 text-sm text-white/70">
-                      ยอดที่ลูกค้าจ่ายจริง (บาท)
-                    </label>
-                    <input
-                      inputMode="numeric"
-                      className="mt-1 w-full rounded-xl bg-black/40 ring-1 ring-white/10 px-3 py-2 outline-none text-lg"
-                      value={spentAmount}
-                      onChange={(e) => setSpentAmount(e.target.value)}
-                      placeholder="เช่น 250"
-                    />
-
-                    <div className="mt-2 text-sm text-white/70">
+                    <div className="text-white/70 mt-1">
                       ส่วนต่าง:{" "}
-                      {diffPreview === null ? (
-                        "-"
-                      ) : diffPreview > 0 ? (
-                        <b className="text-red-300">
-                          ลูกค้าต้องจ่ายเพิ่ม {fmtMoney(diffPreview)} บาท
-                        </b>
-                      ) : diffPreview === 0 ? (
-                        <b className="text-emerald-300">พอดี 0 บาท</b>
-                      ) : (
-                        <b className="text-emerald-300">
-                          ใช้คูปองครอบ/เกิน {fmtMoney(Math.abs(diffPreview))}{" "}
-                          บาท
-                        </b>
+                      <b>
+                        {fmtMoney(redeemReceipt?.diffAmount ?? item.diffAmount)}
+                      </b>{" "}
+                      บาท
+                    </div>
+                    <div className="text-white/60 mt-1 text-xs">
+                      เวลา:{" "}
+                      {fmtDateTimeTH(
+                        redeemReceipt?.redeemedAt ?? item.redeemedAt,
                       )}
                     </div>
 
-                    <button
-                      disabled={busy}
-                      onClick={onConfirm}
-                      className="mt-4 w-full rounded-xl bg-emerald-500/90 hover:bg-emerald-500 px-3 py-2 font-semibold disabled:opacity-60"
-                    >
-                      {busy ? "กำลังยืนยัน..." : "ยืนยันใช้คูปอง"}
-                    </button>
-
-                    <div className="mt-2 text-xs text-white/50">
-                      * เมื่อยืนยันแล้ว คูปองจะถูกตัดทันทีและไม่สามารถใช้ซ้ำได้
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        className="flex-1 rounded-xl bg-white/10 hover:bg-white/15 px-3 py-2 font-semibold"
+                        onClick={() => router.push("/m/dashboard")}
+                      >
+                        กลับ Dashboard
+                      </button>
+                      <button
+                        className="flex-1 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 px-3 py-2 font-semibold"
+                        onClick={() => router.push("/m/scan")}
+                      >
+                        สแกนใบถัดไป
+                      </button>
                     </div>
                   </div>
-                </>
+                ) : (
+                  <div className="rounded-xl bg-amber-500/10 ring-1 ring-amber-400/30 p-3 text-sm">
+                    <div className="font-semibold">คูปองไม่พร้อมใช้งาน</div>
+                    <div className="text-white/70 mt-1">
+                      สถานะ: <b>{status}</b>
+                    </div>
+                    {item.redeemedRestaurant ? (
+                      <div className="text-white/70 mt-1">
+                        ใช้แล้วที่ร้าน: <b>{item.redeemedRestaurant.name}</b>
+                      </div>
+                    ) : null}
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        className="flex-1 rounded-xl bg-white/10 hover:bg-white/15 px-3 py-2 font-semibold"
+                        onClick={() => router.push("/m/dashboard")}
+                      >
+                        กลับ Dashboard
+                      </button>
+                      <button
+                        className="flex-1 rounded-xl bg-white/10 hover:bg-white/15 px-3 py-2 font-semibold"
+                        onClick={() => router.push("/m/scan")}
+                      >
+                        สแกนใหม่
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="rounded-xl bg-black/30 ring-1 ring-white/10 p-3">
+                  <div className="text-sm text-white/60">ยอดคูปอง</div>
+                  <div className="text-2xl font-bold">
+                    {fmtMoney(couponPrice)} บาท
+                  </div>
+
+                  <label className="block mt-3 text-sm text-white/70">
+                    ยอดที่ลูกค้าจ่ายจริง (บาท)
+                  </label>
+                  <input
+                    inputMode="numeric"
+                    className="mt-1 w-full rounded-xl bg-black/40 ring-1 ring-white/10 px-3 py-2 outline-none text-lg"
+                    value={spentAmount}
+                    onChange={(e) => setSpentAmount(e.target.value)}
+                    placeholder="เช่น 250"
+                  />
+
+                  <div className="mt-2 text-sm text-white/70">
+                    ส่วนต่าง:{" "}
+                    {diffPreview === null ? (
+                      "-"
+                    ) : diffPreview > 0 ? (
+                      <b className="text-red-300">
+                        ลูกค้าต้องจ่ายเพิ่ม {fmtMoney(diffPreview)} บาท
+                      </b>
+                    ) : diffPreview === 0 ? (
+                      <b className="text-emerald-300">พอดี 0 บาท</b>
+                    ) : (
+                      <b className="text-emerald-300">
+                        ใช้คูปองครอบ/เกิน {fmtMoney(Math.abs(diffPreview))} บาท
+                      </b>
+                    )}
+                  </div>
+
+                  <button
+                    disabled={busy}
+                    onClick={onConfirm}
+                    className="mt-4 w-full rounded-xl bg-emerald-500/90 hover:bg-emerald-500 px-3 py-2 font-semibold disabled:opacity-60"
+                  >
+                    {busy ? "กำลังยืนยัน..." : "ยืนยันใช้คูปอง"}
+                  </button>
+
+                  <div className="mt-2 text-xs text-white/50">
+                    * เมื่อยืนยันแล้ว คูปองจะถูกตัดทันทีและไม่สามารถใช้ซ้ำได้
+                  </div>
+                </div>
               )}
             </div>
           )}

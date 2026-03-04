@@ -16,6 +16,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Ticket,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -91,6 +92,22 @@ const NAV = [
     ],
   },
 
+  // ✅ แยกเมนู Coupons เป็นเมนูใหม่
+  {
+    label: "Coupons",
+    href: "/classroom/coupons",
+    icon: Ticket,
+    perm: PERM.FOOD_REPORT, // ถ้ามี PERM.COUPONS_READ ในอนาคต แนะนำเปลี่ยนมาใช้อันนั้น
+    children: [
+      {
+        label: "Coupon Tracking",
+        href: "/classroom/coupons",
+        icon: Ticket,
+        perm: PERM.FOOD_REPORT,
+      },
+    ],
+  },
+
   {
     label: "Event",
     href: "/classroom/event",
@@ -148,7 +165,7 @@ const NAV = [
   {
     label: "Audit Logs",
     href: "/classroom/audit",
-    icon: Soup, // หรือเปลี่ยนเป็น icon อื่นได้
+    icon: Soup,
     perm: PERM.AUDIT_READ,
   },
 
@@ -200,9 +217,6 @@ function filterNavByPerm(items, permSet) {
       out.push({ ...item, children });
       continue;
     }
-
-    // ถ้าพ่อผ่านแต่ไม่มีลูก → ซ่อนทั้งก้อน (กันเมนูโล่งๆ)
-    // ถ้าพ่อไม่ผ่าน → ซ่อน
   }
   return out;
 }
@@ -218,6 +232,12 @@ function SectionItem({ item, adminBase, collapsed }) {
     : pathname === itemHref;
 
   const [open, setOpen] = useState(isActiveSection);
+
+  // ✅ route เปลี่ยนแล้วให้เปิด/ปิดตาม active (UX ดีขึ้น)
+  useEffect(() => {
+    if (collapsed) return;
+    setOpen(isActiveSection);
+  }, [isActiveSection, collapsed]);
 
   const Icon = item.icon;
 
@@ -438,7 +458,8 @@ export default function AdminClassroomLayout({ children }) {
           <nav
             className={[
               collapsed ? "space-y-1" : "space-y-1 text-sm",
-              "min-h-0",
+              // ✅ ทำให้เมนูเลื่อนขึ้นลงได้เมื่อยาวเกิน
+              "min-h-0 overflow-y-auto overscroll-contain pr-1",
             ].join(" ")}
           >
             {meLoading && (
