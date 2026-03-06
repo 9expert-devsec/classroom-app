@@ -333,7 +333,7 @@ export default function CouponPublicClient({ publicId }) {
 
   return (
     <div
-      className={`min-h-screen bg-[#F6F8FC] text-slate-900 ${lineSeedSansTH.className}`}
+      className={`overflow-y-auto h-screen bg-[#F6F8FC] text-slate-900 ${lineSeedSansTH.className}`}
     >
       <div className="pt-6 px-4 pb-10">
         <div className="mx-auto max-w-md">
@@ -373,9 +373,9 @@ export default function CouponPublicClient({ publicId }) {
                     </span>
                   </div>
 
-                  <div className="mt-2 text-[12px] text-white/90">
+                  {/* <div className="mt-2 text-[12px] text-white/90">
                     ใช้ได้ภายในเวลา <b>15:00 น.</b> ของวันคูปอง
-                  </div>
+                  </div> */}
 
                   <div className="mt-3 grid grid-cols-2 gap-3">
                     <button
