@@ -1,7 +1,25 @@
 // src/lib/couponExpiry.server.js
+
 function clean(x) {
   return String(x ?? "").trim();
 }
+
+/**
+ * ===============================
+ * Coupon expire feature flag
+ * ===============================
+ *
+ * ใช้สำหรับ "ปิดระบบหมดอายุชั่วคราว" ตอนเทส
+ *
+ * วิธีใช้:
+ * - ปิด expire ชั่วคราว => ตั้งเป็น true
+ * - กลับโหมดปกติ      => ตั้งเป็น false
+ *
+ * ตอนนี้:
+ *   true  = ไม่เช็คหมดอายุจากเวลา 15:00 และไม่ sync status เป็น expired
+ *   false = ใช้งาน expire ตามปกติ
+ */
+const DISABLE_COUPON_EXPIRE = true;
 
 function toBkkYMD(d) {
   const dt = new Date(d);
@@ -38,12 +56,17 @@ export function getCouponExpireAt(doc) {
   const dayYMD = getCouponDayYMD(doc);
   if (!dayYMD) return null;
 
+  // โหมดปกติ: คูปองหมดอายุ 15:00 น. ของวันคูปอง (+07:00)
   const dt = new Date(`${dayYMD}T15:00:00+07:00`);
   if (Number.isNaN(dt.getTime())) return null;
   return dt;
 }
 
 export function isCouponExpired(doc, now = new Date()) {
+  // ✅ ถ้าตั้ง flag = true จะ "ปิดการเช็คหมดอายุจากเวลา" ชั่วคราว
+  // ถ้าจะกลับมาใช้ expire ตามปกติ ให้เปลี่ยน DISABLE_COUPON_EXPIRE = false
+  if (DISABLE_COUPON_EXPIRE) return false;
+
   const expireAt = getCouponExpireAt(doc);
   if (!expireAt) return false;
   return expireAt.getTime() <= now.getTime();
@@ -52,7 +75,18 @@ export function isCouponExpired(doc, now = new Date()) {
 export function getCouponEffectiveStatus(doc, now = new Date()) {
   const raw = clean(doc?.status || "issued");
 
+  // redeemed ยังมีผลเสมอ
   if (raw === "redeemed") return "redeemed";
+
+  // ✅ ตอนปิด expire ชั่วคราว:
+  // - ignore raw status = "expired"
+  // - ignore การหมดอายุจากเวลา
+  // - ทุกใบที่ยังไม่ redeemed จะถือเป็น issued
+  if (DISABLE_COUPON_EXPIRE) {
+    return "issued";
+  }
+
+  // โหมดปกติ
   if (raw === "expired") return "expired";
   if (isCouponExpired(doc, now)) return "expired";
 
@@ -60,6 +94,17 @@ export function getCouponEffectiveStatus(doc, now = new Date()) {
 }
 
 export async function syncCouponExpiredStatus(Model, doc, now = new Date()) {
+  // ✅ ตอนปิด expire ชั่วคราว:
+  // - ไม่ sync status เป็น expired ลง DB
+  // - ถ้า redeemed อยู่แล้ว ให้คง redeemed
+  // - ถ้ายังไม่ redeemed ให้ถือเป็น issued
+  //
+  // ถ้าจะกลับโหมดปกติ ให้เปลี่ยน DISABLE_COUPON_EXPIRE = false
+  if (DISABLE_COUPON_EXPIRE) {
+    const raw = clean(doc?.status || "issued");
+    return raw === "redeemed" ? "redeemed" : "issued";
+  }
+
   const effectiveStatus = getCouponEffectiveStatus(doc, now);
 
   if (effectiveStatus !== "expired") return effectiveStatus;

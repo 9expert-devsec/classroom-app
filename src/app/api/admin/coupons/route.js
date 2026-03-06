@@ -63,19 +63,40 @@ export async function GET(req) {
       { holderName: rx },
       { courseName: rx },
       { roomName: rx },
-      { publicId: rx }, // ✅ เผื่อแอดมินค้นจากลิงก์
+      { publicId: rx },
     ];
   }
 
   const [total, rows] = await Promise.all([
     CouponRecord.countDocuments(where),
     CouponRecord.find(where)
-      .sort({ createdAt: -1 })
+      .sort({ redeemedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .select(
-        // ✅ เพิ่ม publicId เพื่อทำลิงก์ /coupon/<publicId>
-        "publicId displayCode holderName courseName roomName dayYMD status couponPrice spentAmount diffAmount redeemedAt merchantId createdAt billCode billDayYMD billTotal billCouponTotal billPayMore billCouponCount",
+        [
+          "publicId",
+          "displayCode",
+          "holderName",
+          "courseName",
+          "roomName",
+          "dayYMD",
+          "status",
+          "couponPrice",
+          "spentAmount",
+          "diffAmount",
+          "redeemedAt",
+          "merchantId",
+          "createdAt",
+
+          // bill-level fields
+          "billCode",
+          "billDayYMD",
+          "billTotal",
+          "billCouponTotal",
+          "billPayMore",
+          "billCouponCount",
+        ].join(" "),
       )
       .lean(),
   ]);
@@ -108,7 +129,7 @@ export async function GET(req) {
     limit,
     items: rows.map((x) => ({
       id: String(x._id),
-      publicId: x.publicId || "", // ✅ สำคัญ: เอาไปทำ QR/Copy link
+      publicId: x.publicId || "",
       displayCode: x.displayCode || "",
       holderName: x.holderName || "",
       courseName: x.courseName || "",
@@ -116,14 +137,26 @@ export async function GET(req) {
       dayYMD: x.dayYMD || "",
       status: x.status || "",
       couponPrice: x.couponPrice ?? 180,
+
+      // coupon-level usage fields
       spentAmount: x.spentAmount ?? 0,
       diffAmount: x.diffAmount ?? 0,
       redeemedAt: x.redeemedAt || null,
+
       merchantId: x.merchantId ? String(x.merchantId) : "",
       merchantName: x.merchantId
         ? merchantMap.get(String(x.merchantId)) || ""
         : "",
+
       createdAt: x.createdAt || null,
+
+      // ✅ สำคัญมาก: ต้องส่งกลับไปให้ Bills view ใช้ group/calc
+      billCode: x.billCode || "",
+      billDayYMD: x.billDayYMD || "",
+      billTotal: x.billTotal ?? 0,
+      billCouponTotal: x.billCouponTotal ?? 0,
+      billPayMore: x.billPayMore ?? 0,
+      billCouponCount: x.billCouponCount ?? 0,
     })),
     merchants: merchantOptions.map((m) => ({
       id: String(m._id),

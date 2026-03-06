@@ -1,3 +1,4 @@
+// src/app/[adminKey]/admin/classroom/coupons/CouponsClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,6 +12,11 @@ function cx(...a) {
 
 function clean(x) {
   return String(x ?? "").trim();
+}
+
+function numOr0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function fmtMoney(n) {
@@ -35,7 +41,6 @@ function fmtDateTimeTH(d) {
 }
 
 function todayYMD_BKK() {
-  // en-CA => YYYY-MM-DD (Asia/Bangkok)
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
@@ -44,12 +49,38 @@ function todayYMD_BKK() {
   }).format(new Date());
 }
 
-// ✅ เงื่อนไขใหม่: ถ้าใช้ไม่ถึง/เท่ากับยอดคูปอง => payMore = 0
+// ถ้าใช้ไม่ถึง/เท่ากับยอดคูปอง => payMore = 0
 function payMoreOf(spent, couponTotal) {
   const s = Number(spent);
   const c = Number(couponTotal);
   if (!Number.isFinite(s) || !Number.isFinite(c)) return 0;
   return Math.max(0, s - c);
+}
+
+// สำหรับ Coupons view: ถ้ามี billCode ให้แสดง bill-level ก่อน
+function shownBillTotalOf(it) {
+  const billCode = clean(it?.billCode);
+  if (billCode) {
+    const v = Number(it?.billTotal);
+    if (Number.isFinite(v)) return Math.max(0, v);
+  }
+  return Math.max(0, numOr0(it?.spentAmount));
+}
+
+function shownPayMoreOf(it) {
+  const billCode = clean(it?.billCode);
+  if (billCode) {
+    const v = Number(it?.billPayMore);
+    if (Number.isFinite(v)) return Math.max(0, v);
+  }
+
+  const diff = Number(it?.diffAmount);
+  if (Number.isFinite(diff)) return Math.max(0, diff);
+
+  return payMoreOf(
+    Number(it?.spentAmount || 0),
+    Number(it?.couponPrice ?? 180),
+  );
 }
 
 // กันข้อความใน CSV
@@ -123,7 +154,6 @@ function Modal({ open, title, onClose, children }) {
 /* ================= main ================= */
 
 export default function CouponsClient({ adminKey }) {
-  // ✅ default = Bills
   const [view, setView] = useState("bills"); // "bills" | "coupons"
 
   const [q, setQ] = useState("");
@@ -131,18 +161,16 @@ export default function CouponsClient({ adminKey }) {
   const [status, setStatus] = useState("all");
   const [merchantId, setMerchantId] = useState("all");
 
-  // Coupons view pagination (เพราะ API เดิม paginate เป็น “รายใบ”)
   const [page, setPage] = useState(1);
   const COUPON_LIMIT = 30;
-  const BILL_LIMIT = 2000; // กัน bill แตกข้ามหน้า
+  const BILL_LIMIT = 2000;
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [items, setItems] = useState([]);
-  const [total, setTotal] = useState(0); // total coupons (ตาม API)
+  const [total, setTotal] = useState(0);
   const [merchantOptions, setMerchantOptions] = useState([]);
 
-  // modal qr
   const [qrOpen, setQrOpen] = useState(false);
   const [qrRow, setQrRow] = useState(null);
   const [copyMsg, setCopyMsg] = useState("");
@@ -212,13 +240,11 @@ export default function CouponsClient({ adminKey }) {
     }
   }
 
-  // reload
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, page, q, dayYMD, status, merchantId]);
 
-  // reset page เมื่อ filter เปลี่ยน (เฉพาะ coupons view)
   useEffect(() => {
     if (view !== "coupons") return;
     setPage(1);
@@ -226,16 +252,14 @@ export default function CouponsClient({ adminKey }) {
 
   /* =================== Bills (default) =================== */
 
-  // 1) group coupon rows -> bills
   const bills = useMemo(() => {
     const rows = Array.isArray(items) ? items : [];
     const map = new Map();
 
     for (const it of rows) {
       const billCode = clean(it.billCode);
-      const key =
-        billCode ||
-        `SINGLE:${it.id || it._id || it.displayCode || Math.random()}`;
+      const stableId = clean(it.id || it._id || it.displayCode);
+      const key = billCode || `SINGLE:${stableId}`;
 
       if (!map.has(key)) {
         map.set(key, {
@@ -247,44 +271,54 @@ export default function CouponsClient({ adminKey }) {
           redeemedAt: it.redeemedAt || null,
           status: clean(it.status) || "",
           coupons: [],
-          // metrics (จะคำนวณทีหลัง)
           couponTotal: 0,
           billTotal: 0,
           payMore: 0,
+          couponCount: 0,
         });
       }
 
       const b = map.get(key);
       b.coupons.push(it);
 
-      // เติม merchant/status/time ให้ “ล่าสุด” (เผื่อ data ไม่ครบ)
-      if (!b.merchantName && clean(it.merchantName))
+      if (!b.merchantName && clean(it.merchantName)) {
         b.merchantName = clean(it.merchantName);
+      }
 
-      // status: ถ้ามี redeemed สักใบ ให้ถือว่า bill redeemed
-      if (b.status !== "redeemed" && clean(it.status) === "redeemed")
+      if (b.status !== "redeemed" && clean(it.status) === "redeemed") {
         b.status = "redeemed";
+      }
       if (!b.status) b.status = clean(it.status);
 
-      // redeemedAt: เอาเวลาล่าสุด
       const cur = b.redeemedAt ? new Date(b.redeemedAt).getTime() : 0;
       const nxt = it.redeemedAt ? new Date(it.redeemedAt).getTime() : 0;
       if (nxt > cur) b.redeemedAt = it.redeemedAt || b.redeemedAt;
     }
 
     const out = Array.from(map.values()).map((b) => {
-      // coupon total = sum(couponPrice)
-      const couponTotal = b.coupons.reduce((a, x) => {
+      const fieldCouponTotal = b.coupons.reduce(
+        (mx, x) => Math.max(mx, numOr0(x.billCouponTotal)),
+        0,
+      );
+
+      const fieldBillTotal = b.coupons.reduce(
+        (mx, x) => Math.max(mx, numOr0(x.billTotal)),
+        0,
+      );
+
+      const fieldBillPayMore = b.coupons.reduce(
+        (mx, x) => Math.max(mx, numOr0(x.billPayMore)),
+        0,
+      );
+
+      const fieldBillCouponCount = b.coupons.reduce(
+        (mx, x) => Math.max(mx, numOr0(x.billCouponCount)),
+        0,
+      );
+
+      const sumCouponPrice = b.coupons.reduce((a, x) => {
         const p = Number(x.couponPrice ?? 180);
         return a + (Number.isFinite(p) ? p : 180);
-      }, 0);
-
-      // bill total:
-      // - ถ้ามี billTotal field ใช้เลย
-      // - ถ้าไม่มี ใช้ sum(spentAmount) (เพราะ batch เรา set ใบแรกเป็นยอดเต็ม ใบอื่น 0)
-      const fieldBillTotal = b.coupons.reduce((mx, x) => {
-        const v = Number(x.billTotal);
-        return Number.isFinite(v) && v > mx ? v : mx;
       }, 0);
 
       const sumSpent = b.coupons.reduce((a, x) => {
@@ -292,16 +326,22 @@ export default function CouponsClient({ adminKey }) {
         return a + (Number.isFinite(s) ? s : 0);
       }, 0);
 
+      const couponTotal =
+        fieldCouponTotal > 0 ? fieldCouponTotal : sumCouponPrice;
       const billTotal = fieldBillTotal > 0 ? fieldBillTotal : sumSpent;
-
-      const payMore = payMoreOf(billTotal, couponTotal);
+      const payMore =
+        fieldBillPayMore > 0
+          ? fieldBillPayMore
+          : payMoreOf(billTotal, couponTotal);
+      const couponCount =
+        fieldBillCouponCount > 0 ? fieldBillCouponCount : b.coupons.length;
 
       return {
         ...b,
         couponTotal,
         billTotal,
         payMore,
-        couponCount: b.coupons.length,
+        couponCount,
         title:
           [b.courseName, b.roomName, b.billDayYMD]
             .filter(Boolean)
@@ -309,7 +349,6 @@ export default function CouponsClient({ adminKey }) {
       };
     });
 
-    // sort newest first (redeemedAt desc, else by billCode)
     out.sort((a, b) => {
       const ta = a.redeemedAt ? new Date(a.redeemedAt).getTime() : 0;
       const tb = b.redeemedAt ? new Date(b.redeemedAt).getTime() : 0;
@@ -323,7 +362,6 @@ export default function CouponsClient({ adminKey }) {
     return out;
   }, [items]);
 
-  // 2) group bills by class title
   const billGroups = useMemo(() => {
     const map = new Map();
     for (const b of bills) {
@@ -426,13 +464,11 @@ export default function CouponsClient({ adminKey }) {
       const rows = await fetchAllForExport();
 
       if (view === "bills") {
-        // rebuild bills from export rows (เพื่อให้ครบ)
         const map = new Map();
         for (const it of rows) {
           const billCode = clean(it.billCode);
-          const key =
-            billCode ||
-            `SINGLE:${it.id || it._id || it.displayCode || Math.random()}`;
+          const stableId = clean(it.id || it._id || it.displayCode);
+          const key = billCode || `SINGLE:${stableId}`;
           if (!map.has(key)) map.set(key, []);
           map.get(key).push(it);
         }
@@ -454,22 +490,38 @@ export default function CouponsClient({ adminKey }) {
         const lines = [header.map(csvEscape).join(",")];
 
         for (const [key, itemsInBill] of map.entries()) {
-          const couponTotal = itemsInBill.reduce(
+          const fieldCouponTotal = itemsInBill.reduce(
+            (mx, x) => Math.max(mx, numOr0(x.billCouponTotal)),
+            0,
+          );
+
+          const fieldBillTotal = itemsInBill.reduce(
+            (mx, x) => Math.max(mx, numOr0(x.billTotal)),
+            0,
+          );
+
+          const fieldBillPayMore = itemsInBill.reduce(
+            (mx, x) => Math.max(mx, numOr0(x.billPayMore)),
+            0,
+          );
+
+          const sumCouponPrice = itemsInBill.reduce(
             (a, x) => a + (Number(x.couponPrice ?? 180) || 180),
             0,
           );
 
-          const fieldBillTotal = itemsInBill.reduce((mx, x) => {
-            const v = Number(x.billTotal);
-            return Number.isFinite(v) && v > mx ? v : mx;
-          }, 0);
           const sumSpent = itemsInBill.reduce(
             (a, x) => a + (Number(x.spentAmount ?? 0) || 0),
             0,
           );
-          const billTotal = fieldBillTotal > 0 ? fieldBillTotal : sumSpent;
 
-          const payMore = payMoreOf(billTotal, couponTotal);
+          const couponTotal =
+            fieldCouponTotal > 0 ? fieldCouponTotal : sumCouponPrice;
+          const billTotal = fieldBillTotal > 0 ? fieldBillTotal : sumSpent;
+          const payMore =
+            fieldBillPayMore > 0
+              ? fieldBillPayMore
+              : payMoreOf(billTotal, couponTotal);
 
           const day =
             clean(itemsInBill[0]?.billDayYMD) ||
@@ -488,6 +540,7 @@ export default function CouponsClient({ adminKey }) {
             clean(
               itemsInBill.find((x) => clean(x.merchantName))?.merchantName,
             ) || "-";
+
           const status2 = itemsInBill.some(
             (x) => clean(x.status) === "redeemed",
           )
@@ -498,6 +551,7 @@ export default function CouponsClient({ adminKey }) {
             const t = x.redeemedAt ? new Date(x.redeemedAt).getTime() : 0;
             return t > best ? t : best;
           }, 0);
+
           const redeemedAtLabel = maxRedeemedAt
             ? fmtDateTimeTH(new Date(maxRedeemedAt).toISOString())
             : "-";
@@ -537,7 +591,6 @@ export default function CouponsClient({ adminKey }) {
         return;
       }
 
-      // coupons export (รายใบ)
       const header = [
         "Ref",
         "ผู้ถือคูปอง",
@@ -546,21 +599,18 @@ export default function CouponsClient({ adminKey }) {
         "dayYMD",
         "สถานะ",
         "ร้านที่ใช้",
-        "ยอดคูปอง",
-        "ยอดจริง",
+        "BillCode",
+        "ยอดบิล",
         "ลูกค้าจ่ายเพิ่ม",
         "เวลาใช้",
         "ลิงก์คูปอง",
-        "BillCode",
       ];
       const lines = [header.map(csvEscape).join(",")];
 
       for (const it of rows) {
         const couponUrl = it.publicId ? makeCouponUrl(it.publicId) : "";
-        const payMore = payMoreOf(
-          Number(it.spentAmount || 0),
-          Number(it.couponPrice ?? 180),
-        );
+        const shownBillTotal = shownBillTotalOf(it);
+        const shownPayMore = shownPayMoreOf(it);
 
         lines.push(
           [
@@ -571,12 +621,11 @@ export default function CouponsClient({ adminKey }) {
             it.dayYMD,
             it.status,
             it.merchantName || "",
-            it.couponPrice ?? 180,
-            it.spentAmount ?? 0,
-            payMore,
+            it.billCode || "",
+            shownBillTotal,
+            shownPayMore,
             it.redeemedAt ? fmtDateTimeTH(it.redeemedAt) : "",
             couponUrl,
-            it.billCode || "",
           ]
             .map(csvEscape)
             .join(","),
@@ -592,7 +641,6 @@ export default function CouponsClient({ adminKey }) {
 
   function printPage() {
     if (view !== "bills") {
-      // print coupons current page
       const rows = items || [];
       const title = "Coupon Items";
 
@@ -612,16 +660,14 @@ Filter: day=${dayYMD || "all"} | status=${status} | merchant=${merchantId === "a
 </div>
 <table>
 <thead><tr>
-<th>Ref</th><th>ผู้ถือคูปอง</th><th>คอร์ส</th><th>ห้อง</th><th>dayYMD</th><th>สถานะ</th><th>ร้านที่ใช้</th>
-<th class="right">ยอดจริง</th><th class="right">ลูกค้าจ่ายเพิ่ม</th><th>เวลาใช้</th>
+<th>Ref</th><th>ผู้ถือคูปอง</th><th>คอร์ส</th><th>ห้อง</th><th>dayYMD</th><th>สถานะ</th><th>ร้านที่ใช้</th><th>Bill</th>
+<th class="right">ยอดบิล</th><th class="right">ลูกค้าจ่ายเพิ่ม</th><th>เวลาใช้</th>
 </tr></thead>
 <tbody>
 ${rows
   .map((it) => {
-    const payMore = payMoreOf(
-      Number(it.spentAmount || 0),
-      Number(it.couponPrice ?? 180),
-    );
+    const shownBillTotal = shownBillTotalOf(it);
+    const shownPayMore = shownPayMoreOf(it);
     return `<tr>
 <td>${it.displayCode || "-"}</td>
 <td>${it.holderName || "-"}</td>
@@ -630,8 +676,9 @@ ${rows
 <td>${it.dayYMD || "-"}</td>
 <td>${it.status || "-"}</td>
 <td>${it.merchantName || "-"}</td>
-<td class="right">${fmtMoney(it.spentAmount)}</td>
-<td class="right">${payMore > 0 ? "+" : ""}${fmtMoney(payMore)}</td>
+<td>${it.billCode || "-"}</td>
+<td class="right">${fmtMoney(shownBillTotal)}</td>
+<td class="right">${shownPayMore > 0 ? "+" : ""}${fmtMoney(shownPayMore)}</td>
 <td>${it.redeemedAt ? fmtDateTimeTH(it.redeemedAt) : "-"}</td>
 </tr>`;
   })
@@ -642,7 +689,6 @@ ${rows
       return;
     }
 
-    // print bills grouped
     const groups = billGroups;
     const title = "Coupon Bills";
 
@@ -733,7 +779,6 @@ ${g.rows
         </a>
       </div>
 
-      {/* Tabs */}
       <div className="mt-4 flex gap-2">
         <button
           type="button"
@@ -761,7 +806,6 @@ ${g.rows
         </button>
       </div>
 
-      {/* Filters */}
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
@@ -856,7 +900,6 @@ ${g.rows
         </div>
       </div>
 
-      {/* Content */}
       <div className="mt-4 space-y-4">
         {err ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -879,7 +922,6 @@ ${g.rows
                 key={g.title}
                 className="rounded-2xl border border-slate-200 bg-white overflow-hidden"
               >
-                {/* group header */}
                 <div className="flex items-start justify-between gap-3 px-4 py-3 bg-slate-50 border-b">
                   <div>
                     <div className="text-sm font-semibold">{g.title}</div>
@@ -918,192 +960,183 @@ ${g.rows
                         <th className="text-left px-3 py-2">Actions</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {g.rows.map((b) => {
-                        const key =
-                          b.billCode ||
-                          `SINGLE:${b.title}:${b.redeemedAt || ""}:${b.couponCount}`;
-                        const opened = !!openBills[key];
 
-                        return (
-                          <>
-                            <tr key={key} className="border-t">
-                              <td className="px-3 py-2 font-semibold">
-                                {b.billCode || "-"}
-                              </td>
+                    {g.rows.map((b) => {
+                      const key =
+                        b.billCode ||
+                        `SINGLE:${b.title}:${b.redeemedAt || ""}:${b.couponCount}`;
+                      const opened = !!openBills[key];
 
-                              <td className="px-3 py-2">
-                                <span
-                                  className={cx(
-                                    "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    b.status === "redeemed"
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : b.status === "issued"
-                                        ? "bg-blue-100 text-blue-700"
-                                        : "bg-slate-100 text-slate-700",
-                                  )}
-                                >
-                                  {b.status || "-"}
-                                </span>
-                              </td>
+                      return (
+                        <tbody key={key}>
+                          <tr className="border-t">
+                            <td className="px-3 py-2 font-semibold">
+                              {b.billCode || "-"}
+                            </td>
 
-                              <td className="px-3 py-2">
-                                {b.merchantName || "-"}
-                              </td>
-
-                              <td className="px-3 py-2 text-right">
-                                {fmtMoney(b.couponCount)}
-                              </td>
-
-                              <td className="px-3 py-2 text-right">
-                                {fmtMoney(b.couponTotal)}
-                              </td>
-
-                              <td className="px-3 py-2 text-right">
-                                {fmtMoney(b.billTotal)}
-                              </td>
-
-                              <td
+                            <td className="px-3 py-2">
+                              <span
                                 className={cx(
-                                  "px-3 py-2 text-right",
-                                  b.payMore > 0
-                                    ? "text-red-600"
-                                    : "text-slate-500",
+                                  "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                                  b.status === "redeemed"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : b.status === "issued"
+                                      ? "bg-blue-100 text-blue-700"
+                                      : "bg-slate-100 text-slate-700",
                                 )}
                               >
-                                {b.payMore > 0 ? "+" : ""}
-                                {fmtMoney(b.payMore)}
-                              </td>
+                                {b.status || "-"}
+                              </span>
+                            </td>
 
-                              <td className="px-3 py-2">
-                                {fmtDateTimeTH(b.redeemedAt)}
-                              </td>
+                            <td className="px-3 py-2">
+                              {b.merchantName || "-"}
+                            </td>
 
-                              <td className="px-3 py-2">
-                                <div className="flex gap-2">
-                                  <button
-                                    className="rounded-lg border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
-                                    onClick={() => toggleBill(key)}
-                                  >
-                                    {opened ? "ซ่อนรายการ" : "ดูคูปอง"}
-                                  </button>
+                            <td className="px-3 py-2 text-right">
+                              {fmtMoney(b.couponCount)}
+                            </td>
+
+                            <td className="px-3 py-2 text-right">
+                              {fmtMoney(b.couponTotal)}
+                            </td>
+
+                            <td className="px-3 py-2 text-right">
+                              {fmtMoney(b.billTotal)}
+                            </td>
+
+                            <td
+                              className={cx(
+                                "px-3 py-2 text-right",
+                                b.payMore > 0
+                                  ? "text-red-600"
+                                  : "text-slate-500",
+                              )}
+                            >
+                              {b.payMore > 0 ? "+" : ""}
+                              {fmtMoney(b.payMore)}
+                            </td>
+
+                            <td className="px-3 py-2">
+                              {fmtDateTimeTH(b.redeemedAt)}
+                            </td>
+
+                            <td className="px-3 py-2">
+                              <div className="flex gap-2">
+                                <button
+                                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50"
+                                  onClick={() => toggleBill(key)}
+                                >
+                                  {opened ? "ซ่อนรายการ" : "ดูคูปอง"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {opened ? (
+                            <tr className="border-t bg-slate-50/60">
+                              <td colSpan={9} className="px-3 py-3">
+                                <div className="text-xs text-slate-500 mb-2">
+                                  รายการคูปองในบิลนี้ ({b.coupons.length})
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-[980px] w-full text-xs bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                    <thead className="bg-slate-50 text-slate-600">
+                                      <tr>
+                                        <th className="text-left px-3 py-2">
+                                          Ref
+                                        </th>
+                                        <th className="text-left px-3 py-2">
+                                          ผู้ถือคูปอง
+                                        </th>
+                                        <th className="text-left px-3 py-2">
+                                          สถานะ
+                                        </th>
+                                        <th className="text-right px-3 py-2">
+                                          ยอดคูปอง
+                                        </th>
+                                        <th className="text-left px-3 py-2">
+                                          เวลาใช้
+                                        </th>
+                                        <th className="text-left px-3 py-2">
+                                          Actions
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {b.coupons.map((it) => {
+                                        const couponUrl2 = it.publicId
+                                          ? makeCouponUrl(it.publicId)
+                                          : "";
+                                        return (
+                                          <tr key={it.id} className="border-t">
+                                            <td className="px-3 py-2 font-semibold">
+                                              {it.displayCode || "-"}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              {it.holderName || "-"}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              <span
+                                                className={cx(
+                                                  "inline-flex rounded-full px-2 py-0.5 font-semibold",
+                                                  it.status === "redeemed"
+                                                    ? "bg-emerald-100 text-emerald-700"
+                                                    : it.status === "issued"
+                                                      ? "bg-blue-100 text-blue-700"
+                                                      : "bg-slate-100 text-slate-700",
+                                                )}
+                                              >
+                                                {it.status || "-"}
+                                              </span>
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                              {fmtMoney(it.couponPrice ?? 180)}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              {fmtDateTimeTH(it.redeemedAt)}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                              <div className="flex gap-2">
+                                                <button
+                                                  className="rounded-lg border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                                                  disabled={!it.publicId}
+                                                  onClick={() =>
+                                                    openQrModal(it)
+                                                  }
+                                                >
+                                                  View QR
+                                                </button>
+                                                <button
+                                                  className="rounded-lg border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
+                                                  disabled={!couponUrl2}
+                                                  onClick={() =>
+                                                    copyToClipboard(couponUrl2)
+                                                  }
+                                                >
+                                                  Copy link
+                                                </button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
                                 </div>
                               </td>
                             </tr>
-
-                            {opened ? (
-                              <tr className="border-t bg-slate-50/60">
-                                <td colSpan={9} className="px-3 py-3">
-                                  <div className="text-xs text-slate-500 mb-2">
-                                    รายการคูปองในบิลนี้ ({b.coupons.length})
-                                  </div>
-
-                                  <div className="overflow-x-auto">
-                                    <table className="min-w-[980px] w-full text-xs bg-white border border-slate-200 rounded-xl overflow-hidden">
-                                      <thead className="bg-slate-50 text-slate-600">
-                                        <tr>
-                                          <th className="text-left px-3 py-2">
-                                            Ref
-                                          </th>
-                                          <th className="text-left px-3 py-2">
-                                            ผู้ถือคูปอง
-                                          </th>
-                                          <th className="text-left px-3 py-2">
-                                            สถานะ
-                                          </th>
-                                          <th className="text-right px-3 py-2">
-                                            ยอดคูปอง
-                                          </th>
-                                          <th className="text-left px-3 py-2">
-                                            เวลาใช้
-                                          </th>
-                                          <th className="text-left px-3 py-2">
-                                            Actions
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {b.coupons.map((it) => {
-                                          const couponUrl2 = it.publicId
-                                            ? makeCouponUrl(it.publicId)
-                                            : "";
-                                          return (
-                                            <tr
-                                              key={it.id}
-                                              className="border-t"
-                                            >
-                                              <td className="px-3 py-2 font-semibold">
-                                                {it.displayCode || "-"}
-                                              </td>
-                                              <td className="px-3 py-2">
-                                                {it.holderName || "-"}
-                                              </td>
-                                              <td className="px-3 py-2">
-                                                <span
-                                                  className={cx(
-                                                    "inline-flex rounded-full px-2 py-0.5 font-semibold",
-                                                    it.status === "redeemed"
-                                                      ? "bg-emerald-100 text-emerald-700"
-                                                      : it.status === "issued"
-                                                        ? "bg-blue-100 text-blue-700"
-                                                        : "bg-slate-100 text-slate-700",
-                                                  )}
-                                                >
-                                                  {it.status || "-"}
-                                                </span>
-                                              </td>
-                                              <td className="px-3 py-2 text-right">
-                                                {fmtMoney(
-                                                  it.couponPrice ?? 180,
-                                                )}
-                                              </td>
-                                              <td className="px-3 py-2">
-                                                {fmtDateTimeTH(it.redeemedAt)}
-                                              </td>
-                                              <td className="px-3 py-2">
-                                                <div className="flex gap-2">
-                                                  <button
-                                                    className="rounded-lg border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
-                                                    disabled={!it.publicId}
-                                                    onClick={() =>
-                                                      openQrModal(it)
-                                                    }
-                                                  >
-                                                    View QR
-                                                  </button>
-                                                  <button
-                                                    className="rounded-lg border border-slate-200 px-2 py-1 hover:bg-slate-50 disabled:opacity-50"
-                                                    disabled={!couponUrl2}
-                                                    onClick={() =>
-                                                      copyToClipboard(
-                                                        couponUrl2,
-                                                      )
-                                                    }
-                                                  >
-                                                    Copy link
-                                                  </button>
-                                                </div>
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </td>
-                              </tr>
-                            ) : null}
-                          </>
-                        );
-                      })}
-                    </tbody>
+                          ) : null}
+                        </tbody>
+                      );
+                    })}
                   </table>
                 </div>
               </div>
             ))
           )
-        ) : // coupons view
-        couponsGroupedByClass.length === 0 ? (
+        ) : couponsGroupedByClass.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-slate-500">
             ไม่พบรายการ
           </div>
@@ -1123,7 +1156,7 @@ ${g.rows
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="min-w-[1100px] w-full text-sm">
+                  <table className="min-w-[1250px] w-full text-sm">
                     <thead className="bg-white text-slate-600">
                       <tr>
                         <th className="text-left px-3 py-2">Ref</th>
@@ -1133,7 +1166,8 @@ ${g.rows
                         <th className="text-left px-3 py-2">dayYMD</th>
                         <th className="text-left px-3 py-2">สถานะ</th>
                         <th className="text-left px-3 py-2">ร้านที่ใช้</th>
-                        <th className="text-right px-3 py-2">ยอดจริง</th>
+                        <th className="text-left px-3 py-2">Bill</th>
+                        <th className="text-right px-3 py-2">ยอดบิล</th>
                         <th className="text-right px-3 py-2">
                           ลูกค้าจ่ายเพิ่ม
                         </th>
@@ -1144,10 +1178,9 @@ ${g.rows
 
                     <tbody>
                       {g.rows.map((it) => {
-                        const payMore = payMoreOf(
-                          Number(it.spentAmount || 0),
-                          Number(it.couponPrice ?? 180),
-                        );
+                        const shownBillTotal = shownBillTotalOf(it);
+                        const shownPayMore = shownPayMoreOf(it);
+
                         return (
                           <tr key={it.id} className="border-t">
                             <td className="px-3 py-2 font-semibold">
@@ -1178,17 +1211,22 @@ ${g.rows
                             <td className="px-3 py-2">
                               {it.merchantName || "-"}
                             </td>
+                            <td className="px-3 py-2 font-medium">
+                              {it.billCode || "-"}
+                            </td>
                             <td className="px-3 py-2 text-right">
-                              {fmtMoney(it.spentAmount)}
+                              {fmtMoney(shownBillTotal)}
                             </td>
                             <td
                               className={cx(
                                 "px-3 py-2 text-right",
-                                payMore > 0 ? "text-red-600" : "text-slate-500",
+                                shownPayMore > 0
+                                  ? "text-red-600"
+                                  : "text-slate-500",
                               )}
                             >
-                              {payMore > 0 ? "+" : ""}
-                              {fmtMoney(payMore)}
+                              {shownPayMore > 0 ? "+" : ""}
+                              {fmtMoney(shownPayMore)}
                             </td>
                             <td className="px-3 py-2">
                               {fmtDateTimeTH(it.redeemedAt)}
@@ -1222,7 +1260,6 @@ ${g.rows
               </div>
             ))}
 
-            {/* pagination เฉพาะ coupons view */}
             <div className="mt-4 flex items-center justify-between px-3 py-3 border border-slate-200 rounded-2xl bg-white">
               <div className="text-sm text-slate-500">
                 หน้า {page} / {totalPages}
@@ -1248,7 +1285,6 @@ ${g.rows
         )}
       </div>
 
-      {/* QR Modal */}
       <Modal
         open={qrOpen}
         title="แสดง QR / ลิงก์คูปอง"
