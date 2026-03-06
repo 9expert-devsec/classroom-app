@@ -112,7 +112,7 @@ export async function POST(req) {
   const effectiveDay = computedDay || fallbackDay;
 
   const now = new Date();
-
+ 
   // ---------------------------------------------------
   // ✅ โลจิก “สายหรือไม่สาย” (รายวัน)
   // ---------------------------------------------------

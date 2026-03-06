@@ -22,11 +22,10 @@ function toInt(x, d = 1) {
 function toLimit(x, d = 30) {
   const n = Number(x);
   if (!Number.isFinite(n)) return d;
-  return Math.max(1, Math.min(100, Math.floor(n)));
+  return Math.max(1, Math.min(2000, Math.floor(n)));
 }
 
 export async function GET(req) {
-  // ✅ ป้องกันด้วย admin cookie
   const admin = await requireAdmin(req);
   if (admin instanceof NextResponse) return admin;
 
@@ -48,7 +47,6 @@ export async function GET(req) {
   if (day) where.dayYMD = day;
   if (status && status !== "all") where.status = status;
 
-  // merchantId เป็น ObjectId string หรือ "all"
   if (
     merchantId &&
     merchantId !== "all" &&
@@ -61,9 +59,11 @@ export async function GET(req) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
     where.$or = [
       { displayCode: rx },
+      { billCode: rx },
       { holderName: rx },
       { courseName: rx },
       { roomName: rx },
+      { publicId: rx }, // ✅ เผื่อแอดมินค้นจากลิงก์
     ];
   }
 
@@ -74,12 +74,12 @@ export async function GET(req) {
       .skip(skip)
       .limit(limit)
       .select(
-        "displayCode holderName courseName roomName dayYMD status couponPrice spentAmount diffAmount redeemedAt merchantId createdAt",
+        // ✅ เพิ่ม publicId เพื่อทำลิงก์ /coupon/<publicId>
+        "publicId displayCode holderName courseName roomName dayYMD status couponPrice spentAmount diffAmount redeemedAt merchantId createdAt billCode billDayYMD billTotal billCouponTotal billPayMore billCouponCount",
       )
       .lean(),
   ]);
 
-  // map merchantId -> name
   const merchantIds = Array.from(
     new Set(
       rows
@@ -96,7 +96,6 @@ export async function GET(req) {
 
   const merchantMap = new Map(merchants.map((m) => [String(m._id), m.name]));
 
-  // ส่ง merchant options (มีแค่ 2 ร้านก็พอ)
   const merchantOptions = await Restaurant.find({ isActive: true })
     .select("name")
     .sort({ name: 1 })
@@ -109,6 +108,7 @@ export async function GET(req) {
     limit,
     items: rows.map((x) => ({
       id: String(x._id),
+      publicId: x.publicId || "", // ✅ สำคัญ: เอาไปทำ QR/Copy link
       displayCode: x.displayCode || "",
       holderName: x.holderName || "",
       courseName: x.courseName || "",

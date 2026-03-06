@@ -21,6 +21,19 @@ const CouponRecordSchema = new mongoose.Schema(
       index: true,
     },
 
+    billId: {
+      type: mongoose.Schema.Types.ObjectId,
+      index: true,
+      default: null,
+    },
+    billCode: { type: String, index: true, default: "" },
+    billDayYMD: { type: String, index: true, default: "" },
+
+    billTotal: { type: Number, default: 0 },
+    billCouponTotal: { type: Number, default: 0 },
+    billPayMore: { type: Number, default: 0 },
+    billCouponCount: { type: Number, default: 0 },
+
     // ผูกกับคน/คลาส/วัน
     classId: {
       type: mongoose.Schema.Types.ObjectId,
