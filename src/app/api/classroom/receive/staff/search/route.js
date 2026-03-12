@@ -11,35 +11,40 @@ export const dynamic = "force-dynamic";
 function clean(x) {
   return String(x || "").trim();
 }
+
 function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
 function normalizeDocId(x) {
   let s = String(x || "")
     .trim()
     .toUpperCase();
+
   s = s.replace(/\s+/g, " ");
   s = s.replace(/\s*-\s*/g, "-");
 
-  // ✅ รองรับ INV-001, INV 001, INV001
-  const m = s.match(/^([A-Z]{2,10})[-\s]*([0-9]{1,20})$/);
+  // รองรับ INV-001, INV 001, INV001
+  let m = s.match(/^([A-Z]{2,10})\s+([0-9]{1,20})$/);
+  if (m) return `${m[1]}-${m[2]}`;
+
+  m = s.match(/^([A-Z]{2,10})([0-9]{1,20})$/);
   if (m) return `${m[1]}-${m[2]}`;
 
   return s;
 }
 
-function bangkokNow() {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }),
-  );
+function toYMD_BKK(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
-function toYMD_BKK(d) {
-  const x = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, "0");
-  const day = String(x.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+
 function formatDateTH(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -51,6 +56,7 @@ function formatDateTH(value) {
     timeZone: "Asia/Bangkok",
   });
 }
+
 function formatYMD_TH(ymd) {
   if (!ymd) return "";
   const d = new Date(`${ymd}T00:00:00+07:00`);
@@ -63,31 +69,63 @@ function formatYMD_TH(ymd) {
   });
 }
 
+function getClassDaysYMD(cls) {
+  const days = Array.isArray(cls?.days)
+    ? cls.days.map((x) => clean(x)).filter(Boolean)
+    : [];
+
+  if (days.length) {
+    return [...new Set(days)].sort();
+  }
+
+  const start = cls?.startDate || cls?.date || null;
+  const dayCount =
+    Number(cls?.dayCount ?? cls?.totalDays ?? cls?.duration?.dayCount ?? 1) ||
+    1;
+
+  if (!start) return [];
+
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return [];
+
+  const out = [];
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const ymd = toYMD_BKK(d);
+    if (ymd) out.push(ymd);
+  }
+  return out;
+}
+
+function isClassActiveOnYMD(cls, ymd) {
+  const days = getClassDaysYMD(cls);
+  return days.includes(ymd);
+}
+
 function buildDateTextFromClass(cls) {
-  // 1) ถ้ามี text ที่เตรียมไว้แล้ว
   if (clean(cls?.date_range_text)) return clean(cls.date_range_text);
 
-  // 2) ✅ ใช้ days[] เป็น source of truth
-  const days = Array.isArray(cls?.days) ? cls.days.filter(Boolean) : [];
+  const days = getClassDaysYMD(cls);
   if (days.length) {
-    const sorted = [...days].sort(); // YYYY-MM-DD sort ได้
-    const a = sorted[0];
-    const b = sorted[sorted.length - 1];
+    const a = days[0];
+    const b = days[days.length - 1];
     const ta = formatYMD_TH(a);
     const tb = formatYMD_TH(b);
     if (!ta && !tb) return "";
     return a === b ? ta : `${ta} - ${tb}`;
   }
 
-  // 3) fallback: startDate/date + dayCount
   const start = cls?.startDate || cls?.date || null;
   if (start) {
     const dc =
       Number(cls?.dayCount ?? cls?.totalDays ?? cls?.duration?.dayCount ?? 1) ||
       1;
+
     const s = new Date(start);
     const e = new Date(s);
     e.setDate(e.getDate() + (dc - 1));
+
     const ts = formatDateTH(s);
     const te = formatDateTH(e);
     return ts === te ? ts : `${ts} - ${te}`;
@@ -105,7 +143,11 @@ export async function GET(req) {
   const qLower = q.toLowerCase();
   const qDoc = normalizeDocId(q);
 
-  const todayYMD = toYMD_BKK(bangkokNow());
+  const includeSigned = ["1", "true", "yes"].includes(
+    clean(searchParams.get("includeSigned")).toLowerCase(),
+  );
+
+  const todayYMD = toYMD_BKK(new Date());
 
   if (!q) {
     return Response.json({ ok: true, today: todayYMD, count: 0, items: [] });
@@ -113,7 +155,6 @@ export async function GET(req) {
 
   const reText = new RegExp(escapeRegExp(q), "i");
 
-  // ✅ ถ้าเป็น doc style: สร้าง regex ที่ match INV001/INV 001/INV-001 ให้ชัวร์
   let docRe = null;
   const m = qDoc.match(/^([A-Z]{2,10})-([0-9]{1,20})$/);
   if (m) {
@@ -161,7 +202,8 @@ export async function GET(req) {
     .select("_id studentId classId day time")
     .lean();
 
-  const checkMeta = new Map(); // studentId__classId -> {days:Set, lastTime:Date|null}
+  const checkMeta = new Map(); // studentId__classId -> { days:Set, lastTime:Date|null }
+
   for (const c of checkins || []) {
     const sid = String(c.studentId || "");
     const cid = String(c.classId || "");
@@ -204,12 +246,17 @@ export async function GET(req) {
     .lean();
 
   const classMetaById = new Map();
+
   for (const cls of classes || []) {
+    // ✅ แสดงเฉพาะคลาสที่ active วันนี้
+    if (!isClassActiveOnYMD(cls, todayYMD)) continue;
+
     const id = String(cls._id);
 
-    const title = cls.courseTitle || cls.title || "";
+    const title =
+      cls.courseTitle || cls.courseName || cls.title || cls.classCode || "";
     const courseCode = cls.courseCode || cls.course_code || cls.code || "";
-    const classCode = cls.classCode || cls.class_code || "";
+    const classCode = cls.classCode || cls.class_code || cls.title || "";
 
     const roomName =
       cls.roomName ||
@@ -232,6 +279,12 @@ export async function GET(req) {
     });
   }
 
+  const activeClassIds = Array.from(classMetaById.keys());
+
+  if (!activeClassIds.length) {
+    return Response.json({ ok: true, today: todayYMD, count: 0, items: [] });
+  }
+
   // 4) preload staff_receive receipts
   const paymentRefSet = new Set();
   for (const s of checkedStudents || []) {
@@ -241,7 +294,7 @@ export async function GET(req) {
   const docIds = Array.from(paymentRefSet);
 
   const staffReceipts = await DocumentReceipt.find({
-    classId: { $in: classIdsUsed },
+    classId: { $in: activeClassIds },
     docId: { $in: docIds },
     type: "staff_receive",
   })
@@ -259,6 +312,8 @@ export async function GET(req) {
   for (const stu of checkedStudents) {
     const clsId = String(stu.classId || "");
     const meta = classMetaById.get(clsId);
+
+    // ✅ ถ้าไม่ใช่คลาสของวันนี้ จะไม่แสดง
     if (!meta) continue;
 
     const stuName =
@@ -267,7 +322,7 @@ export async function GET(req) {
     const paymentRef = clean(stu.paymentRef);
     const paymentRefNorm = normalizeDocId(paymentRef);
 
-    // ✅ ถ้าไม่มี docId (paymentRef) จะเซ็น staff_receive ไม่ได้ → ข้าม
+    // ถ้าไม่มี docId จะทำ staff_receive ไม่ได้
     if (!paymentRefNorm) continue;
 
     const hay = [stuName, company, paymentRef, paymentRefNorm]
@@ -282,9 +337,10 @@ export async function GET(req) {
     if (!textMatch && !docMatch) continue;
 
     const receipt = staffByKey.get(`${clsId}__${paymentRefNorm}`);
-
-    // ✅ สถานะยึด staffSig.signedAt เท่านั้น
     const staffSignedAt = receipt?.staffSig?.signedAt || null;
+
+    // ✅ default: ซ่อนรายการที่เจ้าหน้าที่เซ็นแล้ว
+    if (!includeSigned && staffSignedAt) continue;
 
     const key = `${String(stu._id)}__${clsId}`;
     const cm = checkMeta.get(key);
