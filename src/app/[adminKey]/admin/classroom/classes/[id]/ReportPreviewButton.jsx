@@ -697,6 +697,7 @@ export default function ReportPreviewButton({
         <div class="head-left">
           ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
           <div class="head-main">
+            <div class="head-title">ใบส่ง/รับเอกสารทางการเงิน</div>
             <div class="head-title">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
             <div class="head-meta">
              ${
@@ -817,8 +818,15 @@ export default function ReportPreviewButton({
       object-fit:contain;
       flex:0 0 auto;
     }
+      .HeadingTitle{
+      font-size:20px;
+      font-weight:800;
+      line-height:1.1;
+      margin-top:5px;
+      margin-bottom:5px;
+    }
     .paperTitle{
-      font-size:18px;
+      font-size:16px;
       font-weight:800;
       line-height:1.1;
     }
@@ -1021,11 +1029,12 @@ export default function ReportPreviewButton({
     const headRow = `
 <tr>
   <th class="paperHead" colspan="10">
+    <div class="HeadingTitle">ใบส่ง/รับเอกสารทางการเงิน</div>
     <div class="paperHeadWrap">
       <div class="paperLeft">
         ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="logo" />` : ""}
         <div>
-          <div class="paperTitle">${courseName ? `<span><b>หลักสูตร :</b> ${escapeHtml(courseName)}</span>` : ""}</div>
+          <div class="paperTitle" >${courseName ? `<span><b>หลักสูตร :</b> <span style="color:#66CCFF"> ${escapeHtml(courseName)}</span></span>` : ""}</div>
           <div class="paperMeta">
              ${
               trainingRangeLabel
