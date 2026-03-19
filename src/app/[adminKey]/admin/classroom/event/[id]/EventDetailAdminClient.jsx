@@ -63,6 +63,7 @@ export default function EventDetailAdminClient({ eventId }) {
   const [note, setNote] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const stats = useMemo(() => {
     const total = items.length;
@@ -75,6 +76,35 @@ export default function EventDetailAdminClient({ eventId }) {
     ).length;
     return { total, checked, not, cancelled };
   }, [items]);
+
+  function goEditEvent() {
+    router.push(`/a1exqwvCqTXP7s0/admin/classroom/event/${eventId}/edit`);
+  }
+
+  async function handleDeleteEvent() {
+    const ok = window.confirm("ต้องการลบ Event นี้ใช่หรือไม่?");
+    if (!ok) return;
+
+    setErr("");
+    setDeleting(true);
+
+    try {
+      const res = await fetch(`/api/admin/events/${eventId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "delete event failed");
+      }
+
+      router.replace("/a1exqwvCqTXP7s0/admin/classroom/event");
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function load() {
     if (!eventId) return;
@@ -301,6 +331,46 @@ export default function EventDetailAdminClient({ eventId }) {
           >
             {loading ? "กำลังโหลด..." : "Refresh"}
           </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full
+                 border border-admin-border bg-white text-admin-text
+                 hover:bg-admin-surfaceMuted"
+                aria-label="เมนูการจัดการ Event"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+            >
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  goEditEvent();
+                }}
+              >
+                แก้ไขข้อมูล Event
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onSelect={(e) => {
+                  e.preventDefault();
+                  handleDeleteEvent();
+                }}
+                disabled={deleting}
+              >
+                {deleting ? "กำลังลบ..." : "ลบ Event นี้"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
