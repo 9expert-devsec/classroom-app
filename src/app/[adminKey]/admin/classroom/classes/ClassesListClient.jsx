@@ -338,7 +338,36 @@ export default function ClassesListClient({ initialClasses, total }) {
   const [rangePreset, setRangePreset] = useState("today");
 
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+
+  const tableWrapRef = useRef(null);
+
+useEffect(() => {
+  function recalcPageSize() {
+    const el = tableWrapRef.current;
+    if (!el) return;
+
+    const wrapHeight = el.clientHeight;
+
+    // ปรับค่าให้ตรงกับ UI จริง
+    const tableHeadHeight = 36.5;
+    const rowHeight = 57;
+    const minRows = 5;
+
+    const available = wrapHeight - tableHeadHeight;
+    const nextPageSize = Math.max(
+      minRows,
+      Math.floor(available / rowHeight),
+    );
+
+    setPageSize((prev) => (prev === nextPageSize ? prev : nextPageSize));
+  }
+
+  recalcPageSize();
+
+  window.addEventListener("resize", recalcPageSize);
+  return () => window.removeEventListener("resize", recalcPageSize);
+}, []);
 
   // ✅ ตั้ง Default = Today ตอน mount (ครั้งแรก)
   useEffect(() => {
@@ -644,12 +673,19 @@ export default function ClassesListClient({ initialClasses, total }) {
     }
   }
 
+  useEffect(() => {
+  const nextTotalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  if (page > nextTotalPages) {
+    setPage(nextTotalPages);
+  }
+}, [filtered.length, pageSize, page]);
+
   /* ================== RENDER ================== */
 
   return (
-    <div className="rounded-2xl bg-admin-surface p-4 shadow-card">
+    <div className="h-full min-h-0 rounded-2xl bg-admin-surface p-4 shadow-card flex flex-col">
       {/* Filter bar */}
-      <div className="mb-4 space-y-3">
+      <div className="mb-4 space-y-3 shrink-0">
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-xs text-admin-textMuted">ช่วงเวลา:</div>
 
@@ -817,136 +853,140 @@ export default function ClassesListClient({ initialClasses, total }) {
         </div>
       </div>
 
-      <div className="w-full overflow-auto max-h-[calc(100vh-240px)]">
-        <table className="w-full table-fixed text-base sm:text-sm">
-          <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
-            <tr>
-              <th className="w-[220px] px-3 py-2 text-left">วันที่อบรม</th>
-              <th className="w-[110px] px-3 py-2 text-center">จำนวนวัน</th>
-              <th className="px-3 py-2 text-left">ชื่อ CLASS</th>
-              <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
-              <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
-              <th className="w-[150px] px-3 py-2 text-center">จำนวนนักเรียน</th>
-              <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
-            </tr>
-          </thead>
+      <div className="min-h-0 flex-1">
+        <div ref={tableWrapRef} className="h-full w-full overflow-auto">
+          <table className="w-full table-fixed text-base sm:text-sm">
+            <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
+              <tr>
+                <th className="w-[220px] px-3 py-2 text-left">วันที่อบรม</th>
+                <th className="w-[110px] px-3 py-2 text-center">จำนวนวัน</th>
+                <th className="px-3 py-2 text-left">ชื่อ CLASS</th>
+                <th className="w-[120px] px-3 py-2 text-center">ห้องอบรม</th>
+                <th className="w-[200px] px-3 py-2 text-left">ผู้สอน</th>
+                <th className="w-[150px] px-3 py-2 text-center">
+                  จำนวนนักเรียน
+                </th>
+                <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
+              </tr>
+            </thead>
 
-          <tbody>
-            {visible.map((cls) => {
-              const id = cls._id || cls.id;
+            <tbody>
+              {visible.map((cls) => {
+                const id = cls._id || cls.id;
 
-              const studentCount =
-                cls.studentsCount ??
-                cls.studentCount ??
-                cls.students_count ??
-                (Array.isArray(cls.students) ? cls.students.length : 0);
+                const studentCount =
+                  cls.studentsCount ??
+                  cls.studentCount ??
+                  cls.students_count ??
+                  (Array.isArray(cls.students) ? cls.students.length : 0);
 
-              const room = cls.room || cls.roomName || "-";
+                const room = cls.room || cls.roomName || "-";
 
-              const instructor =
-                cls.instructors && cls.instructors.length > 0
-                  ? cls.instructors[0].name ||
-                    cls.instructors[0].fullname ||
-                    "-"
-                  : "-";
+                const instructor =
+                  cls.instructors && cls.instructors.length > 0
+                    ? cls.instructors[0].name ||
+                      cls.instructors[0].fullname ||
+                      "-"
+                    : "-";
 
-              const daysYMD = getClassDaysYMD(cls);
-              const dayCount = getClassDayCount(cls);
+                const daysYMD = getClassDaysYMD(cls);
+                const dayCount = getClassDayCount(cls);
 
-              return (
-                <tr
-                  key={id}
-                  className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
-                >
-                  <td className="px-3 py-2 text-admin-textMuted">
-                    {formatDaysHumanEnglish(daysYMD)}
-                  </td>
+                return (
+                  <tr
+                    key={id}
+                    className="border-t border-admin-border hover:bg-admin-surfaceMuted/60"
+                  >
+                    <td className="px-3 py-2 text-admin-textMuted">
+                      {formatDaysHumanEnglish(daysYMD)}
+                    </td>
 
-                  <td className="px-3 py-2 text-center text-admin-textMuted">
-                    {dayCount}
-                  </td>
+                    <td className="px-3 py-2 text-center text-admin-textMuted">
+                      {dayCount}
+                    </td>
 
-                  <td className="px-3 py-2">
-                    <div className="font-medium">
-                      {cls.title || "ไม่ตั้งชื่อ"}
-                    </div>
-                    <div className="text-[11px] text-admin-textMuted">
-                      {cls.courseCode || cls.course_id || ""}
-                    </div>
-                  </td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium">
+                        {cls.title || "ไม่ตั้งชื่อ"}
+                      </div>
+                      <div className="text-[11px] text-admin-textMuted">
+                        {cls.courseCode || cls.course_id || ""}
+                      </div>
+                    </td>
 
-                  <td className="px-3 py-2 text-admin-textMuted text-center">
-                    {room}
-                  </td>
+                    <td className="px-3 py-2 text-admin-textMuted text-center">
+                      {room}
+                    </td>
 
-                  <td className="px-3 py-2 text-admin-textMuted">
-                    {instructor}
-                  </td>
+                    <td className="px-3 py-2 text-admin-textMuted">
+                      {instructor}
+                    </td>
 
-                  <td className="px-3 py-2 text-center">{studentCount}</td>
+                    <td className="px-3 py-2 text-center">{studentCount}</td>
 
-                  <td className="px-3 py-2 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full
+                    <td className="px-3 py-2 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full
                           border border-admin-border bg-white text-admin-text
                           hover:bg-admin-surfaceMuted focus:outline-none"
-                          aria-label="เมนูการจัดการ"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-
-                      <DropdownMenuContent
-                        align="end"
-                        sideOffset={8}
-                        className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
-                      >
-                        <DropdownMenuItem asChild>
-                          <Link
-                            href={`/a1exqwvCqTXP7s0/admin/classroom/classes/${id}`}
+                            aria-label="เมนูการจัดการ"
                           >
-                            เปิดดู
-                          </Link>
-                        </DropdownMenuItem>
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
 
-                        <DropdownMenuItem onSelect={() => openEditModal(cls)}>
-                          แก้ไข
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem
-                          className="text-red-600 focus:text-red-600"
-                          onSelect={() => handleDelete(cls)}
-                          disabled={deletingId === id}
+                        <DropdownMenuContent
+                          align="end"
+                          sideOffset={8}
+                          className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                         >
-                          {deletingId === id ? "กำลังลบ..." : "ลบ"}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/a1exqwvCqTXP7s0/admin/classroom/classes/${id}`}
+                            >
+                              เปิดดู
+                            </Link>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem onSelect={() => openEditModal(cls)}>
+                            แก้ไข
+                          </DropdownMenuItem>
+
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onSelect={() => handleDelete(cls)}
+                            disabled={deletingId === id}
+                          >
+                            {deletingId === id ? "กำลังลบ..." : "ลบ"}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {visible.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-3 py-4 text-center text-admin-textMuted"
+                  >
+                    ยังไม่มี Class ตรงตามเงื่อนไข
                   </td>
                 </tr>
-              );
-            })}
-
-            {visible.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-3 py-4 text-center text-admin-textMuted"
-                >
-                  ยังไม่มี Class ตรงตามเงื่อนไข
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Pagination */}
       {filtered.length > pageSize && (
-        <div className="mt-4 flex items-center justify-end gap-2 text-xs">
+        <div className="mt-4 shrink-0 flex items-center justify-end gap-2 text-xs">
           <button
             type="button"
             onClick={goPrev}

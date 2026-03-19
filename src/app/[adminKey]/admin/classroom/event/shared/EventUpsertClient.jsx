@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -155,24 +156,37 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex flex-row gap-3 items-center">
+        <button
+          type="button"
+          onClick={() =>
+            router.replace("/a1exqwvCqTXP7s0/admin/classroom/event")
+          }
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full
+               border border-admin-border bg-white text-admin-text
+               hover:bg-admin-surfaceMuted"
+          aria-label="ย้อนกลับ"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
         <div>
-          <div className="text-2xl font-extrabold">
+          <div className="text-xl font-extrabold">
             {isEdit ? "Edit Event" : "Create Event"}
           </div>
-          <div className="mt-1 text-sm text-zinc-600">
+          <div className="text-sm text-zinc-600">
             สร้าง/แก้ไข Event และอัปโหลดภาพหน้าปก
           </div>
         </div>
 
-        <button
-          className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
+        {/* <button
+          className="h-10 rounded-xl border px-4 text-sm font-normal hover:bg-zinc-50"
           onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event")}
           disabled={loading}
         >
           กลับหน้า List
-        </button>
+        </button> */}
       </div>
 
       {err && (
@@ -181,7 +195,7 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
         </div>
       )}
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border bg-white p-5 shadow-sm overflow-y-auto">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="text-sm">
             <div className="mb-1 font-medium text-zinc-700">ชื่อ Event</div>
@@ -253,10 +267,10 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
               <div className="flex items-center gap-2">
                 <label
                   className={cx(
-                    "h-9 cursor-pointer rounded-xl px-3 text-sm font-semibold",
+                    "inline-flex h-10 cursor-pointer items-center justify-center rounded-xl px-4 text-sm font-semibold transition",
                     busyUpload
                       ? "bg-zinc-200 text-zinc-500"
-                      : "bg-black text-white",
+                      : "bg-admin-text text-white hover:opacity-90",
                   )}
                 >
                   <input
@@ -270,7 +284,8 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
                 </label>
 
                 <button
-                  className="h-9 rounded-xl border px-3 text-sm font-semibold hover:bg-zinc-50"
+                  type="button"
+                  className="inline-flex h-10 items-center justify-center rounded-xl border border-admin-border px-4 text-sm font-medium text-admin-text transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => {
                     setCoverUrl("");
                     setCoverPid("");
@@ -282,15 +297,15 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
               </div>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-4">
               {coverUrl ? (
-                <div className="relative aspect-[16/9] w-2/4 overflow-hidden rounded-xl bg-zinc-100">
+                <div className="relative aspect-[16/9] w-full max-w-[820px] overflow-hidden rounded-2xl border border-admin-border/60 bg-zinc-100">
                   <Image
                     src={coverUrl}
                     alt="cover"
                     fill
                     className="object-cover"
-                    sizes="(max-width: 768px) 100vw, 800px"
+                    sizes="(max-width: 1024px) 100vw, 820px"
                   />
                 </div>
               ) : (
@@ -302,7 +317,32 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
           </div>
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className="mt-6 flex justify-end gap-3 border-t pt-4">
+          <button
+            className="h-10 rounded-xl border px-5 text-sm font-normal text-slate-500 hover:bg-zinc-50"
+            onClick={() =>
+              router.push("/a1exqwvCqTXP7s0/admin/classroom/event")
+            }
+            disabled={loading}
+          >
+            Cancel
+          </button>
+
+          <button
+            className={cx(
+              "h-10 min-w-[140px] rounded-xl px-5 font-semibold",
+              loading
+                ? "bg-zinc-200 text-zinc-500"
+                : "bg-[#66ccff] text-[#0A1F33] hover:bg-[#51a8d3] hover:text-white",
+            )}
+            onClick={save}
+            disabled={loading || busyUpload}
+          >
+            {loading ? "กำลังบันทึก..." : isEdit ? "Update" : "Create"}
+          </button>
+        </div>
+
+        {/* <div className="mt-4 flex gap-2">
           <button
             className={cx(
               "h-11 flex-1 rounded-xl font-semibold",
@@ -318,18 +358,20 @@ export default function EventUpsertClient({ mode = "create", eventId = "" }) {
 
           <button
             className="h-11 rounded-xl border px-4 font-semibold hover:bg-zinc-50"
-            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event")}
+            onClick={() =>
+              router.push("/a1exqwvCqTXP7s0/admin/classroom/event")
+            }
             disabled={loading}
           >
             Cancel
           </button>
-        </div>
+        </div> */}
       </div>
 
-      <div className="mt-4 text-xs text-zinc-500">
+      {/* <div className="mt-4 text-xs text-zinc-500">
         * “ลบรูป” จะเคลียร์รูปในฟอร์ม และลบรูปจริงบน Cloudinary ตอนกด Save (ผ่าน
         prevCoverImagePublicId)
-      </div>
+      </div> */}
     </div>
   );
 }

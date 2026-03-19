@@ -29,8 +29,8 @@ export default async function ClassesPage() {
   const { items, total } = await fetchClasses();
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Class ทั้งหมด</h1>
           <p className="text-sm text-admin-textMuted">
@@ -41,14 +41,16 @@ export default async function ClassesPage() {
         <div className="flex flex-wrap gap-2">
           <Link
             href="/a1exqwvCqTXP7s0/admin/classroom/classes/from-schedule"
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl bg-brand-primary text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Import Class จาก Schedule
           </Link>
         </div>
       </div>
 
-      <ClassesListClient initialClasses={items} total={total} />
+      <div className="flex-1 min-h-0">
+        <ClassesListClient initialClasses={items} total={total} />
+      </div>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import { Suspense } from "react";
-import EventSelectClient from "./EventSelectClient";
+import EventListClient from "./EventListClient";
 
 export const dynamic = "force-dynamic";
 
 export default function Page({ searchParams }) {
   return (
     <Suspense fallback={null}>
-      <EventSelectClient searchParams={searchParams || {}} />
+      <EventListClient searchParams={searchParams || {}} />
     </Suspense>
   );
 }
