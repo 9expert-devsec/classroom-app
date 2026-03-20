@@ -98,9 +98,13 @@ export default function RedeemClient({ searchParams }) {
 
   const cInit = useMemo(() => pick(searchParams, "c"), [searchParams]);
   const refInit = useMemo(() => pick(searchParams, "ref"), [searchParams]);
+  const billInit = useMemo(() => pick(searchParams, "bill"), [searchParams]);
+  const isBillDetailMode = !!clean(billInit);
 
   const [me, setMe] = useState(null);
   const [loadingMe, setLoadingMe] = useState(true);
+
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   const [err, setErr] = useState("");
 
@@ -144,11 +148,13 @@ export default function RedeemClient({ searchParams }) {
 
       const next = encodeURIComponent(
         `/m/redeem${
-          cInit
-            ? `?c=${encodeURIComponent(cInit)}`
-            : refInit
-              ? `?ref=${encodeURIComponent(refInit)}`
-              : ""
+          billInit
+            ? `?bill=${encodeURIComponent(billInit)}`
+            : cInit
+              ? `?c=${encodeURIComponent(cInit)}`
+              : refInit
+                ? `?ref=${encodeURIComponent(refInit)}`
+                : ""
         }`,
       );
 
@@ -170,7 +176,67 @@ export default function RedeemClient({ searchParams }) {
         setLoadingMe(false);
       }
     })();
-  }, [router, cInit, refInit]);
+  }, [router, cInit, refInit, billInit]);
+
+  useEffect(() => {
+    if (!me || !isBillDetailMode || !billInit) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoadingDetail(true);
+      setErr("");
+
+      try {
+        const r = await fetch(
+          `/api/merchant/bills/by-code?bill=${encodeURIComponent(billInit)}`,
+          { cache: "no-store" },
+        );
+
+        const j = await r.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!r.ok || !j?.ok) {
+          setErr(j?.error || "โหลดรายละเอียดบิลไม่สำเร็จ");
+          return;
+        }
+
+        const nextRows = Array.isArray(j.items)
+          ? j.items.map((it) => ({
+              key: clean(it.displayCode) || String(Math.random()),
+              source: { bill: billInit },
+              item: {
+                ...it,
+                status: it.status || "redeemed",
+              },
+            }))
+          : [];
+
+        rowsRef.current = nextRows;
+        setRows(nextRows);
+
+        setBillCode(j.bill?.billCode || billInit);
+        setBillTotalText(
+          Number.isFinite(Number(j.bill?.billTotal))
+            ? String(j.bill.billTotal)
+            : "",
+        );
+
+        setDone(true);
+        setReceipt(j.bill || null);
+      } catch {
+        if (!cancelled) {
+          setErr("โหลดรายละเอียดบิลไม่สำเร็จ");
+        }
+      } finally {
+        if (!cancelled) setLoadingDetail(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [me, billInit, isBillDetailMode]);
 
   useEffect(() => {
     if (billCode) return;
@@ -290,6 +356,7 @@ export default function RedeemClient({ searchParams }) {
 
   useEffect(() => {
     if (!me) return;
+    if (isBillDetailMode) return;
     if (!cInit && !refInit) return;
     if (done) return;
 
@@ -465,7 +532,7 @@ export default function RedeemClient({ searchParams }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanOpen]);
 
-  if (loadingMe) {
+  if (loadingMe || loadingDetail) {
     return (
       <div className="min-h-screen bg-[#F6F8FC] text-slate-900 flex items-center justify-center">
         กำลังโหลด…
@@ -483,6 +550,11 @@ export default function RedeemClient({ searchParams }) {
         <div className="max-w-2xl mx-auto">
           <div className="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-5">
+              {isBillDetailMode ? (
+                <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  โหมดดูรายละเอียดบิลที่ใช้แล้ว
+                </div>
+              ) : null}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs text-slate-500">ร้านค้า</div>
@@ -508,13 +580,15 @@ export default function RedeemClient({ searchParams }) {
                   >
                     Dashboard
                   </button>
-                  <button
-                    className="rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 text-sm font-semibold disabled:opacity-60"
-                    onClick={() => setScanOpen(true)}
-                    disabled={done}
-                  >
-                    สแกนเพิ่ม
-                  </button>
+                  {!isBillDetailMode ? (
+                    <button
+                      className="rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                      onClick={() => setScanOpen(true)}
+                      disabled={done}
+                    >
+                      สแกนเพิ่ม
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -524,25 +598,27 @@ export default function RedeemClient({ searchParams }) {
                 </div>
               ) : null}
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button
-                  className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-4 text-left disabled:opacity-60"
-                  onClick={() => setScanOpen(true)}
-                  disabled={done}
-                >
-                  <div className="text-sm font-bold">
-                    📷 สแกน QR เพื่อเพิ่มคูปอง
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    แนะนำให้ใช้สแกนเป็นหลัก (แม่นสุด)
-                  </div>
-                </button>
+              {!isBillDetailMode ? (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <button
+                    className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-4 text-left disabled:opacity-60"
+                    onClick={() => setScanOpen(true)}
+                    disabled={done}
+                  >
+                    <div className="text-sm font-bold">
+                      📷 สแกน QR เพื่อเพิ่มคูปอง
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      แนะนำให้ใช้สแกนเป็นหลัก (แม่นสุด)
+                    </div>
+                  </button>
 
-                <PasteOrRefBox
-                  disabled={done || adding}
-                  onAdd={(text) => parseTextAndAdd(text)}
-                />
-              </div>
+                  <PasteOrRefBox
+                    disabled={done || adding}
+                    onAdd={(text) => parseTextAndAdd(text)}
+                  />
+                </div>
+              ) : null}
 
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b flex items-center justify-between">
@@ -589,7 +665,7 @@ export default function RedeemClient({ searchParams }) {
                             {r.item?.status || "-"}
                           </span>
 
-                          {!done ? (
+                          {!done && !isBillDetailMode ? (
                             <button
                               className="text-xs font-semibold rounded-xl border border-slate-200 px-2 py-1 hover:bg-slate-50"
                               onClick={() => removeRow(r.key)}
@@ -609,113 +685,198 @@ export default function RedeemClient({ searchParams }) {
               </div>
 
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                    <div className="text-xs text-slate-500">ยอดคูปองรวม</div>
-                    <div className="text-xl font-extrabold">
-                      {fmtMoney(couponTotal)} บาท
-                    </div>
-                  </div>
+                {isBillDetailMode ? (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                        <div className="text-xs text-slate-500">
+                          ยอดคูปองรวม
+                        </div>
+                        <div className="text-xl font-extrabold">
+                          {fmtMoney(receipt?.couponTotal)} บาท
+                        </div>
+                      </div>
 
-                  <div className="md:col-span-2 rounded-2xl bg-white border border-slate-200 p-3">
-                    <div className="text-xs text-slate-500">
-                      ยอดบิลรวม (บาท)
-                    </div>
-                    <input
-                      inputMode="numeric"
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-lg focus:ring-2 focus:ring-[#66CCFF]/60 focus:border-[#66CCFF]"
-                      value={billTotalText}
-                      onChange={(e) => setBillTotalText(e.target.value)}
-                      placeholder="เช่น 540 (รวมทั้งบิล)"
-                      disabled={done}
-                    />
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                        <div className="text-xs text-slate-500">ยอดบิลรวม</div>
+                        <div className="text-xl font-extrabold">
+                          {fmtMoney(receipt?.billTotal)} บาท
+                        </div>
+                      </div>
 
-                    <div className="mt-2 text-sm text-slate-600">
-                      ลูกค้าจ่ายเพิ่ม:{" "}
-                      {payMore === null ? (
-                        "-"
-                      ) : payMore > 0 ? (
-                        <b className="text-red-600">+{fmtMoney(payMore)} บาท</b>
-                      ) : (
-                        <b className="text-emerald-700">0 บาท</b>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  disabled={adding || done}
-                  onClick={confirmBill}
-                  className="mt-4 w-full rounded-2xl bg-[#2B6CFF] hover:bg-[#255DE0] text-white px-4 py-3 font-semibold disabled:opacity-60"
-                >
-                  {adding
-                    ? "กำลังยืนยัน..."
-                    : done
-                      ? "ยืนยันแล้ว"
-                      : "ยืนยันใช้คูปอง (ตัดทั้งบิล)"}
-                </button>
-
-                <div className="mt-2 text-xs text-slate-500">
-                  * ระบบจะตัดคูปองทุกใบในบิลนี้พร้อมกัน และคำนวณ “จ่ายเพิ่ม” จาก
-                  (ยอดบิลรวม - ยอดคูปองรวม)
-                </div>
-
-                {done && receipt ? (
-                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
-                    <div className="font-bold text-emerald-800">
-                      ✅ ตัดคูปองสำเร็จ
-                    </div>
-                    <div className="mt-2 text-slate-700">
-                      Bill: <b>{receipt.billCode}</b>
-                    </div>
-                    <div className="text-slate-700">
-                      คูปอง {receipt.couponCount} ใบ • คูปองรวม{" "}
-                      <b>{fmtMoney(receipt.couponTotal)}</b> • ยอดบิล{" "}
-                      <b>{fmtMoney(receipt.billTotal)}</b>
-                    </div>
-                    <div className="text-slate-700">
-                      ลูกค้าจ่ายเพิ่ม:{" "}
-                      <b
-                        className={
-                          receipt.payMore > 0
-                            ? "text-red-700"
-                            : "text-emerald-700"
-                        }
-                      >
-                        {receipt.payMore > 0 ? "+" : ""}
-                        {fmtMoney(receipt.payMore)}
-                      </b>
-                    </div>
-                    <div className="text-slate-500 text-xs mt-1">
-                      เวลา: {fmtDateTimeTH(receipt.redeemedAt)}
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                        <div className="text-xs text-slate-500">
+                          ลูกค้าจ่ายเพิ่ม
+                        </div>
+                        <div
+                          className={
+                            Number(receipt?.payMore) > 0
+                              ? "text-xl font-extrabold text-red-600"
+                              : "text-xl font-extrabold text-emerald-700"
+                          }
+                        >
+                          {Number(receipt?.payMore) > 0 ? "+" : ""}
+                          {fmtMoney(receipt?.payMore)} บาท
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        className="flex-1 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 font-semibold"
-                        onClick={() => router.push("/m/dashboard")}
-                      >
-                        กลับ Dashboard
-                      </button>
-                      <button
-                        className="flex-1 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 font-semibold"
-                        onClick={() => {
-                          setRows([]);
-                          rowsRef.current = [];
-                          setBillTotalText("");
-                          setDone(false);
-                          setReceipt(null);
-                          setErr("");
-                          setBillCode("");
-                          initAddedRef.current = new Set();
-                          inFlightAddRef.current = new Set();
-                        }}
-                      >
-                        เริ่มบิลใหม่
-                      </button>
+                    {receipt ? (
+                      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                        <div className="font-bold text-emerald-800">
+                          🧾 รายละเอียดบิลที่ใช้แล้ว
+                        </div>
+                        <div className="mt-2 text-slate-700">
+                          Bill: <b>{receipt.billCode}</b>
+                        </div>
+                        <div className="text-slate-700">
+                          คูปอง {receipt.couponCount} ใบ • คูปองรวม{" "}
+                          <b>{fmtMoney(receipt.couponTotal)}</b> • ยอดบิล{" "}
+                          <b>{fmtMoney(receipt.billTotal)}</b>
+                        </div>
+                        <div className="text-slate-700">
+                          ลูกค้าจ่ายเพิ่ม:{" "}
+                          <b
+                            className={
+                              receipt.payMore > 0
+                                ? "text-red-700"
+                                : "text-emerald-700"
+                            }
+                          >
+                            {receipt.payMore > 0 ? "+" : ""}
+                            {fmtMoney(receipt.payMore)}
+                          </b>
+                        </div>
+                        <div className="text-slate-500 text-xs mt-1">
+                          เวลา: {fmtDateTimeTH(receipt.redeemedAt)}
+                        </div>
+
+                        <div className="mt-3">
+                          <button
+                            className="w-full rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 font-semibold"
+                            onClick={() => router.push("/m/dashboard")}
+                          >
+                            กลับ Dashboard
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3">
+                        <div className="text-xs text-slate-500">
+                          ยอดคูปองรวม
+                        </div>
+                        <div className="text-xl font-extrabold">
+                          {fmtMoney(couponTotal)} บาท
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2 rounded-2xl bg-white border border-slate-200 p-3">
+                        <div className="text-xs text-slate-500">
+                          ยอดบิลรวม (บาท)
+                        </div>
+                        <input
+                          inputMode="numeric"
+                          className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-lg focus:ring-2 focus:ring-[#66CCFF]/60 focus:border-[#66CCFF]"
+                          value={billTotalText}
+                          onChange={(e) => setBillTotalText(e.target.value)}
+                          placeholder="เช่น 540 (รวมทั้งบิล)"
+                          disabled={done}
+                        />
+
+                        <div className="mt-2 text-sm text-slate-600">
+                          ลูกค้าจ่ายเพิ่ม:{" "}
+                          {payMore === null ? (
+                            "-"
+                          ) : payMore > 0 ? (
+                            <b className="text-red-600">
+                              +{fmtMoney(payMore)} บาท
+                            </b>
+                          ) : (
+                            <b className="text-emerald-700">0 บาท</b>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
+
+                    <button
+                      disabled={adding || done}
+                      onClick={confirmBill}
+                      className="mt-4 w-full rounded-2xl bg-[#2B6CFF] hover:bg-[#255DE0] text-white px-4 py-3 font-semibold disabled:opacity-60"
+                    >
+                      {adding
+                        ? "กำลังยืนยัน..."
+                        : done
+                          ? "ยืนยันแล้ว"
+                          : "ยืนยันใช้คูปอง (ตัดทั้งบิล)"}
+                    </button>
+
+                    <div className="mt-2 text-xs text-slate-500">
+                      * ระบบจะตัดคูปองทุกใบในบิลนี้พร้อมกัน และคำนวณ “จ่ายเพิ่ม”
+                      จาก (ยอดบิลรวม - ยอดคูปองรวม)
+                    </div>
+
+                    {done && receipt ? (
+                      <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+                        <div className="font-bold text-emerald-800">
+                          ✅ ตัดคูปองสำเร็จ
+                        </div>
+                        <div className="mt-2 text-slate-700">
+                          Bill: <b>{receipt.billCode}</b>
+                        </div>
+                        <div className="text-slate-700">
+                          คูปอง {receipt.couponCount} ใบ • คูปองรวม{" "}
+                          <b>{fmtMoney(receipt.couponTotal)}</b> • ยอดบิล{" "}
+                          <b>{fmtMoney(receipt.billTotal)}</b>
+                        </div>
+                        <div className="text-slate-700">
+                          ลูกค้าจ่ายเพิ่ม:{" "}
+                          <b
+                            className={
+                              receipt.payMore > 0
+                                ? "text-red-700"
+                                : "text-emerald-700"
+                            }
+                          >
+                            {receipt.payMore > 0 ? "+" : ""}
+                            {fmtMoney(receipt.payMore)}
+                          </b>
+                        </div>
+                        <div className="text-slate-500 text-xs mt-1">
+                          เวลา: {fmtDateTimeTH(receipt.redeemedAt)}
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            className="flex-1 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 font-semibold"
+                            onClick={() => router.push("/m/dashboard")}
+                          >
+                            กลับ Dashboard
+                          </button>
+                          <button
+                            className="flex-1 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 font-semibold"
+                            onClick={() => {
+                              setRows([]);
+                              rowsRef.current = [];
+                              setBillTotalText("");
+                              setDone(false);
+                              setReceipt(null);
+                              setErr("");
+                              setBillCode("");
+                              initAddedRef.current = new Set();
+                              inFlightAddRef.current = new Set();
+                            }}
+                          >
+                            เริ่มบิลใหม่
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
 

@@ -364,11 +364,18 @@ export default function DashboardClient() {
                       <div className="mt-3 flex justify-end">
                         <button
                           className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2 text-xs font-semibold"
-                          onClick={() =>
+                          onClick={() => {
+                            if (clean(it.billCode)) {
+                              router.push(
+                                `/m/redeem?bill=${encodeURIComponent(it.billCode)}`,
+                              );
+                              return;
+                            }
+
                             router.push(
                               `/m/redeem?c=${encodeURIComponent(it.redeemCipher)}`,
-                            )
-                          }
+                            );
+                          }}
                           title="เปิดหน้ารายการนี้อีกครั้ง (จะขึ้นว่าใช้แล้ว)"
                         >
                           ดูรายละเอียด

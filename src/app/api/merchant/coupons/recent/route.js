@@ -28,7 +28,7 @@ export async function GET(req) {
     .sort({ redeemedAt: -1 })
     .limit(limit)
     .select(
-      "displayCode holderName courseName spentAmount diffAmount redeemedAt redeemCipher",
+      "displayCode holderName courseName spentAmount diffAmount redeemedAt redeemCipher billCode billTotal billCouponTotal billCouponCount billPayMore",
     )
     .lean();
 
@@ -43,6 +43,13 @@ export async function GET(req) {
       diffAmount: x.diffAmount || 0,
       redeemedAt: x.redeemedAt || null,
       redeemCipher: x.redeemCipher || "",
+
+      // ✅ เพิ่ม
+      billCode: x.billCode || "",
+      billTotal: x.billTotal || 0,
+      billCouponTotal: x.billCouponTotal || 0,
+      billCouponCount: x.billCouponCount || 0,
+      billPayMore: x.billPayMore || 0,
     })),
   });
 }
