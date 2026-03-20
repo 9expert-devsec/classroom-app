@@ -178,14 +178,14 @@ export default function DashboardClient() {
   const logoUrl = me?.restaurant?.logoUrl || "";
 
   return (
-    <div className="min-h-screen bg-[#F6F8FC] text-slate-900">
+    <div className="min-h-[100dvh] bg-[#F6F8FC] text-slate-900">
       {/* header gradient (ธีมเดียวกับ register/coupon/login) */}
-      <div className="h-24 bg-gradient-to-r from-[#2B6CFF] via-[#66CCFF] to-[#F6B73C]" />
+      <div className="h-24 shrink-0 bg-gradient-to-r from-[#2B6CFF] via-[#66CCFF] to-[#F6B73C]" />
 
-      <div className="-mt-14 px-4 pb-10">
-        <div className="mx-auto max-w-2xl space-y-4">
+      <div className="-mt-14 flex min-h-[calc(100dvh-6rem)] flex-col px-4 pb-10">
+        <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col gap-4">
           {/* HEADER CARD */}
-          <div className="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+          <div className="shrink-0 rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
@@ -264,16 +264,16 @@ export default function DashboardClient() {
                   <div className="text-sm font-semibold">
                     วางลิงก์/รหัส (สำรอง)
                   </div>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex w-full gap-2">
                     <input
                       value={cText}
                       onChange={(e) => setCText(e.target.value)}
-                      className="flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-[#66CCFF]/60 focus:border-[#66CCFF]"
+                      className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-[#66CCFF]/60 focus:border-[#66CCFF]"
                       placeholder="วาง Ref เช่น 9XPXXXX"
                     />
                     <button
                       onClick={goRedeemFromInput}
-                      className="rounded-2xl bg-[#2B6CFF] hover:bg-[#255DE0] text-white px-4 py-2 font-semibold"
+                      className="shrink-0 rounded-2xl bg-[#2B6CFF] hover:bg-[#255DE0] text-white px-4 py-2 font-semibold"
                     >
                       ไป
                     </button>
@@ -292,26 +292,26 @@ export default function DashboardClient() {
               </div>
             </div>
 
-            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
+            {/* <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
               แนะนำ: ใช้ “สแกน QR” เป็นหลัก • ช่องวางลิงก์ใช้กรณีกล้องมีปัญหา
-            </div>
+            </div> */}
           </div>
 
           {/* RECENT REDEEMS */}
-          <div className="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-5">
-              <div className="flex items-center justify-between gap-3">
+          <div className="min-h-0 flex-1 rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex h-full min-h-0 flex-col p-5">
+              <div className="shrink-0 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-bold">รายการใช้คูปองล่าสุด</div>
-                  <div className="text-xs text-slate-500">แสดงเฉพาะร้านนี้</div>
+                  {/* <div className="text-xs text-slate-500">แสดงเฉพาะร้านนี้</div> */}
                 </div>
 
-                <button
+                {/* <button
                   onClick={() => router.push("/m/scan")}
                   className="rounded-2xl bg-[#66CCFF] hover:bg-[#56C3FF] text-slate-900 px-3 py-2 text-sm font-semibold"
                 >
                   สแกนอีกครั้ง
-                </button>
+                </button> */}
               </div>
 
               {loadingItems ? (
@@ -391,9 +391,9 @@ export default function DashboardClient() {
               )}
             </div>
 
-            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
+            {/* <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
               รายการนี้อัปเดตหลังมีการ “ยืนยันใช้คูปอง” สำเร็จ
-            </div>
+            </div> */}
           </div>
 
           <div className="text-center text-xs text-slate-500">
