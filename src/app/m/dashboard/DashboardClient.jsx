@@ -1,4 +1,3 @@
-// src/app/m/dashboard/DashboardClient.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +29,15 @@ function fmtDateTimeTH(d) {
   });
 }
 
+function todayYMD_BKK() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export default function DashboardClient() {
   const router = useRouter();
 
@@ -41,6 +49,13 @@ export default function DashboardClient() {
 
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(false);
+
+  const [summary, setSummary] = useState({
+    usedCount: 0,
+    couponAmount: 0,
+    totalAmount: 0,
+  });
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   // 1) load merchant session
   useEffect(() => {
@@ -72,24 +87,65 @@ export default function DashboardClient() {
     };
   }, [router]);
 
-  // 2) load recent redeems
+  // 2) load today summary + today's recent bills
   useEffect(() => {
     if (!me) return;
     let canceled = false;
 
     (async () => {
+      const today = todayYMD_BKK();
+
       setLoadingItems(true);
+      setLoadingSummary(true);
+
       try {
-        const r = await fetch("/api/merchant/coupons/recent?limit=10", {
-          cache: "no-store",
-        });
-        const j = await r.json().catch(() => ({}));
+        const [recentRes, summaryRes] = await Promise.all([
+          fetch("/api/merchant/coupons/recent?limit=10&today=1", {
+            cache: "no-store",
+          }),
+          fetch(`/api/merchant/history?start=${today}&end=${today}`, {
+            cache: "no-store",
+          }),
+        ]);
+
+        const recentJson = await recentRes.json().catch(() => ({}));
+        const summaryJson = await summaryRes.json().catch(() => ({}));
+
         if (canceled) return;
-        if (r.ok && j.ok) setItems(j.items || []);
+
+        if (recentRes.ok && recentJson?.ok) {
+          setItems(Array.isArray(recentJson.items) ? recentJson.items : []);
+        } else {
+          setItems([]);
+        }
+
+        if (summaryRes.ok && summaryJson?.ok) {
+          setSummary({
+            usedCount: summaryJson?.summary?.usedCount || 0,
+            couponAmount: summaryJson?.summary?.couponAmount || 0,
+            totalAmount: summaryJson?.summary?.totalAmount || 0,
+          });
+        } else {
+          setSummary({
+            usedCount: 0,
+            couponAmount: 0,
+            totalAmount: 0,
+          });
+        }
       } catch {
-        // ignore
+        if (canceled) return;
+
+        setItems([]);
+        setSummary({
+          usedCount: 0,
+          couponAmount: 0,
+          totalAmount: 0,
+        });
       } finally {
-        if (!canceled) setLoadingItems(false);
+        if (!canceled) {
+          setLoadingItems(false);
+          setLoadingSummary(false);
+        }
       }
     })();
 
@@ -117,7 +173,6 @@ export default function DashboardClient() {
       return;
     }
 
-    // 1) รองรับลิงก์เต็ม /m/redeem?c=...
     try {
       if (raw.startsWith("http://") || raw.startsWith("https://")) {
         const u = new URL(raw);
@@ -131,7 +186,6 @@ export default function DashboardClient() {
       }
     } catch {}
 
-    // 2) รองรับ path /m/redeem?c=...
     if (raw.startsWith("/m/redeem")) {
       try {
         const u = new URL(raw, "http://localhost");
@@ -143,7 +197,6 @@ export default function DashboardClient() {
       } catch {}
     }
 
-    // 3) ถือว่าเป็น Ref (displayCode) เช่น 9XP4364
     try {
       const r = await fetch("/api/merchant/coupons/by-ref", {
         method: "POST",
@@ -165,6 +218,34 @@ export default function DashboardClient() {
     }
   }
 
+  const groupedItems = useMemo(() => {
+    const map = new Map();
+
+    for (const it of items || []) {
+      const billCode = clean(it?.billCode);
+
+      if (billCode) {
+        if (!map.has(billCode)) {
+          map.set(billCode, {
+            ...it,
+            _groupKey: billCode,
+          });
+        }
+        continue;
+      }
+
+      const fallbackKey = `coupon:${clean(it?.id) || clean(it?.displayCode) || Math.random().toString(36).slice(2)}`;
+      if (!map.has(fallbackKey)) {
+        map.set(fallbackKey, {
+          ...it,
+          _groupKey: fallbackKey,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [items]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F6F8FC] text-slate-900 flex items-center justify-center">
@@ -179,12 +260,10 @@ export default function DashboardClient() {
 
   return (
     <div className="min-h-[100dvh] bg-[#F6F8FC] text-slate-900">
-      {/* header gradient (ธีมเดียวกับ register/coupon/login) */}
       <div className="h-24 shrink-0 bg-gradient-to-r from-[#2B6CFF] via-[#66CCFF] to-[#F6B73C]" />
 
       <div className="-mt-14 flex min-h-[calc(100dvh-6rem)] flex-col px-4 pb-10">
         <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col gap-4">
-          {/* HEADER CARD */}
           <div className="shrink-0 rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-5">
               <div className="flex items-start justify-between gap-3">
@@ -218,34 +297,30 @@ export default function DashboardClient() {
                 </button>
               </div>
 
-              {/* Primary actions */}
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={goScan}
                   className="
-    group relative overflow-hidden
-    rounded-3xl bg-emerald-500 text-white
-    px-5 py-5
-    shadow-sm
-    transition
-    hover:bg-emerald-600 hover:shadow-md
-    active:scale-[0.99]
-    focus:outline-none focus:ring-2 focus:ring-emerald-300/70
-  "
+                    group relative overflow-hidden
+                    rounded-3xl bg-emerald-500 text-white
+                    px-5 py-5
+                    shadow-sm
+                    transition
+                    hover:bg-emerald-600 hover:shadow-md
+                    active:scale-[0.99]
+                    focus:outline-none focus:ring-2 focus:ring-emerald-300/70
+                  "
                 >
-                  {/* subtle highlight */}
                   <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
                     <div className="absolute -top-24 -right-24 h-56 w-56 rounded-full bg-white/15 blur-2xl" />
                     <div className="absolute -bottom-24 -left-24 h-56 w-56 rounded-full bg-black/10 blur-2xl" />
                   </div>
 
                   <div className="relative flex items-center gap-4">
-                    {/* icon bubble */}
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
                       <Camera className="h-6 w-6" />
                     </div>
 
-                    {/* text */}
                     <div className="min-w-0 flex-1 text-left">
                       <div className="flex items-center gap-2">
                         <span className="text-xl font-extrabold tracking-tight">
@@ -291,15 +366,11 @@ export default function DashboardClient() {
                 </div>
               </div>
             </div>
-
-            {/* <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
-              แนะนำ: ใช้ “สแกน QR” เป็นหลัก • ช่องวางลิงก์ใช้กรณีกล้องมีปัญหา
-            </div> */}
           </div>
 
           <div className="flex flex-col p-4 gap-2 rounded-3xl bg-white border border-slate-200 shadow-sm text-sm">
             <div className="flex justify-between items-baseline">
-              <div className="text-base font-bold">สรุปยอดการใช้งานรายวัน</div>
+              <div className="text-base font-bold">สรุปยอดการใช้งานวันนี้</div>
               <button
                 type="button"
                 onClick={() => router.push("/m/history")}
@@ -308,44 +379,55 @@ export default function DashboardClient() {
                 ประวัติ
               </button>
             </div>
-            <div className="mt-2 grid grid-cols-3 divide-x divide-slate-200">
-              <div className="px-2 text-center">
-                <div className="text-sm text-slate-500">จำนวนคูปองที่ใช้</div>
-                <div className="mt-2 text-xl font-bold text-slate-900">18</div>
-                <div className="text-sm text-slate-400">คูปอง</div>
-              </div>
-              <div className="px-2 text-center">
-                <div className="text-sm text-slate-500">ยอดเงินจากคูปอง</div>
-                <div className="mt-2 text-xl font-bold text-slate-900">
-                  11,110
+
+            {loadingSummary ? (
+              <div className="mt-2 grid grid-cols-3 divide-x divide-slate-200">
+                <div className="px-2 text-center">
+                  <div className="h-4 w-24 mx-auto rounded bg-slate-100 animate-pulse" />
+                  <div className="mt-2 h-7 w-16 mx-auto rounded bg-slate-100 animate-pulse" />
                 </div>
-                <div className="text-sm text-slate-400">บาท</div>
-              </div>
-              <div className="px-2 text-center">
-                <div className="text-sm text-slate-500">ยอดรวม</div>
-                <div className="mt-2 text-xl font-bold text-slate-900">
-                  80,000
+                <div className="px-2 text-center">
+                  <div className="h-4 w-24 mx-auto rounded bg-slate-100 animate-pulse" />
+                  <div className="mt-2 h-7 w-20 mx-auto rounded bg-slate-100 animate-pulse" />
                 </div>
-                <div className="text-sm text-slate-400">บาท</div>
+                <div className="px-2 text-center">
+                  <div className="h-4 w-20 mx-auto rounded bg-slate-100 animate-pulse" />
+                  <div className="mt-2 h-7 w-20 mx-auto rounded bg-slate-100 animate-pulse" />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-3 divide-x divide-slate-200">
+                <div className="px-2 text-center">
+                  <div className="text-sm text-slate-500">จำนวนคูปองที่ใช้</div>
+                  <div className="mt-2 text-xl font-bold text-slate-900">
+                    {fmtMoney(summary.usedCount)}
+                  </div>
+                  <div className="text-sm text-slate-400">คูปอง</div>
+                </div>
+                <div className="px-2 text-center">
+                  <div className="text-sm text-slate-500">ยอดเงินจากคูปอง</div>
+                  <div className="mt-2 text-xl font-bold text-slate-900">
+                    {fmtMoney(summary.couponAmount)}
+                  </div>
+                  <div className="text-sm text-slate-400">บาท</div>
+                </div>
+                <div className="px-2 text-center">
+                  <div className="text-sm text-slate-500">ยอดรวม</div>
+                  <div className="mt-2 text-xl font-bold text-slate-900">
+                    {fmtMoney(summary.totalAmount)}
+                  </div>
+                  <div className="text-sm text-slate-400">บาท</div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* RECENT REDEEMS */}
           <div className="min-h-0 flex-1 rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="flex h-full min-h-0 flex-col p-5">
               <div className="shrink-0 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-bold">รายการใช้คูปองล่าสุด</div>
-                  {/* <div className="text-xs text-slate-500">แสดงเฉพาะร้านนี้</div> */}
+                  <div className="text-sm font-bold">รายการใช้คูปองวันนี้</div>
                 </div>
-
-                {/* <button
-                  onClick={() => router.push("/m/scan")}
-                  className="rounded-2xl bg-[#66CCFF] hover:bg-[#56C3FF] text-slate-900 px-3 py-2 text-sm font-semibold"
-                >
-                  สแกนอีกครั้ง
-                </button> */}
               </div>
 
               {loadingItems ? (
@@ -354,80 +436,105 @@ export default function DashboardClient() {
                   <div className="h-20 rounded-2xl bg-slate-100 animate-pulse" />
                   <div className="h-20 rounded-2xl bg-slate-100 animate-pulse" />
                 </div>
-              ) : items?.length ? (
-                <div className="mt-4 space-y-2">
-                  {items.map((it) => (
-                    <div
-                      key={it.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-bold">
-                            Bill {it.displayCode || "-"}
+              ) : groupedItems?.length ? (
+                <div className="mt-4 space-y-2 overflow-y-auto">
+                  {groupedItems.map((it) => {
+                    const billCode = clean(it.billCode);
+                    const billTotal = Number(it.billTotal);
+                    const billPayMore = Number(it.billPayMore);
+                    const billCouponCount = Number(it.billCouponCount);
+
+                    const showTotal =
+                      Number.isFinite(billTotal) && billTotal > 0
+                        ? billTotal
+                        : Number(it.spentAmount) || 0;
+
+                    const showDiff =
+                      Number.isFinite(billPayMore) && billCode
+                        ? billPayMore
+                        : Number(it.diffAmount) || 0;
+
+                    return (
+                      <div
+                        key={it._groupKey || it.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-bold break-all">
+                              {billCode || it.displayCode || "-"}
+                            </div>
+
+                            {billCode ? (
+                              <div className="text-slate-600 text-xs mt-1">
+                                {billCouponCount > 0
+                                  ? `${billCouponCount} คูปอง`
+                                  : "รายการแบบ bill"}
+                              </div>
+                            ) : (
+                              <div className="text-slate-600 text-xs mt-1 truncate">
+                                {it.holderName || "-"} • {it.courseName || "-"}
+                              </div>
+                            )}
+
+                            <div className="text-slate-500 text-xs mt-1">
+                              {fmtDateTimeTH(it.redeemedAt)}
+                            </div>
                           </div>
-                          {/* <div className="text-slate-600 text-xs mt-1 truncate">
-                            {it.holderName || "-"} • {it.courseName || "-"}
-                          </div> */}
-                          <div className="text-slate-500 text-xs mt-1">
-                            {fmtDateTimeTH(it.redeemedAt)}
+
+                          <div className="text-right shrink-0">
+                            <div className="text-xs text-slate-500">
+                              ยอดจริง
+                            </div>
+                            <div className="font-bold">
+                              {fmtMoney(showTotal)}฿
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              ส่วนต่าง{" "}
+                              <span
+                                className={
+                                  showDiff > 0
+                                    ? "text-red-600 font-semibold"
+                                    : "text-emerald-700 font-semibold"
+                                }
+                              >
+                                {showDiff > 0 ? "+" : ""}
+                                {fmtMoney(showDiff)}฿
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="text-xs text-slate-500">ยอดจริง</div>
-                          <div className="font-bold">
-                            {fmtMoney(it.spentAmount)}฿
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">
-                            ส่วนต่าง{" "}
-                            <span
-                              className={
-                                it.diffAmount > 0
-                                  ? "text-red-600 font-semibold"
-                                  : "text-emerald-700 font-semibold"
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2 text-xs font-semibold"
+                            onClick={() => {
+                              if (billCode) {
+                                router.push(
+                                  `/m/redeem?bill=${encodeURIComponent(billCode)}`,
+                                );
+                                return;
                               }
-                            >
-                              {it.diffAmount > 0 ? "+" : ""}
-                              {fmtMoney(it.diffAmount)}฿
-                            </span>
-                          </div>
+
+                              router.push(
+                                `/m/redeem?c=${encodeURIComponent(it.redeemCipher)}`,
+                              );
+                            }}
+                            title="เปิดหน้ารายการนี้อีกครั้ง"
+                          >
+                            ดูรายละเอียด
+                          </button>
                         </div>
                       </div>
-
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-2 text-xs font-semibold"
-                          onClick={() => {
-                            if (clean(it.billCode)) {
-                              router.push(
-                                `/m/redeem?bill=${encodeURIComponent(it.billCode)}`,
-                              );
-                              return;
-                            }
-
-                            router.push(
-                              `/m/redeem?c=${encodeURIComponent(it.redeemCipher)}`,
-                            );
-                          }}
-                          title="เปิดหน้ารายการนี้อีกครั้ง (จะขึ้นว่าใช้แล้ว)"
-                        >
-                          ดูรายละเอียด
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  ยังไม่มีรายการใช้คูปอง
+                  ยังไม่มีรายการใช้คูปองวันนี้
                 </div>
               )}
             </div>
-
-            {/* <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
-              รายการนี้อัปเดตหลังมีการ “ยืนยันใช้คูปอง” สำเร็จ
-            </div> */}
           </div>
 
           <div className="text-center text-xs text-slate-500">
