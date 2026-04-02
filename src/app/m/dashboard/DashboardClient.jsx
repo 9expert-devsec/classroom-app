@@ -297,6 +297,40 @@ export default function DashboardClient() {
             </div> */}
           </div>
 
+          <div className="flex flex-col p-4 gap-2 rounded-3xl bg-white border border-slate-200 shadow-sm text-sm">
+            <div className="flex justify-between items-baseline">
+              <div className="text-base font-bold">สรุปยอดการใช้งานรายวัน</div>
+              <button
+                type="button"
+                onClick={() => router.push("/m/history")}
+                className="text-sm font-medium text-slate-500 hover:text-slate-900"
+              >
+                ประวัติ
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-3 divide-x divide-slate-200">
+              <div className="px-2 text-center">
+                <div className="text-sm text-slate-500">จำนวนคูปองที่ใช้</div>
+                <div className="mt-2 text-xl font-bold text-slate-900">18</div>
+                <div className="text-sm text-slate-400">คูปอง</div>
+              </div>
+              <div className="px-2 text-center">
+                <div className="text-sm text-slate-500">ยอดเงินจากคูปอง</div>
+                <div className="mt-2 text-xl font-bold text-slate-900">
+                  11,110
+                </div>
+                <div className="text-sm text-slate-400">บาท</div>
+              </div>
+              <div className="px-2 text-center">
+                <div className="text-sm text-slate-500">ยอดรวม</div>
+                <div className="mt-2 text-xl font-bold text-slate-900">
+                  80,000
+                </div>
+                <div className="text-sm text-slate-400">บาท</div>
+              </div>
+            </div>
+          </div>
+
           {/* RECENT REDEEMS */}
           <div className="min-h-0 flex-1 rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">
             <div className="flex h-full min-h-0 flex-col p-5">
@@ -330,11 +364,11 @@ export default function DashboardClient() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="font-bold">
-                            Ref. {it.displayCode || "-"}
+                            Bill {it.displayCode || "-"}
                           </div>
-                          <div className="text-slate-600 text-xs mt-1 truncate">
+                          {/* <div className="text-slate-600 text-xs mt-1 truncate">
                             {it.holderName || "-"} • {it.courseName || "-"}
-                          </div>
+                          </div> */}
                           <div className="text-slate-500 text-xs mt-1">
                             {fmtDateTimeTH(it.redeemedAt)}
                           </div>
