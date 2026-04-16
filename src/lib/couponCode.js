@@ -30,7 +30,6 @@ export function formatCouponCodeForDisplay(code) {
   if (cleaned.length !== COUPON_CODE_TOTAL_LENGTH) return cleaned;
   return (
     cleaned.slice(0, COUPON_CODE_PREFIX.length) +
-    "-" +
     cleaned.slice(COUPON_CODE_PREFIX.length)
   );
 }

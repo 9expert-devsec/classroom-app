@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FileText } from "lucide-react";
+import ReportDialog from "./ReportDialog";
 
 function clean(x) {
   return String(x ?? "").trim();
@@ -258,6 +260,37 @@ function buildHistoryGroups(items) {
 export default function HistoryPageClient() {
   const router = useRouter();
 
+  const [me, setMe] = useState(null);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  // Load merchant identity (mirror dashboard pattern, 401 → login)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const r = await fetch("/api/merchant/me", { cache: "no-store" });
+      if (!r.ok) {
+        const next = encodeURIComponent("/m/history");
+        router.replace(`/m/login?next=${next}`);
+        return;
+      }
+      const j = await r.json().catch(() => ({}));
+      if (cancelled) return;
+
+      if (!j?.ok) {
+        const next = encodeURIComponent("/m/history");
+        router.replace(`/m/login?next=${next}`);
+        return;
+      }
+
+      setMe(j);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   const initialRange = useMemo(() => getPresetRange("7d"), []);
   const [preset, setPreset] = useState("7d");
   const [startDate, setStartDate] = useState(initialRange.start);
@@ -447,6 +480,16 @@ export default function HistoryPageClient() {
                 {formatDateTH(endDate)}
               </span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setReportOpen(true)}
+              disabled={loading || !!error || groupedDays.length === 0 || !me}
+              className="mt-4 h-12 w-full rounded-2xl bg-[#2B6CFF] font-semibold text-white hover:bg-[#255DE0] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
+            >
+              <FileText className="h-4 w-4" />
+              ดูรายงาน
+            </button>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -617,6 +660,16 @@ export default function HistoryPageClient() {
           </div>
         </div>
       </div>
+
+      <ReportDialog
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        groupedDays={groupedDays}
+        summary={summary}
+        startDate={startDate}
+        endDate={endDate}
+        me={me}
+      />
     </div>
   );
 }

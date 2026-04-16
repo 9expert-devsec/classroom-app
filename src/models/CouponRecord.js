@@ -57,6 +57,7 @@ const CouponRecordSchema = new mongoose.Schema(
     couponPrice: { type: Number, default: 180 },
     spentAmount: { type: Number, default: 0 },
     diffAmount: { type: Number, default: 0 }, // spent - couponPrice
+    appliedAmount: { type: Number, default: null, min: 0 },
 
     // ผูกร้านตอน redeem (สำคัญมาก)
     merchantId: {

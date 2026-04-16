@@ -6,6 +6,7 @@ import CouponRecord from "@/models/CouponRecord";
 import BillCounter from "@/models/BillCounter";
 import { requireMerchant } from "@/lib/merchantAuth.server";
 import { decryptCipher, sha256 } from "@/lib/couponCipher.server";
+import { allocateBillAmounts, DEFAULT_COUPON_FACE_VALUE } from "@/lib/couponAllocation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,7 +120,37 @@ export async function POST(req) {
       const billId = new mongoose.Types.ObjectId();
       const billCode = `BILL-${dayYMD.replace(/-/g, "")}-${padLeft(seq, 4)}`;
 
-      // 3) กัน report คูณซ้ำ: ลง spent/diff เฉพาะใบแรก
+      // 3) Compute per-coupon appliedAmount BEFORE bulkWrite.
+      // Sort by payload order (ciphersHashOrder) then displayCode, matching
+      // the order the UI will later display them.
+      const sortedForAllocation = [...rows].sort((a, b) => {
+        const ai = tokenHashes.indexOf(a.redeemTokenHash);
+        const bi = tokenHashes.indexOf(b.redeemTokenHash);
+        if (ai !== bi) return ai - bi;
+        const ak = String(a.displayCode || "");
+        const bk = String(b.displayCode || "");
+        return ak.localeCompare(bk, "en");
+      });
+
+      const allocated = allocateBillAmounts(sortedForAllocation, billTotal);
+
+      // Build a map from _id -> appliedAmount for the bulkWrite
+      const appliedMap = new Map();
+      let appliedSum = 0;
+      for (const r of allocated) {
+        appliedMap.set(String(r._id), r._appliedAmount);
+        appliedSum += r._appliedAmount;
+      }
+
+      // Invariant: sum of appliedAmount must equal min(billTotal, couponTotal)
+      const expectedSum = Math.min(billTotal, couponTotal);
+      if (appliedSum !== expectedSum) {
+        throw new Error(
+          `ALLOCATION_INVARIANT_FAILED: sum=${appliedSum} expected=${expectedSum}`,
+        );
+      }
+
+      // 4) กัน report คูณซ้ำ: ลง spent/diff เฉพาะใบแรก
       const firstId = String(rows[0]?._id || "");
 
       const bulk = rows.map((x) => {
@@ -146,6 +177,9 @@ export async function POST(req) {
                 // กัน sum คูณซ้ำ (รายใบ)
                 spentAmount: isFirst ? billTotal : 0,
                 diffAmount: isFirst ? payMore : 0,
+
+                // Per-coupon allocation for reporting
+                appliedAmount: appliedMap.get(String(x._id)) ?? 0,
               },
             },
           },

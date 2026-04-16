@@ -2,10 +2,10 @@
 
 import { useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
-
-function clean(x) {
-  return String(x ?? "").trim();
-}
+import {
+  sortCouponsForAllocation,
+  allocateBillAmounts,
+} from "@/lib/couponAllocation";
 
 function fmtMoney(n) {
   const x = Number(n);
@@ -33,40 +33,6 @@ function toAmount(n, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-function sortRowsForDisplay(rows) {
-  const list = Array.isArray(rows) ? [...rows] : [];
-
-  list.sort((a, b) => {
-    const at = a?.item?.redeemedAt ? new Date(a.item.redeemedAt).getTime() : 0;
-    const bt = b?.item?.redeemedAt ? new Date(b.item.redeemedAt).getTime() : 0;
-    if (at !== bt) return at - bt;
-
-    const ak = clean(a?.item?.displayCode || a?.key);
-    const bk = clean(b?.item?.displayCode || b?.key);
-    return ak.localeCompare(bk, "en");
-  });
-
-  return list;
-}
-
-function buildAppliedRows(rows, billTotal) {
-  let remaining = Math.max(0, toAmount(billTotal, 0));
-
-  return rows.map((r, index) => {
-    const faceValue = Math.max(0, toAmount(r?.item?.couponPrice, 180));
-    const appliedAmount = Math.max(0, Math.min(faceValue, remaining));
-    remaining = Math.max(0, remaining - appliedAmount);
-
-    return {
-      ...r,
-      _order: index + 1,
-      _faceValue: faceValue,
-      _appliedAmount: appliedAmount,
-      _remainingAfter: remaining,
-    };
-  });
-}
-
 export default function RedeemBillDetailView({
   restaurantName,
   billCode,
@@ -79,8 +45,8 @@ export default function RedeemBillDetailView({
   const billTotal = Math.max(0, toAmount(receipt?.billTotal, 0));
 
   const appliedRows = useMemo(() => {
-    const ordered = sortRowsForDisplay(rows);
-    return buildAppliedRows(ordered, billTotal);
+    const ordered = sortCouponsForAllocation(rows);
+    return allocateBillAmounts(ordered, billTotal);
   }, [rows, billTotal]);
 
   const actualCouponUsed = useMemo(() => {

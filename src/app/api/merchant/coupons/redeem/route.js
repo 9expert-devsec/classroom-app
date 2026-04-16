@@ -72,6 +72,18 @@ export async function POST(req) {
     return jsonError("COUPON_NOT_AVAILABLE", 409);
   }
 
+  // Two-step atomic approach for appliedAmount:
+  // Step 1 (above) already locked the coupon (status: redeemed).
+  // Step 2: compute appliedAmount from the returned doc's couponPrice
+  // and set it via a second update. Safe because the coupon is already
+  // redeemed and no concurrent write can change it.
+  const couponPrice = Number(updated.couponPrice) || 180;
+  const appliedAmount = Math.min(couponPrice, spentAmount);
+  await CouponRecord.updateOne(
+    { _id: updated._id },
+    { $set: { appliedAmount } },
+  );
+
   return NextResponse.json({
     ok: true,
     item: {

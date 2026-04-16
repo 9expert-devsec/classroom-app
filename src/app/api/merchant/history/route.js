@@ -138,6 +138,7 @@ export async function GET(req) {
         "billCouponCount",
         "billPayMore",
         "billDayYMD",
+        "appliedAmount",
       ].join(" "),
     )
     .lean();
@@ -200,6 +201,7 @@ export async function GET(req) {
       billCouponCount: toNum(doc.billCouponCount, 0),
       billPayMore: toNum(doc.billPayMore, 0),
       billDayYMD: doc.billDayYMD || "",
+      appliedAmount: doc.appliedAmount != null ? toNum(doc.appliedAmount, null) : null,
     })),
   });
 }
