@@ -51,7 +51,7 @@ const CouponRecordSchema = new mongoose.Schema(
     courseName: String,
     roomName: String,
 
-    displayCode: { type: String, index: true }, // เช่น 9XP0000
+    displayCode: { type: String, unique: true, sparse: true, index: true },
 
     // ราคา / ยอดจริง
     couponPrice: { type: Number, default: 180 },

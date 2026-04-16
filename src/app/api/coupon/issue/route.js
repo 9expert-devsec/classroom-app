@@ -10,6 +10,7 @@ import {
   makeRandomToken,
   sha256,
 } from "@/lib/couponCipher.server";
+import { generateCouponCode } from "@/lib/couponCode.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,12 +37,6 @@ function endOfBkkDay(ymd) {
   // สร้างเป็น UTC แล้วชดเชยง่ายๆ: BKK = UTC+7
   const utc = new Date(Date.UTC(y, m - 1, dd, 23 - 7, 59, 59, 999));
   return utc;
-}
-
-function genDisplayCode() {
-  // โค้ดสั้นให้คนอ่าน: 9XP + 4 หลัก
-  const n = Math.floor(Math.random() * 10000);
-  return `9XP${String(n).padStart(4, "0")}`;
 }
 
 export async function POST(req) {
@@ -84,9 +79,6 @@ export async function POST(req) {
   // หมายเหตุ: ต้องมี index ใน CouponRecord ตามที่เคยให้ไว้
   const publicId = makeRandomToken(12);
 
-  // พยายามสร้าง displayCode ให้ไม่ซ้ำง่ายๆ (best-effort)
-  let displayCode = genDisplayCode();
-
   const existing = await CouponRecord.findOne({
     classId,
     studentId,
@@ -96,34 +88,45 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, publicId: existing.publicId });
   }
 
-  // ถ้ามีโอกาสชน displayCode ค่อย retry แบบเร็วๆ
-  for (let i = 0; i < 5; i++) {
-    const hit = await CouponRecord.findOne({ displayCode }).lean();
-    if (!hit) break;
-    displayCode = genDisplayCode();
+  // ✅ Retry loop: generate unique displayCode, catch E11000 on displayCode collision
+  const MAX_CODE_ATTEMPTS = 10;
+  for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
+    const displayCode = generateCouponCode();
+    try {
+      const created = await CouponRecord.create({
+        publicId,
+        redeemCipher,
+        redeemTokenHash: tokenHash,
+
+        status: "issued",
+        classId,
+        studentId,
+        dayYMD,
+
+        holderName: stu?.name || stu?.thaiName || stu?.engName || "",
+        courseName: cls?.courseName || cls?.title || "",
+        roomName: cls?.room || "",
+
+        displayCode,
+        couponPrice: 180,
+        merchantId: null,
+        merchantUserId: null,
+        expiresAt,
+        allowedRestaurantIds,
+      });
+
+      return NextResponse.json({ ok: true, publicId: created.publicId });
+    } catch (err) {
+      const isDupDisplayCode =
+        err.code === 11000 &&
+        (err.keyPattern?.displayCode || err.message?.includes("displayCode"));
+      if (isDupDisplayCode) continue;
+      throw err;
+    }
   }
 
-  const created = await CouponRecord.create({
-    publicId,
-    redeemCipher,
-    redeemTokenHash: tokenHash,
-
-    status: "issued",
-    classId,
-    studentId,
-    dayYMD,
-
-    holderName: stu?.name || stu?.thaiName || stu?.engName || "",
-    courseName: cls?.courseName || cls?.title || "",
-    roomName: cls?.room || "",
-
-    displayCode,
-    couponPrice: 180,
-    merchantId: null,
-    merchantUserId: null,
-    expiresAt,
-    allowedRestaurantIds,
-  });
-
-  return NextResponse.json({ ok: true, publicId: created.publicId });
+  console.warn(
+    `[coupon/issue] CODE_GEN_EXHAUSTED after ${MAX_CODE_ATTEMPTS} attempts for student=${studentId} class=${classId} day=${dayYMD}`,
+  );
+  return jsonError("CODE_GEN_EXHAUSTED", 500);
 }

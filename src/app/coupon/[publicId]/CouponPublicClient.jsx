@@ -8,6 +8,7 @@ import { Copy } from "lucide-react";
 
 import { toPng } from "html-to-image";
 import CouponExportCard from "@/components/coupon/CouponExportCard";
+import { formatCouponCodeForDisplay } from "@/lib/couponCode";
 
 const lineSeedSansTH = localFont({
   src: [
@@ -303,6 +304,7 @@ export default function CouponPublicClient({ publicId }) {
   const activeRedeemUrl = isReady ? merchantRedeemUrl : "";
 
   const qrDisplayUrl = merchantRedeemUrl || "";
+  const qrValue = coupon?.displayCode || qrDisplayUrl;
 
   function showToast(msg) {
     setToast(msg);
@@ -584,9 +586,9 @@ export default function CouponPublicClient({ publicId }) {
                           className="relative mt-3 mx-auto w-[42vw] max-w-[220px] min-w-[150px] rounded-2xl bg-white border-2 border-[#48B0FF] p-3"
                         >
                           <div className={isExpired || isUsed ? "opacity-10" : ""}>
-                            {qrDisplayUrl ? (
+                            {qrValue ? (
                               <QRCode
-                                value={qrDisplayUrl}
+                                value={qrValue}
                                 size={256}
                                 style={{
                                   width: "100%",
@@ -605,12 +607,17 @@ export default function CouponPublicClient({ publicId }) {
                           ) : null}
                         </div>
 
-                        <div className="mt-2 text-sm text-slate-600">
+                        <div className="mt-2 text-base text-slate-600">
                           Ref.{" "}
-                          <span className="font-extrabold text-slate-900">
-                            {coupon?.displayCode || "-"}
+                          <span className="font-extrabold text-slate-900 text-lg tracking-wide">
+                            {formatCouponCodeForDisplay(coupon?.displayCode) || "-"}
                           </span>
                         </div>
+                        {coupon?.displayCode ? (
+                          <div className="mt-1 text-xs text-slate-400">
+                            ถ้าสแกน QR ไม่ได้ แจ้งรหัสนี้ให้พนักงานกรอก
+                          </div>
+                        ) : null}
 
                         <div className="mt-2 rounded-2xl bg-slate-50 border border-slate-200 p-3 text-sm text-left">
                           <div className="flex justify-between gap-3">
@@ -795,7 +802,7 @@ export default function CouponPublicClient({ publicId }) {
               issuedAt={issuedAt}
               expireAt={expireAt}
               couponDayYMD={couponDayYMD}
-              qrValue={activeRedeemUrl}
+              qrValue={coupon?.displayCode || activeRedeemUrl}
               terms={COUPON_TERMS}
               note={COUPON_NOTE}
             />

@@ -3,6 +3,7 @@
 import { forwardRef } from "react";
 import QRCode from "react-qr-code";
 import localFont from "next/font/local";
+import { formatCouponCodeForDisplay } from "@/lib/couponCode";
 
 const lineSeedSansTH = localFont({
   src: [
@@ -108,9 +109,14 @@ const CouponExportCard = forwardRef(function CouponExportCard(
             <div className="mt-5 text-center text-3xl text-slate-600">
               Ref.{" "}
               <span className="font-extrabold text-slate-900">
-                {coupon?.displayCode || "-"}
+                {formatCouponCodeForDisplay(coupon?.displayCode) || "-"}
               </span>
             </div>
+            {coupon?.displayCode ? (
+              <div className="mt-2 text-center text-xl text-slate-400">
+                ถ้าสแกน QR ไม่ได้ แจ้งรหัสนี้ให้พนักงานกรอก
+              </div>
+            ) : null}
 
             <div className="mt-8 rounded-[28px] border border-slate-200 bg-slate-50 p-6 text-left text-2xl">
               <div className="flex justify-between gap-6">

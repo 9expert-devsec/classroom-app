@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { normalizeCouponCode, isValidCouponCode } from "@/lib/couponCode";
 
 function clean(x) {
   return String(x ?? "").trim();
@@ -102,6 +103,42 @@ export default function ScanClient() {
             const text = clean(rawText);
 
             try {
+              // 0) QR เป็น short coupon code (e.g. 9XP5B23)
+              const normalizedCode = normalizeCouponCode(text);
+              if (isValidCouponCode(normalizedCode)) {
+                try {
+                  const refRes = await fetch("/api/merchant/coupons/by-ref", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ ref: normalizedCode }),
+                  });
+                  const refJson = await refRes.json().catch(() => ({}));
+                  if (refRes.ok && refJson.ok && refJson.item?.redeemCipher) {
+                    controlsCb?.stop?.();
+                    router.replace(
+                      `/m/redeem?c=${encodeURIComponent(refJson.item.redeemCipher)}`,
+                    );
+                    return;
+                  }
+                  // Not found or error — show error
+                  controlsCb?.stop?.();
+                  setErr(
+                    refJson?.error === "NOT_FOUND"
+                      ? "ไม่พบคูปองรหัส " + normalizedCode
+                      : refJson?.error || "ตรวจสอบคูปองไม่สำเร็จ",
+                  );
+                  setLocked(false);
+                  setHint("สแกนไม่สำเร็จ ลองสแกนใหม่อีกครั้ง");
+                  return;
+                } catch {
+                  controlsCb?.stop?.();
+                  setErr("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ");
+                  setLocked(false);
+                  setHint("สแกนไม่สำเร็จ ลองสแกนใหม่อีกครั้ง");
+                  return;
+                }
+              }
+
               // 1) QR เป็นลิงก์ /m/redeem?c=...
               try {
                 const u = new URL(text, BASE || "http://localhost");

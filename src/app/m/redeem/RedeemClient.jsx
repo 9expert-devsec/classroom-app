@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import RedeemActiveView from "./_components/RedeemActiveView";
 import RedeemBillDetailView from "./_components/RedeemBillDetailView";
+import { normalizeCouponCode, isValidCouponCode } from "@/lib/couponCode";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -464,6 +465,11 @@ export default function RedeemClient({ searchParams }) {
     } catch {
       // ignore
     }
+
+    // Try as a short coupon code (handles dashes, spaces, lowercase)
+    const normalizedCode = normalizeCouponCode(t);
+    if (isValidCouponCode(normalizedCode))
+      return verifyAndAdd({ ref: normalizedCode });
 
     const ref = extractRefFromText(t);
     if (ref) return verifyAndAdd({ ref });
