@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Download, FileText, Image as ImageIcon } from "lucide-react";
+import { X, Download, Image as ImageIcon } from "lucide-react";
 import { toPng } from "html-to-image";
 
 import { sortAndAllocate, DEFAULT_COUPON_FACE_VALUE } from "@/lib/couponAllocation";
@@ -26,6 +26,14 @@ function fmtMoney(n) {
 
 function clean(x) {
   return String(x ?? "").trim();
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Format date in Thai Buddhist calendar short: "9 เม.ย. 2569" */
@@ -115,6 +123,44 @@ function generateReportId() {
   return id;
 }
 
+/**
+ * Wait for all <img> elements in the print window to load, then call
+ * window.print(). Copied from ReportPreviewButton.jsx.
+ */
+function waitImagesThenPrint(win, timeoutMs = 1800) {
+  try {
+    const doc = win.document;
+    const imgs = Array.from(doc.images || []);
+    if (!imgs.length) {
+      setTimeout(() => win.print(), 50);
+      return;
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setTimeout(() => win.print(), 50);
+    };
+
+    let remaining = imgs.length;
+    const onOne = () => {
+      remaining -= 1;
+      if (remaining <= 0) finish();
+    };
+
+    imgs.forEach((img) => {
+      if (img.complete) return onOne();
+      img.addEventListener("load", onOne, { once: true });
+      img.addEventListener("error", onOne, { once: true });
+    });
+
+    setTimeout(finish, timeoutMs);
+  } catch {
+    setTimeout(() => win.print(), 200);
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Data processing                                                    */
 /* ------------------------------------------------------------------ */
@@ -194,6 +240,297 @@ function buildReportData(groupedDays) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Print HTML builder                                                 */
+/* ------------------------------------------------------------------ */
+
+function buildPrintCss() {
+  return `
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+
+  @font-face {
+    font-family: "LINESeedSansTH";
+    src: url("/fonts/LINESeedSansTH_W_Rg.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+  }
+  @font-face {
+    font-family: "LINESeedSansTH";
+    src: url("/fonts/LINESeedSansTH_W_Bd.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  body {
+    margin: 0;
+    font-family: "LINESeedSansTH", "GoogleSans", system-ui, sans-serif;
+    font-size: 11px;
+    color: #111827;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: auto;
+  }
+  th, td {
+    border: 1px solid #e2e8f0;
+    padding: 4px 8px;
+    vertical-align: middle;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  tr, .block { break-inside: avoid; page-break-inside: avoid; }
+  .no-break-after { break-after: avoid; page-break-after: avoid; }
+  .sectionGap { margin-top: 8mm; }
+  .warn { color: #d97706; font-weight: 700; }
+
+  /* Header */
+  .report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6mm;
+  }
+  .report-header .left { display: flex; align-items: center; gap: 10px; }
+  .report-header .logo {
+    width: 48px; height: 48px; border-radius: 50%;
+    object-fit: cover; border: 1px solid #e2e8f0;
+  }
+  .report-header .name { font-size: 16px; font-weight: 700; }
+  .report-header .subtitle { font-size: 11px; color: #64748b; }
+  .report-header .right { text-align: right; font-size: 10px; color: #64748b; }
+
+  /* Summary cards */
+  .cards {
+    display: flex; gap: 8px; margin: 4mm 0 2mm 0;
+  }
+  .cards .card {
+    flex: 1; text-align: center; padding: 8px;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    background: #f8fafc;
+  }
+  .cards .card .label { font-size: 10px; color: #64748b; }
+  .cards .card .value { font-size: 18px; font-weight: 700; margin: 2px 0; }
+  .cards .card .unit { font-size: 10px; color: #94a3b8; }
+
+  .metrics { font-size: 10px; color: #64748b; margin-bottom: 3mm; }
+
+  /* Summary table */
+  .sumtbl th { background: #f8fafc; font-weight: 600; font-size: 10px; color: #475569; }
+  .sumtbl .total td { background: #f1f5f9; font-weight: 700; }
+  .text-right { text-align: right; }
+
+  /* Day header */
+  .day-header {
+    background: #f1f5f9; border-radius: 6px; padding: 6px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11px; font-weight: 600; color: #334155;
+    margin-top: 5mm;
+  }
+  .day-header .stats { font-weight: 400; font-size: 10px; color: #64748b; }
+
+  /* Bill block */
+  .bill-meta {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: #475569; margin: 3mm 0 1mm 0;
+  }
+  .bill-meta .left { font-weight: 600; }
+
+  .bill-tbl th {
+    background: #f8fafc; font-size: 10px; font-weight: 600; color: #475569;
+    text-align: left;
+  }
+  .bill-tbl .subtotal td { background: #f8fafc; font-weight: 600; }
+  .bill-tbl .mono { font-family: monospace; }
+
+  /* Footer */
+  .report-footer { margin-top: 5mm; font-size: 9px; color: #94a3b8; }
+</style>`;
+}
+
+function buildPrintHtml({
+  restaurantName,
+  logoUrl,
+  username,
+  reportId,
+  startDate,
+  endDate,
+  dayCount,
+  grandCouponCount,
+  grandApplied,
+  grandBillTotal,
+  customerPayMore,
+  avgPerDay,
+  reportData,
+}) {
+  const esc = escapeHtml;
+
+  // -- Summary table rows --
+  let summaryRows = "";
+  reportData.forEach((day, i) => {
+    const bg = i % 2 === 1 ? ' style="background:#fafbfc"' : "";
+    summaryRows += `<tr${bg}>
+      <td>${esc(fmtDateTHShort(day.dayKey))} <span style="color:#94a3b8">(${esc(fmtDayNameTH(day.dayKey))})</span></td>
+      <td class="text-right">${esc(fmtMoney(day.couponCount))}</td>
+      <td class="text-right">${esc(fmtMoney(day.appliedSum))}</td>
+      <td class="text-right">${esc(fmtMoney(day.billTotal))}</td>
+      <td class="text-right">+${esc(fmtMoney(day.diff))}</td>
+    </tr>`;
+  });
+
+  // -- Detail sections --
+  let detailHtml = "";
+  reportData.forEach((day) => {
+    // Day header — use no-break-after to keep it with first bill
+    detailHtml += `
+    <div class="day-header no-break-after">
+      <div>${esc(fmtDateTHLong(day.dayKey))} (${esc(fmtDayNameTH(day.dayKey))})</div>
+      <div class="stats">${esc(fmtMoney(day.couponCount))} คูปอง &middot; หักจริง ${esc(fmtMoney(day.appliedSum))} ฿ &middot; ยอดรวม ${esc(fmtMoney(day.billTotal))} ฿</div>
+    </div>`;
+
+    day.bills.forEach((bill) => {
+      // Each bill as an atomic block
+      detailHtml += `<div class="block">`;
+
+      detailHtml += `
+      <div class="bill-meta">
+        <div class="left">บิล ${esc(bill.billCode || "ไม่มีรหัสบิล")} &middot; ${esc(fmtTimeBKK(bill.redeemedAt))}</div>
+        <div>Face ${esc(fmtMoney(bill.faceSum))} ฿ &middot; หักจริง ${esc(fmtMoney(bill.appliedSum))} ฿ &middot; ยอดบิล ${esc(fmtMoney(bill.billTotal))} ฿ &middot; ส่วนต่าง ${esc(fmtMoney(bill.diff))} ฿</div>
+      </div>`;
+
+      detailHtml += `<table class="bill-tbl"><thead><tr>
+        <th style="width:30px">#</th>
+        <th>รหัสคูปอง</th>
+        <th>เวลา</th>
+        <th class="text-right">Face</th>
+        <th class="text-right">หักจริง</th>
+      </tr></thead><tbody>`;
+
+      bill.items.forEach((it, idx) => {
+        const face = toNum(it._faceValue, DEFAULT_COUPON_FACE_VALUE);
+        const applied = toNum(it._appliedAmount, 0);
+        const isPartial = applied < face;
+        const bg = idx % 2 === 1 ? ' style="background:#fafbfc"' : "";
+
+        detailHtml += `<tr${bg}>
+          <td style="color:#64748b">${it._order || idx + 1}</td>
+          <td class="mono">${esc(formatCouponCodeForDisplay(it.displayCode))}</td>
+          <td>${esc(fmtTimeBKK(it.redeemedAt))}</td>
+          <td class="text-right">${esc(fmtMoney(face))}</td>
+          <td class="text-right${isPartial ? " warn" : ""}">${esc(fmtMoney(applied))}</td>
+        </tr>`;
+      });
+
+      // Subtotal
+      detailHtml += `<tr class="subtotal">
+        <td colspan="3">รวม ${esc(fmtMoney(bill.couponCount))} คูปอง</td>
+        <td class="text-right">${esc(fmtMoney(bill.faceSum))}</td>
+        <td class="text-right">${esc(fmtMoney(bill.appliedSum))}</td>
+      </tr></tbody></table>`;
+
+      detailHtml += `</div>`; // close .block
+    });
+  });
+
+  return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>รายงานการใช้คูปอง - ${esc(restaurantName)}</title>
+${buildPrintCss()}
+</head>
+<body>
+
+<!-- Section 1: Header -->
+<div class="report-header">
+  <div class="left">
+    ${logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="">` : ""}
+    <div>
+      <div class="name">${esc(restaurantName || "Restaurant")}</div>
+      <div class="subtitle">รายงานการใช้คูปอง 9Expert</div>
+    </div>
+  </div>
+  <div class="right">
+    <div>ช่วง: ${esc(fmtDateTHShort(startDate))} - ${esc(fmtDateTHShort(endDate))} (${dayCount} วัน)</div>
+    <div>ออก ณ: ${esc(fmtDateTimeNowTH())}</div>
+  </div>
+</div>
+
+<!-- Section 2: Summary cards -->
+<div class="cards">
+  <div class="card">
+    <div class="label">คูปองที่ใช้</div>
+    <div class="value">${esc(fmtMoney(grandCouponCount))}</div>
+    <div class="unit">ใบ</div>
+  </div>
+  <div class="card">
+    <div class="label">หักจริงรวม</div>
+    <div class="value">${esc(fmtMoney(grandApplied))}</div>
+    <div class="unit">บาท</div>
+  </div>
+  <div class="card">
+    <div class="label">ยอดรวม</div>
+    <div class="value">${esc(fmtMoney(grandBillTotal))}</div>
+    <div class="unit">บาท</div>
+  </div>
+</div>
+
+<!-- Section 3: Derived metrics -->
+<div class="metrics">
+  ลูกค้าจ่ายเพิ่ม: +${esc(fmtMoney(customerPayMore))} ฿ &middot; เฉลี่ย: ${esc(avgPerDay)} ใบ/วัน
+</div>
+
+<!-- Section 4: Daily summary table -->
+<table class="sumtbl">
+  <thead><tr>
+    <th>วันที่</th>
+    <th class="text-right">จำนวน</th>
+    <th class="text-right">หักจริง</th>
+    <th class="text-right">ยอดรวม</th>
+    <th class="text-right">ส่วนต่าง</th>
+  </tr></thead>
+  <tbody>
+    ${summaryRows}
+    <tr class="total">
+      <td>รวม</td>
+      <td class="text-right">${esc(fmtMoney(grandCouponCount))}</td>
+      <td class="text-right">${esc(fmtMoney(grandApplied))}</td>
+      <td class="text-right">${esc(fmtMoney(grandBillTotal))}</td>
+      <td class="text-right">+${esc(fmtMoney(Math.max(0, grandBillTotal - grandApplied)))}</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Section 5: Detail per day -->
+<div class="sectionGap">
+  <div class="block" style="margin-bottom:3mm">
+    <div style="font-size:14px;font-weight:700">รายละเอียดคูปอง</div>
+    <div style="font-size:10px;color:#64748b;margin-top:2px">
+      ${esc(restaurantName)} &middot; ${esc(fmtDateTHShort(startDate))} - ${esc(fmtDateTHShort(endDate))} &middot; Report ID: RPT-${esc(reportId)}
+    </div>
+  </div>
+  ${detailHtml}
+</div>
+
+<!-- Section 6: Footer -->
+<div class="report-footer">
+  <div>Report ID: RPT-${esc(reportId)} &middot; สร้างโดย: ${esc(username)}</div>
+  <div>9Expert Training</div>
+</div>
+
+</body>
+</html>`;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -207,7 +544,6 @@ export default function ReportDialog({
   me,
 }) {
   const summaryRef = useRef(null);
-  const pdfDetailRef = useRef(null);
   const closeRef = useRef(null);
 
   const [busy, setBusy] = useState(false);
@@ -266,151 +602,97 @@ export default function ReportDialog({
     [restaurantName, startDate, endDate],
   );
 
-  /* ---------- export helpers ---------- */
-
-  const capturePng = useCallback(
-    async (ref) => {
-      if (!ref.current) throw new Error("Ref not available");
-      return toPng(ref.current, {
-        pixelRatio: 2,
-        backgroundColor: "#ffffff",
-      });
-    },
-    [],
-  );
-
-  const downloadDataUrl = useCallback((dataUrl, filename) => {
-    const a = document.createElement("a");
-    a.href = dataUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }, []);
+  /* ---------- PNG export ---------- */
 
   const handleExportPng = useCallback(async () => {
     try {
       setBusy(true);
       setExportError("");
-      const dataUrl = await capturePng(summaryRef);
+      if (!summaryRef.current) throw new Error("Ref not available");
+      const el = summaryRef.current;
+      const dataUrl = await toPng(el, {
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        style: { transform: "none" },
+      });
       const filename = buildReportFilename({ ...filenameBase, ext: "png" });
-      downloadDataUrl(dataUrl, filename);
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
     } catch (err) {
       console.error("PNG export failed:", err);
       setExportError("ไม่สามารถสร้างไฟล์ PNG ได้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }
-  }, [capturePng, filenameBase, downloadDataUrl]);
+  }, [filenameBase]);
 
-  /**
-   * PDF paging approach: section-by-section rendering.
-   *
-   * We capture the summary section as one PNG (page 1), then capture
-   * the detail section as another PNG. The detail PNG is then sliced
-   * into A4-sized chunks using canvas negative-y offset, ensuring page
-   * breaks happen between day sections when possible.
-   *
-   * This avoids cutting through table cells by rendering each day as a
-   * self-contained block. If a single day exceeds one page, we slice at
-   * the page boundary (rare for typical usage).
-   */
-  const handleExportPdf = useCallback(async () => {
+  /* ---------- PDF export via window.print() ---------- */
+
+  const handleExportPdf = useCallback(() => {
     try {
       setBusy(true);
       setExportError("");
 
-      const { jsPDF } = await import("jspdf");
-
-      // Capture summary
-      const summaryDataUrl = await capturePng(summaryRef);
-
-      // Capture detail
-      const detailDataUrl = pdfDetailRef.current
-        ? await capturePng(pdfDetailRef)
-        : null;
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = 210;
-      const pageH = 297;
-      const margin = 10;
-      const contentW = pageW - margin * 2;
-
-      // Helper: add an image data URL to the PDF, paginating if needed
-      function addImagePaginated(dataUrl, imgNaturalW, imgNaturalH) {
-        const imgW = contentW;
-        const imgH = (imgNaturalH / imgNaturalW) * imgW;
-
-        if (imgH <= pageH - margin * 2) {
-          pdf.addImage(dataUrl, "PNG", margin, margin, imgW, imgH);
-          return;
-        }
-
-        // Slice into pages using a temporary canvas
-        const sliceH = pageH - margin * 2;
-        const srcSliceH = (sliceH / imgH) * imgNaturalH;
-        let srcY = 0;
-        let first = true;
-
-        const img = new window.Image();
-        img.src = dataUrl;
-
-        while (srcY < imgNaturalH) {
-          if (!first) pdf.addPage();
-          first = false;
-
-          const thisSliceH = Math.min(srcSliceH, imgNaturalH - srcY);
-          const thisDestH = (thisSliceH / imgNaturalW) * imgW;
-
-          // Draw slice via canvas
-          const canvas = document.createElement("canvas");
-          canvas.width = imgNaturalW;
-          canvas.height = thisSliceH;
-          const ctx = canvas.getContext("2d");
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, srcY, imgNaturalW, thisSliceH, 0, 0, imgNaturalW, thisSliceH);
-
-          const sliceData = canvas.toDataURL("image/png");
-          pdf.addImage(sliceData, "PNG", margin, margin, imgW, (thisSliceH / imgNaturalW) * imgW);
-
-          srcY += thisSliceH;
-        }
+      const w = window.open("", "_blank");
+      if (!w) {
+        setExportError(
+          "ไม่สามารถเปิดหน้าต่างสำหรับพิมพ์ได้ กรุณาอนุญาต popup ของเว็บไซต์นี้",
+        );
+        setBusy(false);
+        return;
       }
 
-      // Load summary image to get dimensions
-      const summaryImg = new window.Image();
-      await new Promise((resolve, reject) => {
-        summaryImg.onload = resolve;
-        summaryImg.onerror = reject;
-        summaryImg.src = summaryDataUrl;
+      const html = buildPrintHtml({
+        restaurantName,
+        logoUrl,
+        username,
+        reportId,
+        startDate,
+        endDate,
+        dayCount,
+        grandCouponCount,
+        grandApplied,
+        grandBillTotal,
+        customerPayMore,
+        avgPerDay,
+        reportData,
       });
 
-      addImagePaginated(summaryDataUrl, summaryImg.naturalWidth, summaryImg.naturalHeight);
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      w.focus();
 
-      // Detail pages
-      if (detailDataUrl) {
-        pdf.addPage();
-        const detailImg = new window.Image();
-        await new Promise((resolve, reject) => {
-          detailImg.onload = resolve;
-          detailImg.onerror = reject;
-          detailImg.src = detailDataUrl;
-        });
-        addImagePaginated(detailDataUrl, detailImg.naturalWidth, detailImg.naturalHeight);
-      }
-
-      const filename = buildReportFilename({ ...filenameBase, ext: "pdf" });
-      pdf.save(filename);
+      waitImagesThenPrint(w, 1800);
     } catch (err) {
       console.error("PDF export failed:", err);
       setExportError("ไม่สามารถสร้างไฟล์ PDF ได้ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setBusy(false);
     }
-  }, [capturePng, filenameBase]);
+  }, [
+    restaurantName,
+    logoUrl,
+    username,
+    reportId,
+    startDate,
+    endDate,
+    dayCount,
+    grandCouponCount,
+    grandApplied,
+    grandBillTotal,
+    customerPayMore,
+    avgPerDay,
+    reportData,
+  ]);
 
-  const busyText = "กำลังสร้างไฟล์…";
+  const busyText = "กำลังเตรียมไฟล์...";
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -465,14 +747,14 @@ export default function ReportDialog({
                 </div>
               )}
 
-              {/* ======== Summary (PNG content / PDF page 1) ======== */}
+              {/* ======== Summary (PNG content + on-screen preview) ======== */}
               <div className="mt-5">
                 <div
                   ref={summaryRef}
-                  className="rounded-2xl border border-slate-200 bg-white p-6"
-                  style={{ fontFamily: "inherit" }}
+                  className="rounded-2xl border border-slate-200 bg-white p-6 pb-8"
+                  style={{ fontFamily: "inherit", overflow: "visible" }}
                 >
-                  {/* 1. Header row */}
+                  {/* Header row */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
                       {logoUrl && (
@@ -500,7 +782,7 @@ export default function ReportDialog({
                     </div>
                   </div>
 
-                  {/* 2. Summary cards */}
+                  {/* Summary cards */}
                   <div className="mt-5 grid grid-cols-3 gap-3">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-center">
                       <div className="text-xs text-slate-500">คูปองที่ใช้</div>
@@ -525,12 +807,12 @@ export default function ReportDialog({
                     </div>
                   </div>
 
-                  {/* 3. Derived metrics */}
+                  {/* Derived metrics */}
                   <div className="mt-3 text-xs text-slate-500">
                     ลูกค้าจ่ายเพิ่ม: +{fmtMoney(customerPayMore)} ฿ · เฉลี่ย: {avgPerDay} ใบ/วัน
                   </div>
 
-                  {/* 4. Daily summary table */}
+                  {/* Daily summary table */}
                   <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
                     <table className="w-full text-sm">
                       <thead>
@@ -582,7 +864,7 @@ export default function ReportDialog({
                     </table>
                   </div>
 
-                  {/* 5. Footer */}
+                  {/* Footer */}
                   <div className="mt-4 space-y-1 text-xs text-slate-400">
                     <div>* สำหรับรายละเอียดคูปอง ดูในไฟล์ PDF</div>
                     <div>
@@ -593,16 +875,12 @@ export default function ReportDialog({
                 </div>
               </div>
 
-              {/* ======== Detail section (off-screen for PDF pages 2+) ======== */}
+              {/* ======== Detail section (on-screen preview) ======== */}
               <div className="mt-5">
                 <div className="text-sm font-bold text-slate-700">
-                  รายละเอียดคูปอง (จะแสดงในไฟล์ PDF หน้า 2+)
+                  รายละเอียดคูปอง (จะแสดงในไฟล์ PDF)
                 </div>
-                <div
-                  ref={pdfDetailRef}
-                  className="mt-2 rounded-2xl border border-slate-200 bg-white p-6"
-                  style={{ fontFamily: "inherit" }}
-                >
+                <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-6">
                   <div className="text-base font-bold text-slate-900">
                     รายละเอียดคูปอง
                   </div>
@@ -610,7 +888,7 @@ export default function ReportDialog({
                     {restaurantName} · {fmtDateTHShort(startDate)} - {fmtDateTHShort(endDate)} · Report ID: RPT-{reportId}
                   </div>
 
-                  {/* Days — newest first (groupedDays is already newest first) */}
+                  {/* Days — newest first */}
                   <div className="mt-4 space-y-5">
                     {reportData.map((day) => (
                       <div key={day.dayKey}>
@@ -624,7 +902,7 @@ export default function ReportDialog({
                           </div>
                         </div>
 
-                        {/* Bills — newest first (already sorted) */}
+                        {/* Bills */}
                         <div className="mt-2 space-y-3">
                           {day.bills.map((bill, bi) => (
                             <div key={bill.billCode || `bill-${bi}`}>

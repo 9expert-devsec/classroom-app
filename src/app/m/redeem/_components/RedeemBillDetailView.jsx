@@ -7,6 +7,10 @@ import {
   allocateBillAmounts,
 } from "@/lib/couponAllocation";
 
+function clean(x) {
+  return String(x ?? "").trim();
+}
+
 function fmtMoney(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return "-";
@@ -50,7 +54,10 @@ export default function RedeemBillDetailView({
   }, [rows, billTotal]);
 
   const actualCouponUsed = useMemo(() => {
-    return appliedRows.reduce((sum, r) => sum + toAmount(r._appliedAmount, 0), 0);
+    return appliedRows.reduce(
+      (sum, r) => sum + toAmount(r._appliedAmount, 0),
+      0,
+    );
   }, [appliedRows]);
 
   const couponCount = appliedRows.length;
@@ -99,7 +106,9 @@ export default function RedeemBillDetailView({
       <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs text-slate-500">จำนวนคูปองที่ใช้</div>
-          <div className="text-xl font-extrabold">{fmtMoney(couponCount)} ใบ</div>
+          <div className="text-xl font-extrabold">
+            {fmtMoney(couponCount)} ใบ
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -111,7 +120,9 @@ export default function RedeemBillDetailView({
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
           <div className="text-xs text-slate-500">ยอดบิลรวม</div>
-          <div className="text-xl font-extrabold">{fmtMoney(billTotal)} บาท</div>
+          <div className="text-xl font-extrabold">
+            {fmtMoney(billTotal)} บาท
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -165,8 +176,8 @@ export default function RedeemBillDetailView({
                     </div>
 
                     <div className="mt-1 text-xs text-slate-500">
-                      {r.item?.holderName || "-"} • {r.item?.courseName || "-"} •{" "}
-                      {r.item?.roomName || "-"}
+                      {r.item?.holderName || "-"} • {r.item?.courseName || "-"}{" "}
+                      • {r.item?.roomName || "-"}
                     </div>
 
                     <div className="mt-1 text-xs text-slate-500">
