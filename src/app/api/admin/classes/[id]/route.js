@@ -164,6 +164,7 @@ export async function GET(req, { params }) {
           "isLate",
         ].join(" "),
       )
+      .sort({ createdAt: 1 })
       .lean();
 
     const checkins = await Checkin.find({ classId: id })
