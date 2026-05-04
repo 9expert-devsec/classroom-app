@@ -198,7 +198,9 @@ export async function GET(req) {
       1;
 
     // ดึงรายชื่อนักเรียน
-    const students = await Student.find({ classId: id }).lean();
+    const students = await Student.find({ classId: id })
+      .sort({ createdAt: 1 })
+      .lean();
 
     // ดึงเช็คอินทั้งหมด
     const checkins = await Checkin.find({ classId: id }).lean();
