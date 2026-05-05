@@ -14,7 +14,7 @@ export async function GET(req) {
       { status: 400 }
     );
 
-  const students = await Student.find({ classId }).sort({ thaiName: 1 });
+  const students = await Student.find({ classId }).sort({ createdAt: 1 });
 
   return NextResponse.json({
     ok: true,
