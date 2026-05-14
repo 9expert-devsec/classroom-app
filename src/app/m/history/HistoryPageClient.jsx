@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
 import ReportDialog from "./ReportDialog";
@@ -21,6 +21,28 @@ function formatDateInput(date = new Date()) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function formatYMDInBKK(date) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function todayYMD_BKK() {
+  return formatYMDInBKK(new Date());
+}
+
+function formatDateDisplay(ymd) {
+  if (!ymd) return "";
+  const [y, m, d] = String(ymd).split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
 }
 
 function formatDateTH(value) {
@@ -72,7 +94,14 @@ function subYears(date, years) {
 
 function getPresetRange(preset) {
   const today = new Date();
-  const end = formatDateInput(today);
+  const end = todayYMD_BKK();
+
+  if (preset === "today") {
+    return {
+      start: end,
+      end,
+    };
+  }
 
   if (preset === "7d") {
     return {
@@ -118,11 +147,13 @@ function pickNumber(...values) {
 }
 
 function getDayKey(it) {
+  const d = new Date(it?.redeemedAt);
+  if (!Number.isNaN(d.getTime())) {
+    return formatYMDInBKK(d);
+  }
+
   if (clean(it?.billDayYMD)) return clean(it.billDayYMD);
   if (clean(it?.dayYMD)) return clean(it.dayYMD);
-
-  const d = new Date(it?.redeemedAt);
-  if (!Number.isNaN(d.getTime())) return formatDateInput(d);
 
   return "unknown";
 }
@@ -257,6 +288,55 @@ function buildHistoryGroups(items) {
   return days;
 }
 
+function DateInput({ id, value, min, label, onChange }) {
+  const hiddenRef = useRef(null);
+
+  function openPicker() {
+    const el = hiddenRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === "function") {
+      try {
+        el.showPicker();
+        return;
+      } catch {
+        // showPicker can throw if not user-activated; fall back to focus
+      }
+    }
+    el.focus();
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm text-slate-500">
+        {label}
+      </label>
+      <div
+        className="relative h-11 rounded-2xl border border-slate-200 bg-white px-3 flex items-center cursor-pointer focus-within:border-[#66CCFF] focus-within:ring-2 focus-within:ring-[#66CCFF]/50"
+        onClick={openPicker}
+      >
+        <span
+          className={
+            value
+              ? "text-sm text-slate-700"
+              : "text-sm text-slate-400"
+          }
+        >
+          {formatDateDisplay(value) || "เลือกวันที่"}
+        </span>
+        <input
+          ref={hiddenRef}
+          id={id}
+          type="date"
+          value={value || ""}
+          min={min || undefined}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function HistoryPageClient() {
   const router = useRouter();
 
@@ -291,8 +371,8 @@ export default function HistoryPageClient() {
     };
   }, [router]);
 
-  const initialRange = useMemo(() => getPresetRange("7d"), []);
-  const [preset, setPreset] = useState("7d");
+  const initialRange = useMemo(() => getPresetRange("today"), []);
+  const [preset, setPreset] = useState("today");
   const [startDate, setStartDate] = useState(initialRange.start);
   const [endDate, setEndDate] = useState(initialRange.end);
 
@@ -415,6 +495,7 @@ export default function HistoryPageClient() {
 
             <div className="mt-4 flex flex-wrap gap-2">
               {[
+                { key: "today", label: "วันนี้" },
                 { key: "7d", label: "7 วันย้อนหลัง" },
                 { key: "1m", label: "1 เดือนย้อนหลัง" },
                 { key: "1y", label: "1 ปีย้อนหลัง" },
@@ -442,32 +523,20 @@ export default function HistoryPageClient() {
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <label htmlFor="history-start" className="text-sm text-slate-500">
-                  วันที่เริ่ม
-                </label>
-                <input
-                  id="history-start"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => onChangeStart(e.target.value)}
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-3 outline-none focus:border-[#66CCFF] focus:ring-2 focus:ring-[#66CCFF]/50"
-                />
-              </div>
+              <DateInput
+                id="history-start"
+                label="วันที่เริ่ม"
+                value={startDate}
+                onChange={onChangeStart}
+              />
 
-              <div className="flex flex-col gap-1">
-                <label htmlFor="history-end" className="text-sm text-slate-500">
-                  วันที่สิ้นสุด
-                </label>
-                <input
-                  id="history-end"
-                  type="date"
-                  value={endDate}
-                  min={startDate || undefined}
-                  onChange={(e) => onChangeEnd(e.target.value)}
-                  className="h-11 rounded-2xl border border-slate-200 bg-white px-3 outline-none focus:border-[#66CCFF] focus:ring-2 focus:ring-[#66CCFF]/50"
-                />
-              </div>
+              <DateInput
+                id="history-end"
+                label="วันที่สิ้นสุด"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={onChangeEnd}
+              />
             </div>
 
             <div className="mt-3 text-sm text-slate-500">
