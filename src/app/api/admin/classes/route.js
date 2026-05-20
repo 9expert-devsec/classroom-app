@@ -390,6 +390,8 @@ export async function POST(req) {
     publicCourseId,
     courseCode,
     courseName,
+    customCourseName,
+    classImageUrl,
     title, // manual override (ใช้เฉพาะ manual)
     date, // "YYYY-MM-DD" (compat)
     days, // ✅ ["YYYY-MM-DD", ...] (เลือกวันเอง)
@@ -404,9 +406,12 @@ export async function POST(req) {
     channel, // "PUB" (optional)
   } = body || {};
 
-  if (!courseCode || !courseName) {
+  const customName = clean(customCourseName);
+  const effectiveCourseName = clean(courseName) || customName;
+
+  if (!effectiveCourseName) {
     return NextResponse.json(
-      { ok: false, error: "missing courseCode / courseName" },
+      { ok: false, error: "missing courseName / customCourseName" },
       { status: 400 },
     );
   }
@@ -462,8 +467,10 @@ export async function POST(req) {
         const doc = await Class.create({
           source: src,
           publicCourseId: publicCourseId || null,
-          courseCode,
-          courseName,
+          courseCode: courseCode || "",
+          courseName: effectiveCourseName,
+          customCourseName: customName,
+          classImageUrl: clean(classImageUrl),
           title: finalTitle,
 
           // compat: date = วันแรก
@@ -510,13 +517,15 @@ export async function POST(req) {
   }
 
   // manual: ใช้ title ที่ user ส่งมา หรือ fallback เป็น courseName
-  finalTitle = finalTitle || courseName;
+  finalTitle = finalTitle || effectiveCourseName;
 
   const doc = await Class.create({
     source: src,
     publicCourseId: publicCourseId || null,
-    courseCode,
-    courseName,
+    courseCode: courseCode || "",
+    courseName: effectiveCourseName,
+    customCourseName: customName,
+    classImageUrl: clean(classImageUrl),
     title: finalTitle,
 
     // compat: date = วันแรก

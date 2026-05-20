@@ -11,6 +11,9 @@ const ClassSchema = new mongoose.Schema(
     courseCode: String,
     courseName: String,
 
+    customCourseName: { type: String, default: "" },
+    classImageUrl: { type: String, default: "" },
+
     // วันที่เรียนหลัก (day 1)
     date: { type: Date, required: true, index: true },
     days: { type: [String], default: [] },

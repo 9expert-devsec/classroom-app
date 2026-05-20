@@ -121,7 +121,12 @@ export default function NewClassManualPage() {
   const [courses, setCourses] = useState([]);
   const [instructors, setInstructors] = useState([]);
 
+  const [specialMode, setSpecialMode] = useState(false);
   const [courseId, setCourseId] = useState("");
+
+  // คอร์สพิเศษ
+  const [customCourseName, setCustomCourseName] = useState("");
+  const [customCourseCode, setCustomCourseCode] = useState("");
 
   // ✅ ตั้งชื่อ Class เอง
   const [title, setTitle] = useState("");
@@ -151,6 +156,11 @@ export default function NewClassManualPage() {
   const [endTime, setEndTime] = useState("16:00");
   const [room, setRoom] = useState("");
   const [instructorId, setInstructorId] = useState("");
+
+  // ✅ class image (upload หรือ paste URL)
+  const [classImageUrl, setClassImageUrl] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -200,8 +210,40 @@ export default function NewClassManualPage() {
   const genRef = useRef(0);
   useEffect(() => {
     async function run() {
-      if (!selectedCourse) return;
       if (titleTouched) return;
+
+      // โหมดคอร์สพิเศษ
+      if (specialMode) {
+        if (!customCourseName.trim()) {
+          setTitle("");
+          return;
+        }
+
+        if (!daysYMD.length) {
+          setTitle(customCourseName.trim());
+          return;
+        }
+
+        const firstYMD = daysYMD[0];
+        const type = pickTypePrefixManual(null, room);
+        const channel = "PUB";
+        const code = normalizeCourseCode(customCourseCode || "SPECIAL");
+        const ddmmyy = toDDMMYY_BE_fromYMD(firstYMD);
+        const titlePrefix = `${type}-${channel}-${code}-${ddmmyy}`;
+
+        const my = ++genRef.current;
+        const runNo = await guessNextRunNumber({
+          dateYMD: firstYMD,
+          titlePrefix,
+        });
+
+        if (my !== genRef.current) return;
+        setTitle(`${titlePrefix}-${runNo}`);
+        return;
+      }
+
+      // โหมดเลือกจาก public-courses
+      if (!selectedCourse) return;
 
       // ยังไม่เลือกวัน → ยังไม่บังคับ pattern (รอเลือกวันก่อน)
       if (!daysYMD.length) {
@@ -231,13 +273,77 @@ export default function NewClassManualPage() {
     }
 
     run();
-  }, [selectedCourse, daysYMD, room, titleTouched]);
+  }, [
+    selectedCourse,
+    daysYMD,
+    room,
+    titleTouched,
+    specialMode,
+    customCourseName,
+    customCourseCode,
+  ]);
+
+  async function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("กรุณาเลือกไฟล์รูปภาพ");
+      return;
+    }
+
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        console.error(data);
+        alert(data?.error || "อัปโหลดรูปไม่สำเร็จ");
+        return;
+      }
+      setClassImageUrl(data.url);
+    } catch (err) {
+      console.error(err);
+      alert("อัปโหลดรูปไม่สำเร็จ");
+    } finally {
+      setImageUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleUrlChange(e) {
+    const v = String(e.target.value || "").trim();
+    if (!v) {
+      setClassImageUrl("");
+      return;
+    }
+    if (v.startsWith("http://") || v.startsWith("https://")) {
+      setClassImageUrl(v);
+    } else {
+      setClassImageUrl(v); // keep user input; preview will only show valid URLs
+    }
+  }
+
+  function clearImage() {
+    setClassImageUrl("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (submitting) return;
 
-    if (!selectedCourse) {
+    if (specialMode) {
+      if (!customCourseName.trim()) {
+        alert("กรุณากรอกชื่อคอร์สพิเศษ");
+        return;
+      }
+    } else if (!selectedCourse) {
       alert("กรุณาเลือกคอร์ส");
       return;
     }
@@ -261,11 +367,18 @@ export default function NewClassManualPage() {
           i.code === instructorId,
       ) || null;
 
+    const courseCodeOut = specialMode
+      ? (customCourseCode || "SPECIAL").trim() || "SPECIAL"
+      : selectedCourse.course_id || "";
+    const courseNameOut = specialMode
+      ? customCourseName.trim()
+      : selectedCourse.course_name || "";
+
     const payload = {
       title: t,
 
-      courseCode: selectedCourse.course_id || "",
-      courseName: selectedCourse.course_name || "",
+      courseCode: courseCodeOut,
+      courseName: courseNameOut,
 
       date: dateStr,
       dayCount: dayCount || 1,
@@ -275,6 +388,7 @@ export default function NewClassManualPage() {
       endTime,
       room: room || "",
       source: "manual",
+      classImageUrl: classImageUrl || "",
       instructors: selectedInst
         ? [
             {
@@ -289,6 +403,12 @@ export default function NewClassManualPage() {
           ]
         : [],
     };
+
+    if (specialMode) {
+      payload.customCourseName = customCourseName.trim();
+    } else {
+      payload.publicCourseId = selectedCourse._id;
+    }
 
     setSubmitting(true);
     try {
@@ -313,6 +433,7 @@ export default function NewClassManualPage() {
       setEndTime("16:00");
       setRoom("");
       setInstructorId("");
+      setClassImageUrl("");
 
       setTitleTouched(false);
       // รอเลือกวันใหม่แล้วค่อย auto-gen
@@ -322,6 +443,13 @@ export default function NewClassManualPage() {
     }
     setSubmitting(false);
   }
+
+  const previewSrc =
+    classImageUrl &&
+    (classImageUrl.startsWith("http://") ||
+      classImageUrl.startsWith("https://"))
+      ? classImageUrl
+      : "";
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col">
@@ -335,23 +463,146 @@ export default function NewClassManualPage() {
         onSubmit={handleSubmit}
         className="mt-6 flex-1 min-h-0 space-y-4 overflow-y-auto rounded-3xl bg-admin-surface p-6 shadow-card "
       >
-        {/* เลือกคอร์ส */}
-        <div>
-          <label className="block text-sm font-medium text-admin-text">
-            เลือกคอร์ส (public-courses)
+        {/* โหมดคอร์สพิเศษ */}
+        <div className="flex items-center justify-between rounded-2xl border border-admin-border bg-white px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-admin-text">
+              คอร์สพิเศษ
+            </div>
+            <div className="text-[11px] text-admin-textMuted">
+              เปิดเพื่อพิมพ์ชื่อคอร์สเอง (ไม่ต้องอยู่ใน public-courses)
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={specialMode}
+              onChange={(e) => {
+                setSpecialMode(e.target.checked);
+                setTitleTouched(false);
+              }}
+            />
+            <span className="text-sm text-admin-text">
+              {specialMode ? "เปิดอยู่" : "ปิด"}
+            </span>
           </label>
-          <select
-            className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-            value={courseId}
-            onChange={(e) => setCourseId(e.target.value)}
-          >
-            <option value="">-- กรุณาเลือกคอร์ส --</option>
-            {courses.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.course_id} — {c.course_name}
-              </option>
-            ))}
-          </select>
+        </div>
+
+        {/* เลือกคอร์ส / คอร์สพิเศษ */}
+        {specialMode ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-admin-text">
+                ชื่อคอร์ส (พิเศษ) *
+              </label>
+              <input
+                className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={customCourseName}
+                onChange={(e) => {
+                  setCustomCourseName(e.target.value);
+                  setTitleTouched(false);
+                }}
+                placeholder="เช่น Workshop Special: AI for Business"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-admin-text">
+                Course Code (สำหรับ auto-title)
+              </label>
+              <input
+                className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={customCourseCode}
+                onChange={(e) => {
+                  setCustomCourseCode(e.target.value);
+                  setTitleTouched(false);
+                }}
+                placeholder="ค่าเริ่มต้น SPECIAL"
+              />
+              <p className="mt-1 text-[11px] text-admin-textMuted">
+                ถ้าเว้นว่าง ระบบจะใช้ &quot;SPECIAL&quot;
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium text-admin-text">
+              เลือกคอร์ส (public-courses)
+            </label>
+            <select
+              className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              value={courseId}
+              onChange={(e) => setCourseId(e.target.value)}
+            >
+              <option value="">-- กรุณาเลือกคอร์ส --</option>
+              {courses.map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.course_id} — {c.course_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* รูปภาพ class (ไม่บังคับ) */}
+        <div className="rounded-2xl border border-admin-border bg-white p-4">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-admin-text">
+              รูปภาพประจำ Class (ไม่บังคับ)
+            </label>
+            {classImageUrl && (
+              <button
+                type="button"
+                onClick={clearImage}
+                className="rounded-full border border-admin-border bg-white px-3 py-1 text-xs text-admin-text hover:bg-admin-surfaceMuted"
+              >
+                ลบรูป
+              </button>
+            )}
+          </div>
+
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                อัปโหลดไฟล์
+              </label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                disabled={imageUploading}
+                className="mt-1 w-full text-sm"
+              />
+              {imageUploading && (
+                <p className="mt-1 text-[11px] text-admin-textMuted">
+                  กำลังอัปโหลด...
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                หรือวาง URL รูป
+              </label>
+              <input
+                type="text"
+                value={classImageUrl}
+                onChange={handleUrlChange}
+                placeholder="https://..."
+                className="mt-1 w-full rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+              />
+            </div>
+          </div>
+
+          {previewSrc && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-admin-border">
+              <img
+                src={previewSrc}
+                alt="preview"
+                className="w-full object-cover max-h-56"
+              />
+            </div>
+          )}
         </div>
 
         {/* ตั้งชื่อ */}
@@ -365,10 +616,16 @@ export default function NewClassManualPage() {
               type="button"
               className="rounded-full border border-admin-border bg-white px-3 py-1 text-xs text-admin-text hover:bg-admin-surfaceMuted"
               onClick={() => {
-                if (!selectedCourse) return;
+                if (specialMode) {
+                  if (!customCourseName.trim()) return;
+                } else if (!selectedCourse) {
+                  return;
+                }
                 setTitleTouched(false); // ให้ระบบ gen ใหม่
               }}
-              disabled={!selectedCourse}
+              disabled={
+                specialMode ? !customCourseName.trim() : !selectedCourse
+              }
               title="ให้ระบบ gen ชื่อใหม่อัตโนมัติ (ตามวันแรกที่เลือก)"
             >
               ใช้ชื่ออัตโนมัติ

@@ -68,6 +68,7 @@ export async function GET(req) {
     }
 
     let targetDate = new Date();
+    let classInfo = { courseName: "", classImageUrl: "", days: [] };
 
     const applyOffset = (baseDate) => {
       const d = new Date(baseDate);
@@ -75,10 +76,19 @@ export async function GET(req) {
       return d;
     };
 
+    const buildClassInfo = (klass) => ({
+      courseName: klass?.customCourseName || klass?.courseName || "",
+      classImageUrl: klass?.classImageUrl || "",
+      days: Array.isArray(klass?.days) ? klass.days : [],
+    });
+
     // 1) classId
     if (classId) {
-      const klass = await Class.findById(classId).select("date").lean();
+      const klass = await Class.findById(classId)
+        .select("date days courseName customCourseName classImageUrl")
+        .lean();
       if (klass?.date) targetDate = applyOffset(klass.date);
+      if (klass) classInfo = buildClassInfo(klass);
     }
     // 2) studentId -> class
     else if (studentId) {
@@ -88,8 +98,11 @@ export async function GET(req) {
 
       const cId = student?.classId || student?.class;
       if (cId) {
-        const klass = await Class.findById(cId).select("date").lean();
+        const klass = await Class.findById(cId)
+          .select("date days courseName customCourseName classImageUrl")
+          .lean();
         if (klass?.date) targetDate = applyOffset(klass.date);
+        if (klass) classInfo = buildClassInfo(klass);
       }
     }
     // 3) only day
@@ -116,6 +129,7 @@ export async function GET(req) {
         hasFoodSetup: false,
         items: [],
         currentFood, // ✅ still return
+        classInfo,
       });
     }
 
@@ -296,6 +310,7 @@ export async function GET(req) {
       hasFoodSetup: true,
       items,
       currentFood, // ✅ NEW
+      classInfo,
     });
   } catch (err) {
     console.error("GET /api/food/today error:", err);

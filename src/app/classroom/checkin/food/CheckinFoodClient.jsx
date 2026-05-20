@@ -35,6 +35,79 @@ function safeReturnTo(path, fallback) {
  *  "food"    = เลือกร้าน/เมนู
  */
 
+function formatThaiDateRange(days) {
+  if (!Array.isArray(days) || days.length === 0) return "";
+
+  const thMonths = [
+    "ม.ค.",
+    "ก.พ.",
+    "มี.ค.",
+    "เม.ย.",
+    "พ.ค.",
+    "มิ.ย.",
+    "ก.ค.",
+    "ส.ค.",
+    "ก.ย.",
+    "ต.ค.",
+    "พ.ย.",
+    "ธ.ค.",
+  ];
+
+  function parseYMD(ymd) {
+    const [y, m, d] = String(ymd).split("-").map(Number);
+    return { y, m, d };
+  }
+
+  function fmtShort({ y, m, d }) {
+    return `${d} ${thMonths[m - 1]} ${y + 543}`;
+  }
+
+  const sorted = [...days].sort();
+  const first = parseYMD(sorted[0]);
+  const last = parseYMD(sorted[sorted.length - 1]);
+
+  if (sorted.length === 1) return fmtShort(first);
+
+  if (first.y === last.y && first.m === last.m) {
+    return `${first.d} - ${last.d} ${thMonths[first.m - 1]} ${first.y + 543}`;
+  }
+
+  if (first.y === last.y) {
+    return `${first.d} ${thMonths[first.m - 1]} - ${last.d} ${thMonths[last.m - 1]} ${first.y + 543}`;
+  }
+
+  return `${fmtShort(first)} - ${fmtShort(last)}`;
+}
+
+function ClassBanner({ classInfo }) {
+  if (!classInfo?.classImageUrl) return null;
+
+  const dateRange = formatThaiDateRange(classInfo.days);
+
+  return (
+    <div className="mx-4 mt-3 mb-1 flex overflow-hidden rounded-2xl border border-brand-border bg-white shadow-sm shrink-0">
+      {/* <div className="flex flex-1 flex-col justify-center gap-0.5 px-4 py-3 min-w-0">
+        <p className="text-sm text-front-textMuted">คอร์สอบรม</p>
+        <p className="text-lg font-semibold leading-snug text-front-text line-clamp-2">
+          {classInfo.courseName || "–"}
+        </p>
+        {dateRange && (
+          <p className="mt-0.5 text-sm text-front-textMuted">{dateRange}</p>
+        )}
+      </div> */}
+      <div className="w-full h-52 shrink-0 overflow-hidden">
+        <img
+          src={classInfo.classImageUrl}
+          alt={classInfo.courseName || "class banner"}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+    </div>
+  );
+}
+
 function isImageSrc(x) {
   const s = String(x ?? "").trim();
   if (!s) return false;
@@ -230,6 +303,11 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [hasFoodSetup, setHasFoodSetup] = useState(true);
+  const [classInfo, setClassInfo] = useState({
+    courseName: "",
+    classImageUrl: "",
+    days: [],
+  });
 
   // ✅ ไม่ default เลือกอะไร
   const [choiceType, setChoiceType] = useState("");
@@ -413,6 +491,11 @@ export default function CheckinFoodClient({ searchParams = {} }) {
           typeof data?.hasFoodSetup === "boolean" ? data.hasFoodSetup : true,
         );
         setRestaurants(data.items || []);
+        setClassInfo({
+          courseName: data.classInfo?.courseName || "",
+          classImageUrl: data.classInfo?.classImageUrl || "",
+          days: data.classInfo?.days || [],
+        });
 
         // ✅ POLICY:
         // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
@@ -564,6 +647,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       )}
 
       <StepHeader currentStep={2} />
+      <ClassBanner classInfo={classInfo} />
       <div className="flex min-h-0 flex-1 flex-col px-6 py-6">
         <h2 className="sm:text-2xl lg:text-lg font-semibold">
           {isEdit ? "แก้ไขเมนูอาหาร" : "Step 2: เลือกเมนูอาหาร"}

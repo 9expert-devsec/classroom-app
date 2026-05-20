@@ -448,6 +448,10 @@ export async function PATCH(req, { params }) {
         : [];
     }
 
+    if (body.classImageUrl !== undefined) {
+      update.classImageUrl = String(body.classImageUrl || "").trim();
+    }
+
     let days = null;
 
     if (body.days !== undefined) {

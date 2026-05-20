@@ -691,6 +691,9 @@ export default function ClassDetailPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editImageUploading, setEditImageUploading] = useState(false);
+
   const [editForm, setEditForm] = useState({
     title: "",
     courseCode: "",
@@ -1045,6 +1048,7 @@ export default function ClassDetailPage() {
     });
 
     setEditOpen(true);
+    setEditImageUrl(classData?.classImageUrl || "");
   }
 
   function closeEditModal() {
@@ -1074,6 +1078,31 @@ export default function ClassDetailPage() {
         dayCount: next.length || 1,
       };
     });
+  }
+
+  async function handleEditImageUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setEditImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/admin/upload-image", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      const uploadedUrl = data?.secure_url || data?.url;
+      if (!res.ok || !uploadedUrl) {
+        throw new Error(data?.error || "upload failed");
+      }
+      setEditImageUrl(uploadedUrl);
+    } catch (err) {
+      console.error(err);
+      alert("อัปโหลดรูปภาพไม่สำเร็จ");
+    }
+    setEditImageUploading(false);
   }
 
   async function handleSaveEdit(e) {
@@ -1108,6 +1137,8 @@ export default function ClassDetailPage() {
             : Number(editForm.dayCount) || 1,
 
         days: editForm.dateMode === "custom" ? customDays : undefined,
+
+        classImageUrl: editImageUrl,
       };
 
       const res = await fetch(`/api/admin/classes/${id}`, {
@@ -1690,6 +1721,68 @@ export default function ClassDetailPage() {
                   <span className="text-admin-text font-medium">
                     {editDaysPreviewLabel || "-"}
                   </span>
+                </div>
+              </div>
+
+              {/* รูปภาพ Class (Optional) */}
+              <div className="rounded-xl border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[11px] text-admin-textMuted">
+                    รูปภาพ Class{" "}
+                    <span className="text-admin-textMuted">(Optional)</span>
+                  </label>
+                  {editImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditImageUrl("")}
+                      className="text-[10px] text-red-500 hover:text-red-700"
+                    >
+                      ลบรูป ×
+                    </button>
+                  )}
+                </div>
+
+                {editImageUrl && (
+                  <div className="mb-2 overflow-hidden rounded-lg border border-admin-border">
+                    <img
+                      src={editImageUrl}
+                      alt="class banner preview"
+                      className="h-24 w-full object-cover"
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  <label
+                    className={`flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-admin-border bg-white px-3 text-xs text-admin-text hover:bg-admin-surfaceMuted ${
+                      editImageUploading
+                        ? "opacity-60 pointer-events-none"
+                        : ""
+                    }`}
+                  >
+                    {editImageUploading ? (
+                      <>
+                        <span className="h-3 w-3 animate-spin rounded-full border border-admin-text border-t-transparent" />
+                        กำลังอัปโหลด...
+                      </>
+                    ) : (
+                      <>↑ {editImageUrl ? "เปลี่ยนรูป" : "อัปโหลดรูป"}</>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleEditImageUpload}
+                      disabled={editImageUploading}
+                    />
+                  </label>
+
+                  <input
+                    className="w-full rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                    placeholder="หรือวางลิงก์รูปภาพ (https://...)"
+                    value={editImageUrl}
+                    onChange={(e) => setEditImageUrl(e.target.value)}
+                  />
                 </div>
               </div>
 
