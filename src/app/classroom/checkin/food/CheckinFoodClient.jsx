@@ -95,7 +95,7 @@ function ClassBanner({ classInfo }) {
           <p className="mt-0.5 text-sm text-front-textMuted">{dateRange}</p>
         )}
       </div> */}
-      <div className="w-full h-52 shrink-0 overflow-hidden">
+      <div className="w-full h-[200px] shrink-0 overflow-hidden">
         <img
           src={classInfo.classImageUrl}
           alt={classInfo.courseName || "class banner"}
