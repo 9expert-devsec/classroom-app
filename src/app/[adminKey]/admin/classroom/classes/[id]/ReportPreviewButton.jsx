@@ -525,7 +525,7 @@ export default function ReportPreviewButton({
 
   const rightCode = courseCode || "";
   const batch = classCode || "";
-  const logoUrl = "/logo-9experttraining-color.png"; // เปลี่ยนเป็นโลโก้ที่ต้องการ
+  const logoUrl = "/primary_logo_9expert2026.png"; // เปลี่ยนเป็นโลโก้ที่ต้องการ
 
   function openReport() {
     setTab("checkin");
