@@ -515,7 +515,7 @@ export default function CouponPublicClient({ publicId }) {
                     <div className="flex h-full flex-col">
                       <div className="shrink-0 px-6 pt-6 pb-4 text-center bg-gradient-to-r from-[#2486ff] to-[#48b0ff]">
                         <img
-                          src="/logo-9experttraining-white-color-2.png"
+                          src="/primary_logo_9expert2026_cloud.png"
                           alt="9Expert Training"
                           className="mx-auto h-10 w-auto"
                         />

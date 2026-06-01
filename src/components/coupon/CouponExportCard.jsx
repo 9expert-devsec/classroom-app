@@ -65,7 +65,7 @@ const CouponExportCard = forwardRef(function CouponExportCard(
         <div className="overflow-hidden rounded-[40px] border border-slate-200 bg-white">
           <div className="bg-gradient-to-r from-[#2486ff] to-[#48b0ff] px-10 py-10 text-center">
             <img
-              src="/logo-9experttraining-white-color-2.png"
+              src="/primary_logo_9expert2026_cloud.png"
               alt="9Expert Training"
               className="mx-auto h-20 w-auto"
             />
