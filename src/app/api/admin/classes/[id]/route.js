@@ -452,6 +452,10 @@ export async function PATCH(req, { params }) {
       update.classImageUrl = String(body.classImageUrl || "").trim();
     }
 
+    if (body.disableCoupon !== undefined) {
+      update.disableCoupon = !!body.disableCoupon;
+    }
+
     let days = null;
 
     if (body.days !== undefined) {

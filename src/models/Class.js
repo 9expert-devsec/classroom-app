@@ -34,6 +34,9 @@ const ClassSchema = new mongoose.Schema(
 
     room: String,
 
+    // hide "Cash Coupon" choice on the learner-facing food step
+    disableCoupon: { type: Boolean, default: false },
+
     source: {
       type: String,
       enum: ["api", "manual", "sync"],

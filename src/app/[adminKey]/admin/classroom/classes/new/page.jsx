@@ -122,6 +122,7 @@ export default function NewClassManualPage() {
   const [instructors, setInstructors] = useState([]);
 
   const [specialMode, setSpecialMode] = useState(false);
+  const [disableCoupon, setDisableCoupon] = useState(false);
   const [courseId, setCourseId] = useState("");
 
   // คอร์สพิเศษ
@@ -389,6 +390,7 @@ export default function NewClassManualPage() {
       room: room || "",
       source: "manual",
       classImageUrl: classImageUrl || "",
+      disableCoupon,
       instructors: selectedInst
         ? [
             {
@@ -434,6 +436,7 @@ export default function NewClassManualPage() {
       setRoom("");
       setInstructorId("");
       setClassImageUrl("");
+      setDisableCoupon(false);
 
       setTitleTouched(false);
       // รอเลือกวันใหม่แล้วค่อย auto-gen
@@ -485,6 +488,30 @@ export default function NewClassManualPage() {
             />
             <span className="text-sm text-admin-text">
               {specialMode ? "เปิดอยู่" : "ปิด"}
+            </span>
+          </label>
+        </div>
+
+        {/* ปิดตัวเลือก Cash Coupon */}
+        <div className="flex items-center justify-between rounded-2xl border border-admin-border bg-white px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-admin-text">
+              ปิดตัวเลือก Cash Coupon
+            </div>
+            <div className="text-[11px] text-admin-textMuted">
+              เปิดเพื่อซ่อนตัวเลือก Cash Coupon
+              ในหน้าเช็คอินของผู้เรียน (แสดงเฉพาะร้านที่ตั้งไว้ตาม plan)
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={disableCoupon}
+              onChange={(e) => setDisableCoupon(e.target.checked)}
+            />
+            <span className="text-sm text-admin-text">
+              {disableCoupon ? "เปิดอยู่" : "ปิด"}
             </span>
           </label>
         </div>

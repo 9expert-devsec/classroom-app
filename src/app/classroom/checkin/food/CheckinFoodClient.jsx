@@ -307,6 +307,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     courseName: "",
     classImageUrl: "",
     days: [],
+    disableCoupon: false,
   });
 
   // ✅ ไม่ default เลือกอะไร
@@ -377,7 +378,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setAddonId((cur) => (cur === id ? "" : id));
   }
 
-  function applyPrefill(currentFood, items) {
+  function applyPrefill(currentFood, items, couponAllowed = true) {
     if (!currentFood) return;
 
     const cf = currentFood || {};
@@ -387,6 +388,14 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
     // ✅ prefill ถือว่าเป็น "auto" (user ยังไม่ได้พิมพ์)
     setNoteMode("auto");
+
+    // ✅ class นี้ปิด Cash Coupon แล้ว -> ค่าเดิมที่เป็น coupon ใช้ต่อไม่ได้
+    // ให้ user เลือกใหม่
+    if (cfChoice === "coupon" && !couponAllowed) {
+      setChoiceType("");
+      resetFoodSelection();
+      return;
+    }
 
     // noFood/coupon
     if (cfChoice === "noFood" || cfNoFood) {
@@ -495,14 +504,18 @@ export default function CheckinFoodClient({ searchParams = {} }) {
           courseName: data.classInfo?.courseName || "",
           classImageUrl: data.classInfo?.classImageUrl || "",
           days: data.classInfo?.days || [],
+          disableCoupon: !!data.classInfo?.disableCoupon,
         });
+
+        // ✅ อ่านจาก data ตรง ๆ (state อาจยัง commit ไม่ทันตอน prefill)
+        const couponAllowed = !data.classInfo?.disableCoupon;
 
         // ✅ POLICY:
         // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
         // - prefill เฉพาะ isEdit เท่านั้น
         if (shouldPrefill && !didPrefillRef.current && data?.currentFood) {
           didPrefillRef.current = true;
-          applyPrefill(data.currentFood, data.items || []);
+          applyPrefill(data.currentFood, data.items || [], couponAllowed);
         }
       } catch (e) {
         console.error("food/today fetch fail:", e);
@@ -635,6 +648,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setSubmitting(false);
   }
 
+  // ✅ class ที่ปิด Cash Coupon จะไม่แสดงการ์ด Coupon เลย
+  const couponEnabled = !classInfo.disableCoupon;
+
   const backHref = isEdit ? returnTo : `/classroom/checkin?day=${day}`;
   const primaryLabel = isEdit ? "บันทึกเมนู" : "ไปต่อ → เซ็นชื่อ";
 
@@ -662,14 +678,17 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
+                  className={couponEnabled ? "" : "col-span-2"}
                 />
-                <QuickChoiceCard
-                  title="Cash Coupon"
-                  subtitle="คูปองส่วนลด 180 บาท"
-                  icon="/coupon.png"
-                  active={choiceType === "coupon"}
-                  onClick={chooseCoupon}
-                />
+                {couponEnabled && (
+                  <QuickChoiceCard
+                    title="Cash Coupon"
+                    subtitle="คูปองส่วนลด 180 บาท"
+                    icon="/coupon.png"
+                    active={choiceType === "coupon"}
+                    onClick={chooseCoupon}
+                  />
+                )}
               </div>
 
               <div className="animate-fadeIn">
@@ -719,13 +738,15 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
                 />
-                <QuickChoiceCard
-                  title="Cash Coupon"
-                  subtitle="คูปองส่วนลด 180 บาท"
-                  icon="/coupon.png"
-                  active={choiceType === "coupon"}
-                  onClick={chooseCoupon}
-                />
+                {couponEnabled && (
+                  <QuickChoiceCard
+                    title="Cash Coupon"
+                    subtitle="คูปองส่วนลด 180 บาท"
+                    icon="/coupon.png"
+                    active={choiceType === "coupon"}
+                    onClick={chooseCoupon}
+                  />
+                )}
 
                 {restaurants.map((r) => (
                   <RestaurantCard
@@ -738,8 +759,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
                 {restaurants.length === 0 && (
                   <p className="col-span-2 text-sm text-front-textMuted">
-                    วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก
-                    “ไม่รับอาหาร” หรือ “Coupon” แล้วบันทึกได้)
+                    {couponEnabled
+                      ? "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” หรือ “Coupon” แล้วบันทึกได้)"
+                      : "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” แล้วบันทึกได้)"}
                   </p>
                 )}
               </div>

@@ -704,6 +704,8 @@ export default function ClassDetailPage() {
 
     dateMode: "consecutive",
     days: [],
+
+    disableCoupon: false,
   });
 
   const [dayPick, setDayPick] = useState("");
@@ -1045,6 +1047,8 @@ export default function ClassDetailPage() {
 
       dateMode: hasCustomDays ? "custom" : "consecutive",
       days: hasCustomDays ? parsedDays : [],
+
+      disableCoupon: !!classData?.disableCoupon,
     });
 
     setEditOpen(true);
@@ -1139,6 +1143,8 @@ export default function ClassDetailPage() {
         days: editForm.dateMode === "custom" ? customDays : undefined,
 
         classImageUrl: editImageUrl,
+
+        disableCoupon: !!editForm.disableCoupon,
       };
 
       const res = await fetch(`/api/admin/classes/${id}`, {
@@ -1561,6 +1567,25 @@ export default function ClassDetailPage() {
                     );
                   })}
                 </select>
+              </div>
+
+              <div>
+                <label className="inline-flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5"
+                    checked={!!editForm.disableCoupon}
+                    onChange={(e) =>
+                      setEditForm((f) => ({
+                        ...f,
+                        disableCoupon: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span className="text-[11px] text-admin-textMuted">
+                    ปิดตัวเลือก Cash Coupon (หน้าเช็คอินผู้เรียน)
+                  </span>
+                </label>
               </div>
 
               <div className="rounded-xl border border-admin-border bg-admin-surface p-3">

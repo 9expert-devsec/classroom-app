@@ -68,7 +68,12 @@ export async function GET(req) {
     }
 
     let targetDate = new Date();
-    let classInfo = { courseName: "", classImageUrl: "", days: [] };
+    let classInfo = {
+      courseName: "",
+      classImageUrl: "",
+      days: [],
+      disableCoupon: false,
+    };
 
     const applyOffset = (baseDate) => {
       const d = new Date(baseDate);
@@ -80,12 +85,15 @@ export async function GET(req) {
       courseName: klass?.customCourseName || klass?.courseName || "",
       classImageUrl: klass?.classImageUrl || "",
       days: Array.isArray(klass?.days) ? klass.days : [],
+      disableCoupon: !!klass?.disableCoupon,
     });
 
     // 1) classId
     if (classId) {
       const klass = await Class.findById(classId)
-        .select("date days courseName customCourseName classImageUrl")
+        .select(
+          "date days courseName customCourseName classImageUrl disableCoupon",
+        )
         .lean();
       if (klass?.date) targetDate = applyOffset(klass.date);
       if (klass) classInfo = buildClassInfo(klass);
@@ -99,7 +107,9 @@ export async function GET(req) {
       const cId = student?.classId || student?.class;
       if (cId) {
         const klass = await Class.findById(cId)
-          .select("date days courseName customCourseName classImageUrl")
+          .select(
+            "date days courseName customCourseName classImageUrl disableCoupon",
+          )
           .lean();
         if (klass?.date) targetDate = applyOffset(klass.date);
         if (klass) classInfo = buildClassInfo(klass);

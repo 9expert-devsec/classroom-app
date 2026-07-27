@@ -404,6 +404,7 @@ export async function POST(req) {
     externalScheduleId,
     trainingType, // "classroom" | "hybrid" (optional)
     channel, // "PUB" (optional)
+    disableCoupon, // ✅ ซ่อนตัวเลือก Cash Coupon ในหน้าเช็คอินผู้เรียน
   } = body || {};
 
   const customName = clean(customCourseName);
@@ -492,6 +493,7 @@ export async function POST(req) {
             : "",
           trainingType: trainingType || "",
           channel: channel || "",
+          disableCoupon: !!disableCoupon,
         });
 
         return NextResponse.json({ ok: true, item: doc });
@@ -545,6 +547,7 @@ export async function POST(req) {
     externalScheduleId: externalScheduleId ? String(externalScheduleId) : "",
     trainingType: trainingType || "",
     channel: channel || "",
+    disableCoupon: !!disableCoupon,
   });
 
   return NextResponse.json({ ok: true, item: doc });
