@@ -5,6 +5,12 @@ import Class from "@/models/Class";
 import Student from "@/models/Student";
 import Checkin from "@/models/Checkin";
 import DocumentReceipt from "@/models/DocumentReceipt";
+import {
+  buildContiguousDaysFromStart,
+  isYMD,
+  uniqSortYMD,
+  ymdToUTCDate,
+} from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -121,51 +127,6 @@ function pickStudentName(stu) {
     clean(stu?.nameEN) ||
     ""
   );
-}
-
-/* ---------- days helpers (เลือกวันเอง) ---------- */
-
-function isYMD(x) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(x || "").trim());
-}
-
-function uniqSortYMD(list) {
-  const m = new Map();
-  for (const v of Array.isArray(list) ? list : []) {
-    const s = String(v || "").trim();
-    if (!isYMD(s)) continue;
-    m.set(s, true);
-  }
-  return Array.from(m.keys()).sort(); // YMD sort ได้ด้วย string
-}
-
-function ymdToUTCDate(ymd) {
-  // ymd "YYYY-MM-DD" -> Date (UTC)
-  const [y, m, d] = String(ymd)
-    .split("-")
-    .map((n) => Number(n));
-  if (!y || !m || !d) return null;
-  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-}
-
-function utcDateToYMD(dt) {
-  if (!dt || Number.isNaN(dt.getTime())) return "";
-  const y = dt.getUTCFullYear();
-  const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(dt.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function buildContiguousDaysFromStart(ymdStart, dayCount) {
-  const base = ymdToUTCDate(ymdStart);
-  if (!base) return [];
-  const n = Number(dayCount) || 1;
-  const out = [];
-  for (let i = 0; i < n; i += 1) {
-    const dt = new Date(base.getTime() + i * 86400000);
-    out.push(utcDateToYMD(dt));
-  }
-  return out;
 }
 
 /* ---------------- GET ---------------- */
