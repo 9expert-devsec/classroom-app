@@ -20,6 +20,30 @@ You can start editing the page by modifying `app/page.js`. The page auto-updates
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## External API
+
+Partner sites in the 9Expert group can read the class schedule catalogue — classes,
+instructor identity and instructor signatures — through a read-only, API-key-protected
+API mounted at `/api/ext/v1`.
+
+- **Production base URL:** `https://register.9expert.app/api/ext/v1`
+- **Auth:** `x-api-key` header (or `Authorization: Bearer`), scope `classes.read`
+- **Endpoints:** `/health`, `/classes`, `/classes/{idOrName}`, `/signature/{token}`
+- **Never exposed:** student, check-in, food or document-receipt data of any kind
+
+Docs and tooling:
+
+- [External API Integration Guide](docs/EXTERNAL_API_INTEGRATION_GUIDE.md) — endpoints,
+  query parameters, full response schema, Node/Python/PHP samples, error codes, and the
+  current data caveats partners must design around
+- [Postman collection](docs/postman/9expert-classroom-api.postman_collection.json) —
+  import, paste your key into the `apiKey` variable, and send
+
+Keys are issued by a Super Admin under **API Keys** in the admin console. A key is shown
+exactly once at creation; only its hash is stored.
+
+Required environment variables are documented in [.env.example](.env.example).
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
