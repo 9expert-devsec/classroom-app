@@ -1,0 +1,329 @@
+{
+  "info": {
+    "name": "9Expert Classroom External API (v1)",
+    "description": "Read-only catalogue API for partner sites in the 9Expert group.\n\nSetup:\n1. Open the collection > Variables tab.\n2. Paste your key into `apiKey` (Current value).\n3. `baseUrl` defaults to local dev; switch to https://register.9expert.app/api/ext/v1 for production.\n\nEvery request inherits the collection-level `x-api-key` header, except \"401 - no api key\", where it is disabled on purpose.\n\nThis API never exposes student, check-in, food or document-receipt data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/ext/v1",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "className",
+      "value": "CR-PUB-N8N-L1-04-08-69-1",
+      "type": "string"
+    },
+    {
+      "key": "classDate",
+      "value": "2026-08-04",
+      "type": "string"
+    },
+    {
+      "key": "courseCode",
+      "value": "N8N-L1",
+      "type": "string"
+    },
+    {
+      "key": "room",
+      "value": "Mars",
+      "type": "string"
+    },
+    {
+      "key": "signatureToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "x-api-key", "type": "string" },
+      { "key": "value", "value": "{{apiKey}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Confirms the key is valid and shows its name, prefix and scopes."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Classes",
+      "item": [
+        {
+          "name": "GET /classes (no filters)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"]
+            },
+            "description": "First page, 50 items, sorted by date ascending."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes?date=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?date={{classDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [{ "key": "date", "value": "{{classDate}}" }]
+            },
+            "description": "Classes teaching on a single day. Matches any day of a multi-day class, not just day 1."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes?from=&to=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?from=2026-08-01&to=2026-08-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [
+                { "key": "from", "value": "2026-08-01" },
+                { "key": "to", "value": "2026-08-31" }
+              ]
+            },
+            "description": "Inclusive date range."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes?course=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?course={{courseCode}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [{ "key": "course", "value": "{{courseCode}}" }]
+            },
+            "description": "Exact course_code match, case-insensitive."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes?q=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?q=n8n",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [{ "key": "q", "value": "n8n" }]
+            },
+            "description": "Substring search across class_name, course_code, course_name, custom_course_name, room and instructor name."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes?room=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?room={{room}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [{ "key": "room", "value": "{{room}}" }]
+            },
+            "description": "Exact room match, case-insensitive."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes (paging)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?limit=5&page=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [
+                { "key": "limit", "value": "5" },
+                { "key": "page", "value": "2" }
+              ]
+            },
+            "description": "limit defaults to 50, max 200. page is 1-based."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes (sort=date_desc)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?sort=date_desc&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [
+                { "key": "sort", "value": "date_desc" },
+                { "key": "limit", "value": "5" }
+              ]
+            },
+            "description": "sort is date_asc (default) or date_desc."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes (signature=0)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?date={{classDate}}&signature=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [
+                { "key": "date", "value": "{{classDate}}" },
+                { "key": "signature", "value": "0" }
+              ]
+            },
+            "description": "Skips signature token minting. signature_url and signature_expires_at come back null."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /classes/{className}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes/{{className}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes", "{{className}}"]
+            },
+            "description": "Accepts a class_name (as here) or a Mongo class_id."
+          },
+          "response": []
+        },
+        {
+          "name": "404 - unknown class",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes/NOPE-DOES-NOT-EXIST",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes", "NOPE-DOES-NOT-EXIST"]
+            },
+            "description": "Expect 404 with error.code = class_not_found."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "item": [
+        {
+          "name": "401 - no api key",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-api-key",
+                "value": "{{apiKey}}",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/classes",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"]
+            },
+            "description": "The x-api-key header is disabled on purpose. Expect 401 with error.code = unauthorized."
+          },
+          "response": []
+        },
+        {
+          "name": "400 - invalid date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/classes?date=not-a-date",
+              "host": ["{{baseUrl}}"],
+              "path": ["classes"],
+              "query": [{ "key": "date", "value": "not-a-date" }]
+            },
+            "description": "Expect 400 with error.code = invalid_date."
+          },
+          "response": []
+        },
+        {
+          "name": "401 - invalid signature token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/signature/not.a.valid.token",
+              "host": ["{{baseUrl}}"],
+              "path": ["signature", "not.a.valid.token"]
+            },
+            "description": "Expect 401 with error.code = signature_token_invalid."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Signature",
+      "item": [
+        {
+          "name": "GET /signature/{token}",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/signature/{{signatureToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["signature", "{{signatureToken}}"]
+            },
+            "description": "Returns the instructor signature as an image.\n\nThis endpoint needs NO API key - the signed token in the URL is the credential, so the URL can go straight into an <img src>. Tokens expire (default 15 minutes).\n\nTo try it: run \"GET /classes/{className}\", copy instructors[0].signature_url from the response, and open it directly - or paste just the token part into the `signatureToken` variable."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [],
+  "protocolProfileBehavior": {}
+}

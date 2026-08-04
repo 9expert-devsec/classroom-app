@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import ExternalApiKey from "@/models/ExternalApiKey";
+import { getBaseUrl } from "@/lib/baseUrl.server";
 
 const KEY_PREFIX = "9xc_live_";
 const KEY_RANDOM_BYTES = 32;
@@ -59,6 +60,12 @@ function readPresentedKey(req) {
   return m ? clean(m[1]) : "";
 }
 
+/**
+ * Client IP.
+ * x-forwarded-for is a chain "client, proxy1, proxy2" - the CLIENT is the FIRST
+ * entry. Taking the last entry instead would read a proxy hop (or a value a
+ * caller appended) and make the IP allow-list trivially bypassable.
+ */
 export function clientIpFrom(req) {
   const fwd = clean(req?.headers?.get?.("x-forwarded-for"));
   if (fwd) return clean(fwd.split(",")[0]);
@@ -114,7 +121,21 @@ export function corsHeadersFor(req, keyDoc) {
 // warm instances. Treat it as advisory back-pressure against runaway clients,
 // NOT as a security control or a billing-grade quota.
 const RATE_WINDOW_MS = 60 * 1000;
+const RATE_SWEEP_EVERY = 50;
 const rateBuckets = new Map();
+let rateCallsSinceSweep = 0;
+
+/**
+ * Drop every bucket whose window has fully expired. Without this the Map grows
+ * once per key seen and never shrinks, leaking memory on a long-lived instance.
+ */
+function sweepRateBuckets(cutoff) {
+  for (const [id, hits] of rateBuckets) {
+    const live = hits.filter((t) => t > cutoff);
+    if (live.length) rateBuckets.set(id, live);
+    else rateBuckets.delete(id);
+  }
+}
 
 export function checkRateLimit(keyDoc) {
   const limit = Number(keyDoc?.rateLimitPerMin);
@@ -125,6 +146,13 @@ export function checkRateLimit(keyDoc) {
 
   const now = Date.now();
   const cutoff = now - RATE_WINDOW_MS;
+
+  // Cheap amortised prune so expired buckets cannot accumulate.
+  rateCallsSinceSweep += 1;
+  if (rateCallsSinceSweep >= RATE_SWEEP_EVERY) {
+    rateCallsSinceSweep = 0;
+    sweepRateBuckets(cutoff);
+  }
 
   const hits = (rateBuckets.get(id) || []).filter((t) => t > cutoff);
 
@@ -140,12 +168,8 @@ export function checkRateLimit(keyDoc) {
   hits.push(now);
   rateBuckets.set(id, hits);
 
-  // Opportunistic cleanup so idle keys do not pin memory forever.
-  if (rateBuckets.size > 500) {
-    for (const [k, v] of rateBuckets) {
-      if (!v.some((t) => t > cutoff)) rateBuckets.delete(k);
-    }
-  }
+  // Hard backstop in case many distinct keys arrive between sweeps.
+  if (rateBuckets.size > 500) sweepRateBuckets(cutoff);
 
   return { ok: true, retryAfter: 0 };
 }
@@ -241,6 +265,148 @@ export async function authenticateExternalRequest(req, { scope } = {}) {
     });
 
   return { ok: true, keyDoc };
+}
+
+/* ---------------- route plumbing ---------------- */
+
+/** Copy CORS headers onto a NextResponse and return it. */
+export function withCors(res, headers) {
+  for (const [k, v] of Object.entries(headers || {})) res.headers.set(k, v);
+  return res;
+}
+
+/** Standard preflight response. */
+export function corsPreflight(req, keyDoc = null) {
+  return withCors(
+    new NextResponse(null, { status: 204 }),
+    corsHeadersFor(req, keyDoc),
+  );
+}
+
+/**
+ * Authenticate + rate limit in one step.
+ * Returns either { error: NextResponse } (already CORS-tagged) or
+ * { keyDoc, cors }.
+ */
+export async function guardExternalRequest(req, { scope } = {}) {
+  const auth = await authenticateExternalRequest(req, { scope });
+
+  if (!auth.ok) {
+    // No key doc yet, so no origin can be echoed - that is intentional.
+    return {
+      error: withCors(
+        externalError(auth.status, auth.code, auth.message),
+        corsHeadersFor(req, null),
+      ),
+    };
+  }
+
+  const cors = corsHeadersFor(req, auth.keyDoc);
+  const rl = checkRateLimit(auth.keyDoc);
+
+  if (!rl.ok) {
+    const res = externalError(429, "rate_limited", "Rate limit exceeded", {
+      retry_after: rl.retryAfter,
+    });
+    res.headers.set("Retry-After", String(rl.retryAfter));
+    return { error: withCors(res, cors) };
+  }
+
+  return { keyDoc: auth.keyDoc, cors };
+}
+
+/**
+ * Absolute base URL used when emitting signature URLs.
+ * EXT_PUBLIC_BASE_URL is the explicit override; otherwise fall back to the
+ * app-wide resolver (NEXT_PUBLIC_BASE_URL -> VERCEL_URL -> request Host).
+ */
+export function externalBaseUrl() {
+  const override = clean(process.env.EXT_PUBLIC_BASE_URL).replace(/\/+$/, "");
+  if (override) return override;
+  return getBaseUrl().replace(/\/+$/, "");
+}
+
+/* ---------------- signed signature tokens ---------------- */
+
+const DEFAULT_SIGNATURE_TTL_SEC = 900; // 15 minutes
+
+function signatureSecret() {
+  const secret = clean(process.env.EXT_SIGNATURE_SECRET) || clean(process.env.JWT_SECRET);
+  if (!secret) throw new Error("Missing EXT_SIGNATURE_SECRET (or JWT_SECRET)");
+  return secret;
+}
+
+export function signatureTtlSeconds() {
+  const n = Number(process.env.EXT_SIGNATURE_TTL_SEC);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_SIGNATURE_TTL_SEC;
+}
+
+function hmacB64Url(payloadB64) {
+  return crypto
+    .createHmac("sha256", signatureSecret())
+    .update(payloadB64)
+    .digest("base64url");
+}
+
+/**
+ * Mint a short-lived token that stands in for a Cloudinary URL, so partners
+ * never receive the raw asset URL and cannot keep fetching it forever.
+ * Returns { token, expiresAt } where expiresAt is an ISO string.
+ */
+export function signSignatureToken({ url, keyId }) {
+  const ttl = signatureTtlSeconds();
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+
+  const payload = { u: String(url || ""), k: String(keyId || ""), e: exp };
+  const payloadB64 = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+
+  return {
+    token: `${payloadB64}.${hmacB64Url(payloadB64)}`,
+    expiresAt: new Date(exp * 1000).toISOString(),
+  };
+}
+
+/**
+ * Verify a signature token.
+ * Returns { ok: true, url, keyId, exp } or { ok: false, reason }.
+ */
+export function verifySignatureToken(token) {
+  const raw = clean(token);
+  const dot = raw.lastIndexOf(".");
+  if (dot <= 0 || dot === raw.length - 1) return { ok: false, reason: "malformed" };
+
+  const payloadB64 = raw.slice(0, dot);
+  const presented = raw.slice(dot + 1);
+
+  let expected;
+  try {
+    expected = hmacB64Url(payloadB64);
+  } catch {
+    return { ok: false, reason: "no_secret" };
+  }
+
+  const a = Buffer.from(presented, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    return { ok: false, reason: "bad_signature" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+  } catch {
+    return { ok: false, reason: "malformed" };
+  }
+
+  const exp = Number(payload?.e);
+  if (!Number.isFinite(exp) || exp * 1000 < Date.now()) {
+    return { ok: false, reason: "expired" };
+  }
+
+  const url = clean(payload?.u);
+  if (!/^https?:\/\//i.test(url)) return { ok: false, reason: "malformed" };
+
+  return { ok: true, url, keyId: clean(payload?.k), exp };
 }
 
 /* ---------------- input normalization (admin side) ---------------- */
