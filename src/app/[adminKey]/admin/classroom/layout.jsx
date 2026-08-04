@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
+  KeyRound,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -150,6 +151,13 @@ const NAV = [
         perm: PERM.ACCOUNTS_MANAGE,
       },
     ],
+  },
+
+  {
+    label: "API Keys",
+    href: "/classroom/api-keys",
+    icon: KeyRound,
+    perm: PERM.API_KEYS_MANAGE,
   },
 
   {

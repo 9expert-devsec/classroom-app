@@ -1,0 +1,301 @@
+// src/lib/externalAuth.server.js
+//
+// Authentication and guardrails for the read-only external API under
+// /api/ext/v1. Partners authenticate with an API key sent as `x-api-key`
+// (or `Authorization: Bearer <key>`). The raw key is shown exactly once at
+// creation time and is never stored, logged, or echoed back afterwards.
+import crypto from "node:crypto";
+import { NextResponse } from "next/server";
+import dbConnect from "@/lib/mongoose";
+import ExternalApiKey from "@/models/ExternalApiKey";
+
+const KEY_PREFIX = "9xc_live_";
+const KEY_RANDOM_BYTES = 32;
+const PREFIX_VISIBLE_CHARS = 8;
+
+function clean(x) {
+  return String(x ?? "").trim();
+}
+
+/* ---------------- key generation / hashing ---------------- */
+
+/**
+ * Mint a new API key.
+ * Returns { raw, prefix, hash }. `raw` is the ONLY time the full key exists -
+ * hand it to the caller once and never persist it.
+ */
+export function generateApiKey() {
+  const random = crypto.randomBytes(KEY_RANDOM_BYTES).toString("base64url");
+  const raw = `${KEY_PREFIX}${random}`;
+
+  return {
+    raw,
+    prefix: `${KEY_PREFIX}${random.slice(0, PREFIX_VISIBLE_CHARS)}`,
+    hash: hashApiKey(raw),
+  };
+}
+
+export function hashApiKey(raw) {
+  return crypto.createHash("sha256").update(String(raw ?? "")).digest("hex");
+}
+
+/** Constant-time comparison of two hex digests of equal length. */
+function safeEqualHex(a, b) {
+  const bufA = Buffer.from(String(a ?? ""), "utf8");
+  const bufB = Buffer.from(String(b ?? ""), "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/* ---------------- request helpers ---------------- */
+
+/** Extract the presented key from x-api-key, falling back to a Bearer token. */
+function readPresentedKey(req) {
+  const direct = clean(req?.headers?.get?.("x-api-key"));
+  if (direct) return direct;
+
+  const auth = clean(req?.headers?.get?.("authorization"));
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  return m ? clean(m[1]) : "";
+}
+
+export function clientIpFrom(req) {
+  const fwd = clean(req?.headers?.get?.("x-forwarded-for"));
+  if (fwd) return clean(fwd.split(",")[0]);
+  return clean(req?.headers?.get?.("x-real-ip"));
+}
+
+/* ---------------- error envelope ---------------- */
+
+/**
+ * Uniform error body for every external endpoint:
+ *   { ok: false, error: { code, message, ...extra } }
+ */
+export function externalError(status, code, message, extra = {}) {
+  return NextResponse.json(
+    { ok: false, error: { code, message, ...(extra || {}) } },
+    { status },
+  );
+}
+
+/* ---------------- CORS ---------------- */
+
+/**
+ * CORS headers for a request. The request Origin is echoed only when it is an
+ * exact match in the key's allowedOrigins; an empty allowedOrigins means the
+ * key is not usable from a browser at all (server-to-server only).
+ */
+export function corsHeadersFor(req, keyDoc) {
+  const headers = {
+    Vary: "Origin",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+    "Access-Control-Allow-Headers": "x-api-key,authorization,content-type",
+    "Access-Control-Max-Age": "600",
+  };
+
+  const origin = clean(req?.headers?.get?.("origin"));
+  const allowed = Array.isArray(keyDoc?.allowedOrigins)
+    ? keyDoc.allowedOrigins.map(clean).filter(Boolean)
+    : [];
+
+  if (origin && allowed.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+
+  return headers;
+}
+
+/* ---------------- rate limiting ---------------- */
+
+// Best-effort sliding window kept in module memory.
+//
+// IMPORTANT: this is PER SERVERLESS INSTANCE. On Vercel each concurrent lambda
+// has its own copy, so the real ceiling is roughly rateLimitPerMin x number of
+// warm instances. Treat it as advisory back-pressure against runaway clients,
+// NOT as a security control or a billing-grade quota.
+const RATE_WINDOW_MS = 60 * 1000;
+const rateBuckets = new Map();
+
+export function checkRateLimit(keyDoc) {
+  const limit = Number(keyDoc?.rateLimitPerMin);
+  if (!Number.isFinite(limit) || limit <= 0) return { ok: true, retryAfter: 0 };
+
+  const id = String(keyDoc?._id || "");
+  if (!id) return { ok: true, retryAfter: 0 };
+
+  const now = Date.now();
+  const cutoff = now - RATE_WINDOW_MS;
+
+  const hits = (rateBuckets.get(id) || []).filter((t) => t > cutoff);
+
+  if (hits.length >= limit) {
+    rateBuckets.set(id, hits);
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((hits[0] + RATE_WINDOW_MS - now) / 1000),
+    );
+    return { ok: false, retryAfter };
+  }
+
+  hits.push(now);
+  rateBuckets.set(id, hits);
+
+  // Opportunistic cleanup so idle keys do not pin memory forever.
+  if (rateBuckets.size > 500) {
+    for (const [k, v] of rateBuckets) {
+      if (!v.some((t) => t > cutoff)) rateBuckets.delete(k);
+    }
+  }
+
+  return { ok: true, retryAfter: 0 };
+}
+
+/* ---------------- authentication ---------------- */
+
+/**
+ * Authenticate an external request.
+ * Resolves { ok: true, keyDoc } or { ok: false, status, code, message }.
+ * Never throws for auth failures - callers turn the result into externalError().
+ */
+export async function authenticateExternalRequest(req, { scope } = {}) {
+  const presented = readPresentedKey(req);
+  if (!presented) {
+    return {
+      ok: false,
+      status: 401,
+      code: "unauthorized",
+      message: "Invalid or missing API key",
+    };
+  }
+
+  await dbConnect();
+
+  const hash = hashApiKey(presented);
+  const keyDoc = await ExternalApiKey.findOne({ keyHash: hash });
+
+  // Same generic response for "no such key" and "hash mismatch" so the error
+  // never tells a caller whether a key exists.
+  if (!keyDoc || !safeEqualHex(keyDoc.keyHash, hash)) {
+    return {
+      ok: false,
+      status: 401,
+      code: "unauthorized",
+      message: "Invalid or missing API key",
+    };
+  }
+
+  if (keyDoc.revokedAt) {
+    return {
+      ok: false,
+      status: 401,
+      code: "key_revoked",
+      message: "This API key has been revoked",
+    };
+  }
+
+  if (keyDoc.expiresAt && new Date(keyDoc.expiresAt).getTime() < Date.now()) {
+    return {
+      ok: false,
+      status: 401,
+      code: "key_expired",
+      message: "This API key has expired",
+    };
+  }
+
+  const scopes = Array.isArray(keyDoc.scopes) ? keyDoc.scopes : [];
+  if (scope && !scopes.includes(scope)) {
+    return {
+      ok: false,
+      status: 403,
+      code: "scope_denied",
+      message: `This API key does not have the "${scope}" scope`,
+    };
+  }
+
+  const allowedIps = (Array.isArray(keyDoc.allowedIps) ? keyDoc.allowedIps : [])
+    .map(clean)
+    .filter(Boolean);
+  const ip = clientIpFrom(req);
+
+  if (allowedIps.length && !allowedIps.includes(ip)) {
+    return {
+      ok: false,
+      status: 403,
+      code: "ip_not_allowed",
+      message: "This API key is not allowed from this IP address",
+    };
+  }
+
+  // Usage bookkeeping is fire-and-forget: it must not add latency to, or be
+  // able to fail, the response path.
+  ExternalApiKey.updateOne(
+    { _id: keyDoc._id },
+    {
+      $set: { lastUsedAt: new Date(), lastUsedIp: ip },
+      $inc: { requestCount: 1 },
+    },
+  )
+    .exec()
+    .catch((err) => {
+      console.error("externalAuth: usage update failed:", err?.message || err);
+    });
+
+  return { ok: true, keyDoc };
+}
+
+/* ---------------- input normalization (admin side) ---------------- */
+
+export const VALID_SCOPES = ["classes.read"];
+
+export function normalizeScopes(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = list.map(clean).filter((s) => VALID_SCOPES.includes(s));
+  return out.length ? Array.from(new Set(out)) : ["classes.read"];
+}
+
+/** Origins must be an exact scheme+host[+port]: no path, no trailing slash. */
+export function normalizeOrigins(input) {
+  const list = Array.isArray(input) ? input : [];
+  const out = [];
+
+  for (const raw of list) {
+    const s = clean(raw).replace(/\/+$/, "");
+    if (!s) continue;
+    try {
+      out.push(new URL(s).origin);
+    } catch {
+      // ignore anything that is not a parseable origin
+    }
+  }
+
+  return Array.from(new Set(out));
+}
+
+export function normalizeIps(input) {
+  const list = Array.isArray(input) ? input : [];
+  return Array.from(new Set(list.map(clean).filter(Boolean)));
+}
+
+/**
+ * Public view of a key document. Never includes keyHash.
+ */
+export function publicKeyView(doc) {
+  return {
+    id: String(doc?._id || ""),
+    name: String(doc?.name || ""),
+    keyPrefix: String(doc?.keyPrefix || ""),
+    scopes: Array.isArray(doc?.scopes) ? doc.scopes : [],
+    allowedOrigins: Array.isArray(doc?.allowedOrigins) ? doc.allowedOrigins : [],
+    allowedIps: Array.isArray(doc?.allowedIps) ? doc.allowedIps : [],
+    rateLimitPerMin: Number(doc?.rateLimitPerMin || 0),
+    expiresAt: doc?.expiresAt || null,
+    revokedAt: doc?.revokedAt || null,
+    lastUsedAt: doc?.lastUsedAt || null,
+    lastUsedIp: String(doc?.lastUsedIp || ""),
+    requestCount: Number(doc?.requestCount || 0),
+    note: String(doc?.note || ""),
+    createdBy: doc?.createdBy || null,
+    createdAt: doc?.createdAt || null,
+    updatedAt: doc?.updatedAt || null,
+  };
+}
