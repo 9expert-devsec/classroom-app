@@ -184,32 +184,46 @@ export async function POST(req) {
 
     const before = await InstructorSignature.findOne({ instructorKey }).lean();
 
-    const after = await InstructorSignature.findOneAndUpdate(
-      { instructorKey },
-      {
-        $set: {
-          instructorKey,
-          nameKey,
-          name,
-          email,
-          code,
-          externalId,
-          isActive: true,
-          signature: {
-            url: uploaded.url || "",
-            publicId: uploaded.publicId || "",
-            width: uploaded.width || 0,
-            height: uploaded.height || 0,
-          },
-          uploadedBy: {
-            userId: clean(ctx?.user?.id),
-            username: clean(ctx?.user?.username),
-            name: clean(ctx?.user?.name),
+    let after;
+    try {
+      after = await InstructorSignature.findOneAndUpdate(
+        { instructorKey },
+        {
+          $set: {
+            instructorKey,
+            nameKey,
+            name,
+            email,
+            code,
+            externalId,
+            isActive: true,
+            signature: {
+              url: uploaded.url || "",
+              publicId: uploaded.publicId || "",
+              width: uploaded.width || 0,
+              height: uploaded.height || 0,
+            },
+            uploadedBy: {
+              userId: clean(ctx?.user?.id),
+              username: clean(ctx?.user?.username),
+              name: clean(ctx?.user?.name),
+            },
           },
         },
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    ).lean();
+        { new: true, upsert: true, setDefaultsOnInsert: true },
+      ).lean();
+    } catch (err) {
+      // instructorKey is unique. Two different instructors whose names
+      // normalize to the same key collide here; surface the normalized key so
+      // the collision is diagnosable instead of a raw E11000.
+      if (err?.code === 11000) {
+        return jsonError(
+          `มีลายเซ็นของอาจารย์ชื่อนี้อยู่แล้ว (ชื่อซ้ำหลัง normalize: ${instructorKey})`,
+          409,
+        );
+      }
+      throw err;
+    }
 
     await writeAuditLog({
       ctx,
