@@ -16,6 +16,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  PenLine,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -60,6 +61,12 @@ const NAV = [
         href: "/classroom/import",
         icon: Upload,
         perm: PERM.CLASSES_IMPORT,
+      },
+      {
+        label: "ลายเซ็นอาจารย์",
+        href: "/classroom/instructors",
+        icon: PenLine,
+        perm: PERM.CLASSES_READ,
       },
     ],
   },
