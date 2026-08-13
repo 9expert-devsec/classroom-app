@@ -10,7 +10,7 @@ import {
   guardExternalRequest,
   withCors,
 } from "@/lib/externalAuth.server";
-import { serializeClasses } from "@/lib/externalClass.server";
+import { classDateRangeFilter, serializeClasses } from "@/lib/externalClass.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,48 +27,9 @@ function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Match classes that teach on any day within [fromYmd, toYmd].
- *
- * Primary path uses the stored days[] (populated on every class today).
- * The fallback covers legacy rows with an empty days[] by deriving the span
- * from `date` + duration.dayCount, mirroring the same precedence the admin API
- * uses for dayCount.
- */
-function dateRangeFilter(fromYmd, toYmd) {
-  const startOfFrom = new Date(`${fromYmd}T00:00:00.000Z`);
-  const endOfTo = new Date(`${toYmd}T23:59:59.999Z`);
-
-  return {
-    $or: [
-      { days: { $elemMatch: { $gte: fromYmd, $lte: toYmd } } },
-      {
-        $and: [
-          { $or: [{ days: { $exists: false } }, { days: { $size: 0 } }] },
-          { date: { $lte: endOfTo } },
-          {
-            $expr: {
-              $gte: [
-                {
-                  $add: [
-                    "$date",
-                    {
-                      $multiply: [
-                        { $subtract: [{ $ifNull: ["$duration.dayCount", 1] }, 1] },
-                        86400000,
-                      ],
-                    },
-                  ],
-                },
-                startOfFrom,
-              ],
-            },
-          },
-        ],
-      },
-    ],
-  };
-}
+// The date-range filter lives in externalClass.server.js so /classes and
+// /schedule share one definition of "this class teaches on this day".
+const dateRangeFilter = classDateRangeFilter;
 
 export async function OPTIONS(req) {
   return corsPreflight(req);

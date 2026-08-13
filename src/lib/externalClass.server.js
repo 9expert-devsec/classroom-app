@@ -12,6 +12,56 @@ function clean(x) {
   return String(x ?? "").trim();
 }
 
+/* ---------------- query helpers ---------------- */
+
+/**
+ * Match classes that teach on any day within [fromYmd, toYmd].
+ *
+ * Primary path uses the stored days[] (populated on every class today).
+ * The fallback covers legacy rows with an empty days[] by deriving the span
+ * from `date` + duration.dayCount, mirroring the same precedence the admin API
+ * uses for dayCount.
+ *
+ * Lives here so /classes and /schedule can never drift apart on what "a class
+ * happens on this day" means.
+ */
+export function classDateRangeFilter(fromYmd, toYmd) {
+  const startOfFrom = new Date(`${fromYmd}T00:00:00.000Z`);
+  const endOfTo = new Date(`${toYmd}T23:59:59.999Z`);
+
+  return {
+    $or: [
+      { days: { $elemMatch: { $gte: fromYmd, $lte: toYmd } } },
+      {
+        $and: [
+          { $or: [{ days: { $exists: false } }, { days: { $size: 0 } }] },
+          { date: { $lte: endOfTo } },
+          {
+            $expr: {
+              $gte: [
+                {
+                  $add: [
+                    "$date",
+                    {
+                      $multiply: [
+                        { $subtract: [{ $ifNull: ["$duration.dayCount", 1] }, 1] },
+                        86400000,
+                      ],
+                    },
+                  ],
+                },
+                startOfFrom,
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/* ---------------- serialization ---------------- */
+
 /** days.length || duration.dayCount || 1 - same precedence as the admin API. */
 export function dayCountOf(cls) {
   return (
