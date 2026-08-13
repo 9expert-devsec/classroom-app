@@ -50,3 +50,131 @@ export function buildContiguousDaysFromStart(ymdStart, dayCount) {
   }
   return out;
 }
+
+/* ---------------- Asia/Bangkok wall-clock helpers ---------------- */
+//
+// Class.days[] are already "YYYY-MM-DD" in Thai local terms, but Event.startAt
+// / Event.endAt are instants (UTC). Merging the two into one day-oriented feed
+// therefore has to read every instant in Asia/Bangkok, NEVER in UTC and never
+// in the server's local zone: an event at 2026-08-04T17:00:00Z is 00:00 on
+// 2026-08-05 in Bangkok and belongs on the 5th, not the 4th.
+//
+// Everything below goes through Intl with timeZone "Asia/Bangkok". No +7 is
+// hard-coded anywhere - the offset is asked for, not assumed.
+
+const BANGKOK_TZ = "Asia/Bangkok";
+
+// Runaway guard: a mis-entered endAt years in the future must not turn into a
+// multi-thousand-element dates[] in an API response.
+const MAX_EVENT_DAYS = 366;
+
+const bangkokParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: BANGKOK_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function toDate(x) {
+  if (!x) return null;
+  const d = x instanceof Date ? x : new Date(x);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Calendar/clock fields of an instant as seen in Bangkok. */
+function bangkokFieldsOf(x) {
+  const d = toDate(x);
+  if (!d) return null;
+
+  const out = {};
+  for (const p of bangkokParts.formatToParts(d)) {
+    if (p.type !== "literal") out[p.type] = p.value;
+  }
+  return out;
+}
+
+/** Date -> "YYYY-MM-DD" as seen in Asia/Bangkok. "" when not a valid date. */
+export function bangkokYMD(x) {
+  const f = bangkokFieldsOf(x);
+  return f ? `${f.year}-${f.month}-${f.day}` : "";
+}
+
+/** Date -> "HH:mm" (24h) as seen in Asia/Bangkok. "" when not a valid date. */
+export function bangkokHM(x) {
+  const f = bangkokFieldsOf(x);
+  return f ? `${f.hour}:${f.minute}` : "";
+}
+
+/** How far Bangkok wall-clock runs ahead of UTC at this instant, in ms. */
+function bangkokOffsetMs(d) {
+  const f = bangkokFieldsOf(d);
+  if (!f) return 0;
+  const asIfUTC = Date.UTC(
+    Number(f.year),
+    Number(f.month) - 1,
+    Number(f.day),
+    Number(f.hour),
+    Number(f.minute),
+    Number(f.second),
+  );
+  return asIfUTC - d.getTime();
+}
+
+/** "YYYY-MM-DD" -> the instant that day begins in Bangkok (00:00:00.000). */
+export function bangkokDayStartUTC(ymd) {
+  if (!isYMD(ymd)) return null;
+  const [y, m, d] = String(ymd).split("-").map(Number);
+
+  // Treat the wall-clock as UTC first, then subtract the zone offset. The
+  // offset is re-read at the corrected instant so a zone that changed offset
+  // near midnight still lands on the right side of the change.
+  const wall = Date.UTC(y, m - 1, d, 0, 0, 0, 0);
+  let guess = new Date(wall - bangkokOffsetMs(new Date(wall)));
+  guess = new Date(wall - bangkokOffsetMs(guess));
+  return guess;
+}
+
+/** The next calendar day after a "YYYY-MM-DD", as "YYYY-MM-DD". */
+export function nextYMD(ymd) {
+  const base = ymdToUTCDate(ymd);
+  if (!base) return "";
+  return utcDateToYMD(new Date(base.getTime() + 86400000));
+}
+
+/** "YYYY-MM-DD" -> the last instant of that day in Bangkok (23:59:59.999). */
+export function bangkokDayEndUTC(ymd) {
+  const nextStart = bangkokDayStartUTC(nextYMD(ymd));
+  return nextStart ? new Date(nextStart.getTime() - 1) : null;
+}
+
+/** Today's date in Bangkok, as "YYYY-MM-DD". */
+export function bangkokTodayYMD() {
+  return bangkokYMD(new Date());
+}
+
+/**
+ * Every day an event covers, inclusive, in Bangkok terms.
+ * A null/invalid/earlier endAt yields a single day.
+ */
+export function expandEventDays(startAt, endAt) {
+  const startYmd = bangkokYMD(startAt);
+  if (!startYmd) return [];
+
+  const endYmd = bangkokYMD(endAt);
+  if (!endYmd || endYmd <= startYmd) return [startYmd];
+
+  const out = [];
+  let cur = ymdToUTCDate(startYmd);
+  const last = ymdToUTCDate(endYmd);
+
+  while (cur.getTime() <= last.getTime() && out.length < MAX_EVENT_DAYS) {
+    out.push(utcDateToYMD(cur));
+    cur = new Date(cur.getTime() + 86400000);
+  }
+
+  return out;
+}

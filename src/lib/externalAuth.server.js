@@ -435,11 +435,15 @@ export function verifySignatureToken(token) {
 
 /* ---------------- input normalization (admin side) ---------------- */
 
-export const VALID_SCOPES = ["classes.read"];
+// Known scopes. Anything not listed here is dropped by normalizeScopes, so a
+// typo or an invented scope can never be persisted onto a key.
+export const VALID_SCOPES = ["classes.read", "events.read"];
 
 export function normalizeScopes(input) {
   const list = Array.isArray(input) ? input : [];
   const out = list.map(clean).filter((s) => VALID_SCOPES.includes(s));
+  // Falling back to classes.read keeps a key from ending up with no scope at
+  // all; granting events.read is always an explicit choice, never a default.
   return out.length ? Array.from(new Set(out)) : ["classes.read"];
 }
 

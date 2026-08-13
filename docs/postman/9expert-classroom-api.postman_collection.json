@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "9Expert Classroom External API (v1)",
-    "description": "Read-only catalogue API for partner sites in the 9Expert group.\n\nSetup:\n1. Open the collection > Variables tab.\n2. Paste your key into `apiKey` (Current value).\n3. `baseUrl` defaults to local dev; switch to https://register.9expert.app/api/ext/v1 for production.\n\nEvery request inherits the collection-level `x-api-key` header, except \"401 - no api key\", where it is disabled on purpose.\n\nThis API never exposes student, check-in, food or document-receipt data.",
+    "description": "Read-only catalogue API for partner sites in the 9Expert group.\n\nSetup:\n1. Open the collection > Variables tab.\n2. Paste your key into `apiKey` (Current value).\n3. `baseUrl` defaults to local dev; switch to https://register.9expert.app/api/ext/v1 for production.\n4. Optional: paste a key that holds ONLY classes.read into `apiKeyNoEvents` to run the 403 scope case.\n\nEvery request inherits the collection-level `x-api-key` header, except \"401 - no api key\", where it is disabled on purpose.\n\nScopes: `classes.read` covers /classes, /classes/{id} and the class half of /schedule. `events.read` adds the event half of /schedule and nothing else. /schedule always reports what it included via `included_types`.\n\nThis API never exposes student, event-attendee, check-in, food or document-receipt data.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -38,6 +38,16 @@
     {
       "key": "signatureToken",
       "value": "",
+      "type": "string"
+    },
+    {
+      "key": "apiKeyNoEvents",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "scheduleDate",
+      "value": "2026-08-13",
       "type": "string"
     }
   ],
@@ -249,6 +259,157 @@
       ]
     },
     {
+      "name": "Schedule",
+      "description": "Unified day feed: classes and events in one merged, paged list. Read `included_types` on every response - it says whether events were in scope for that call. Every item carries `type` as its first key.",
+      "item": [
+        {
+          "name": "GET /schedule (today)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"]
+            },
+            "description": "No date parameters at all. Defaults to TODAY in Asia/Bangkok rather than returning the whole history - the window actually used comes back as date_from / date_to.\n\nExpect included_types = [\"class\"] for a classes.read-only key, or [\"class\",\"event\"] when the key also holds events.read."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule?date=",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?date={{scheduleDate}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [{ "key": "date", "value": "{{scheduleDate}}" }]
+            },
+            "description": "A single day. Matches any day a multi-day class teaches on, and any day a multi-day event spans."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule?from=&to= (date range)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?from=2026-08-01&to=2026-08-31&limit=200",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [
+                { "key": "from", "value": "2026-08-01" },
+                { "key": "to", "value": "2026-08-31" },
+                { "key": "limit", "value": "200" }
+              ]
+            },
+            "description": "Inclusive range. `total` is classes + events combined, and paging applies to the merged list, so one page can hold both types."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule?type=class",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?date={{scheduleDate}}&type=class",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [
+                { "key": "date", "value": "{{scheduleDate}}" },
+                { "key": "type", "value": "class" }
+              ]
+            },
+            "description": "Classes only. included_types comes back as [\"class\"]. Each item is exactly the /classes object with a leading \"type\": \"class\"."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule?type=event",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?date={{scheduleDate}}&type=event",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [
+                { "key": "date", "value": "{{scheduleDate}}" },
+                { "key": "type", "value": "event" }
+              ]
+            },
+            "description": "Events only. Needs events.read - without it this returns 403 scope_denied, never an empty list. Times are Asia/Bangkok; an empty start_time/end_time means \"no clock time given\", not midnight."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule (sort=date_desc)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?from=2026-08-01&to=2026-08-31&sort=date_desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [
+                { "key": "from", "value": "2026-08-01" },
+                { "key": "to", "value": "2026-08-31" },
+                { "key": "sort", "value": "date_desc" }
+              ]
+            },
+            "description": "Sorted by date_start. Ties break class-before-event, then by name, then by id - deterministic in both directions."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /schedule?q= (both collections)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?from=2026-01-01&to=2026-12-31&q=ai",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [
+                { "key": "from", "value": "2026-01-01" },
+                { "key": "to", "value": "2026-12-31" },
+                { "key": "q", "value": "ai" }
+              ]
+            },
+            "description": "Substring search. Classes match on class_name / course_code / course_name / custom_course_name / room / instructor name; events match on title / location / note."
+          },
+          "response": []
+        },
+        {
+          "name": "403 - key without events.read",
+          "request": {
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                { "key": "key", "value": "x-api-key", "type": "string" },
+                { "key": "value", "value": "{{apiKeyNoEvents}}", "type": "string" },
+                { "key": "in", "value": "header", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?type=event",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [{ "key": "type", "value": "event" }]
+            },
+            "description": "Put a key holding ONLY classes.read into the `apiKeyNoEvents` variable. Expect 403 with error.code = scope_denied and a message naming events.read.\n\nThe point of this case: asking for events without the scope is refused loudly. It never degrades into a silent empty list.\n\n(If `apiKeyNoEvents` is left blank you get 401 unauthorized instead - still a refusal, but for the wrong reason.)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Errors",
       "item": [
         {
@@ -284,6 +445,21 @@
               "query": [{ "key": "date", "value": "not-a-date" }]
             },
             "description": "Expect 400 with error.code = invalid_date."
+          },
+          "response": []
+        },
+        {
+          "name": "400 - invalid schedule type",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/schedule?type=lecture",
+              "host": ["{{baseUrl}}"],
+              "path": ["schedule"],
+              "query": [{ "key": "type", "value": "lecture" }]
+            },
+            "description": "type accepts class, event or all. Anything else is 400 with error.code = bad_request."
           },
           "response": []
         },

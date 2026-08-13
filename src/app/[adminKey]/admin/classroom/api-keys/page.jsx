@@ -85,14 +85,74 @@ function StatusPill({ it }) {
   );
 }
 
+// Must stay in sync with VALID_SCOPES in src/lib/externalAuth.server.js.
+// The server drops anything it does not recognise, so this list is a UI
+// convenience, not the security boundary.
+const SCOPE_OPTIONS = [
+  {
+    value: "classes.read",
+    label: "classes.read",
+    hint: "ตารางสอน — /classes, /classes/{id} และส่วน class ของ /schedule (จำเป็นเสมอ)",
+  },
+  {
+    value: "events.read",
+    label: "events.read",
+    hint: "อีเวนต์ — เพิ่มรายการ type=event ใน /schedule เท่านั้น",
+  },
+];
+
 const EMPTY_FORM = {
   name: "",
+  scopes: ["classes.read"],
   allowedOrigins: "",
   allowedIps: "",
   rateLimitPerMin: "60",
   expiresAt: "",
   note: "",
 };
+
+/** Checkbox list shared by the create and edit dialogs. */
+function ScopePicker({ value, onChange, idPrefix }) {
+  const selected = Array.isArray(value) ? value : [];
+
+  function toggle(scope) {
+    onChange(
+      selected.includes(scope)
+        ? selected.filter((s) => s !== scope)
+        : [...selected, scope],
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {SCOPE_OPTIONS.map((opt) => (
+        <label
+          key={opt.value}
+          htmlFor={`${idPrefix}-${opt.value}`}
+          className="flex cursor-pointer items-start gap-3 rounded-2xl border border-admin-border/30 bg-white/60 px-3 py-2"
+        >
+          <input
+            id={`${idPrefix}-${opt.value}`}
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-[#66ccff]"
+            checked={selected.includes(opt.value)}
+            onChange={() => toggle(opt.value)}
+          />
+          <span className="min-w-0">
+            <span className="block font-mono text-xs font-medium">{opt.label}</span>
+            <span className="block text-[11px] text-admin-text/55">{opt.hint}</span>
+          </span>
+        </label>
+      ))}
+
+      {!selected.length && (
+        <div className="text-[11px] text-red-600">
+          ต้องเลือกอย่างน้อย 1 scope
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ApiKeysPage() {
   const [items, setItems] = useState([]);
@@ -102,6 +162,12 @@ export default function ApiKeysPage() {
   const [openCreate, setOpenCreate] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [creating, setCreating] = useState(false);
+
+  // Scope editing for an existing key. Nothing else about the key is touched,
+  // and the dialog always opens on the scopes the key actually has.
+  const [editing, setEditing] = useState(null);
+  const [editScopes, setEditScopes] = useState([]);
+  const [savingScopes, setSavingScopes] = useState(false);
 
   // One-time reveal panel. Cleared as soon as the admin dismisses it.
   const [issued, setIssued] = useState(null);
@@ -128,6 +194,10 @@ export default function ApiKeysPage() {
       toast.error("ต้องระบุชื่อคีย์");
       return;
     }
+    if (!form.scopes.length) {
+      toast.error("ต้องเลือกอย่างน้อย 1 scope");
+      return;
+    }
     try {
       setCreating(true);
       const data = await apiJson("/api/admin/api-keys", {
@@ -135,7 +205,7 @@ export default function ApiKeysPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: clean(form.name),
-          scopes: ["classes.read"],
+          scopes: form.scopes,
           allowedOrigins: toLines(form.allowedOrigins),
           allowedIps: toLines(form.allowedIps),
           rateLimitPerMin: Number(form.rateLimitPerMin) || 60,
@@ -153,6 +223,34 @@ export default function ApiKeysPage() {
       toast.error(e.message || "สร้างคีย์ไม่สำเร็จ");
     } finally {
       setCreating(false);
+    }
+  }
+
+  function openScopeEditor(it) {
+    setEditing(it);
+    setEditScopes(Array.isArray(it.scopes) ? [...it.scopes] : []);
+  }
+
+  async function saveScopes() {
+    if (!editing) return;
+    if (!editScopes.length) {
+      toast.error("ต้องเลือกอย่างน้อย 1 scope");
+      return;
+    }
+    try {
+      setSavingScopes(true);
+      await apiJson(`/api/admin/api-keys/${editing.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scopes: editScopes }),
+      });
+      toast.success("บันทึก scope แล้ว");
+      setEditing(null);
+      await load();
+    } catch (e) {
+      toast.error(e.message || "บันทึก scope ไม่สำเร็จ");
+    } finally {
+      setSavingScopes(false);
     }
   }
 
@@ -329,7 +427,15 @@ export default function ApiKeysPage() {
                     </td>
 
                     <td className={cx(UI.td, "text-xs text-admin-text/70")}>
-                      {(it.scopes || []).join(", ") || "-"}
+                      {it.scopes?.length ? (
+                        it.scopes.map((s) => (
+                          <div key={s} className="font-mono text-[11px]">
+                            {s}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-admin-text/40">-</span>
+                      )}
                     </td>
 
                     <td className={cx(UI.td, "text-xs text-admin-text/70")}>
@@ -359,13 +465,22 @@ export default function ApiKeysPage() {
 
                     <td className={cx(UI.td, "text-right")}>
                       {!it.revokedAt && (
-                        <button
-                          type="button"
-                          className={UI.btnDanger}
-                          onClick={() => revokeKey(it)}
-                        >
-                          ยกเลิกคีย์
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            className={UI.btnGhost}
+                            onClick={() => openScopeEditor(it)}
+                          >
+                            แก้ไข scope
+                          </button>
+                          <button
+                            type="button"
+                            className={UI.btnDanger}
+                            onClick={() => revokeKey(it)}
+                          >
+                            ยกเลิกคีย์
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -381,7 +496,7 @@ export default function ApiKeysPage() {
           <DialogHeader>
             <DialogTitle>สร้าง API Key ใหม่</DialogTitle>
             <DialogDescription>
-              คีย์นี้อ่านได้เฉพาะข้อมูลตารางสอน (scope: classes.read)
+              คีย์นี้อ่านอย่างเดียว ไม่มีข้อมูลผู้เรียนใด ๆ — เลือก scope ให้ตรงกับที่ตกลงไว้
             </DialogDescription>
           </DialogHeader>
 
@@ -395,6 +510,15 @@ export default function ApiKeysPage() {
                 onChange={(e) =>
                   setForm((s) => ({ ...s, name: e.target.value }))
                 }
+              />
+            </div>
+
+            <div>
+              <label className={UI.label}>Scopes *</label>
+              <ScopePicker
+                idPrefix="create-scope"
+                value={form.scopes}
+                onChange={(scopes) => setForm((s) => ({ ...s, scopes }))}
               />
             </div>
 
@@ -477,11 +601,52 @@ export default function ApiKeysPage() {
             </button>
             <button
               type="button"
-              className={creating ? UI.btnDisabled : UI.btnPrimary}
+              className={
+                creating || !form.scopes.length ? UI.btnDisabled : UI.btnPrimary
+              }
               onClick={createKey}
-              disabled={creating}
+              disabled={creating || !form.scopes.length}
             >
               {creating ? "กำลังสร้าง…" : "สร้างคีย์"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit scopes dialog */}
+      <Dialog open={!!editing} onOpenChange={(v) => !v && setEditing(null)}>
+        <DialogContent className="rounded-3xl bg-white text-admin-text">
+          <DialogHeader>
+            <DialogTitle>แก้ไข Scope</DialogTitle>
+            <DialogDescription>
+              {editing?.name} — มีผลกับ request ถัดไปทันที ไม่ต้องออกคีย์ใหม่
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScopePicker
+            idPrefix="edit-scope"
+            value={editScopes}
+            onChange={setEditScopes}
+          />
+
+          <DialogFooter className="gap-2">
+            <button
+              type="button"
+              className={UI.btnGhost}
+              onClick={() => setEditing(null)}
+              disabled={savingScopes}
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              className={
+                savingScopes || !editScopes.length ? UI.btnDisabled : UI.btnPrimary
+              }
+              onClick={saveScopes}
+              disabled={savingScopes || !editScopes.length}
+            >
+              {savingScopes ? "กำลังบันทึก…" : "บันทึก"}
             </button>
           </DialogFooter>
         </DialogContent>
