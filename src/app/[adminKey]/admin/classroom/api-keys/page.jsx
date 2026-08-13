@@ -361,10 +361,6 @@ export default function ApiKeysPage() {
           <div className="mt-3 rounded-xl bg-white/60 px-3 py-2 font-mono text-[11px] text-admin-text/60 break-all">
             {curlCommand}
           </div>
-          <div className="mt-1 text-[11px] text-amber-900/60">
-            หมายเหตุ: endpoint /api/ext/v1/health จะพร้อมใช้งานหลัง Phase 3
-            ตอนนี้เรียกแล้วยังได้ 404 เป็นเรื่องปกติ
-          </div>
         </div>
       )}
 

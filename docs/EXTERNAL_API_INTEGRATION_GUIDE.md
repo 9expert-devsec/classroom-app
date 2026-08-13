@@ -310,8 +310,8 @@ curl -H "x-api-key: $KEY" ".../schedule?from=2026-01-01&to=2026-12-31&q=power+bi
 | `dates` | string[] | วันอบรมทุกวัน `YYYY-MM-DD` เรียงจากน้อยไปมาก | ไม่ |
 | `date_start` | string | วันแรกใน `dates` | ไม่ |
 | `date_end` | string | วันสุดท้ายใน `dates` | ไม่ |
-| `start_time` | string | เวลาเริ่ม `HH:mm` (ค่าเริ่มต้น `09:00`) | ไม่ |
-| `end_time` | string | เวลาเลิก `HH:mm` (ค่าเริ่มต้น `16:00`) | ไม่ |
+| `start_time` | string | เวลาเริ่มของ **วันแรก** `HH:mm` (ค่าเริ่มต้น `09:00`) — **ดู 5.5** | ไม่ |
+| `end_time` | string | เวลาเลิกของ **วันสุดท้าย** `HH:mm` (ค่าเริ่มต้น `16:00`) — **ดู 5.5** | ไม่ |
 | `room` | string | ห้องอบรม เช่น `Mars` | ได้ |
 | `training_type` | string | `classroom` \| `hybrid` \| `""` | ได้ |
 | `channel` | string | ช่องทาง เช่น `PUB` | ได้ |
@@ -394,13 +394,15 @@ curl -H "x-api-key: $KEY" ".../schedule?from=2026-01-01&to=2026-12-31&q=power+bi
 | `day_count` | number | จำนวนวันที่อีเวนต์กินพื้นที่ | ไม่ |
 | `dates` | string[] | ทุกวันที่อีเวนต์กินพื้นที่ `YYYY-MM-DD` | ไม่ |
 | `date_start` / `date_end` | string | วันแรก / วันสุดท้ายใน `dates` | ไม่ |
-| `start_time` | string | เวลาเริ่ม `HH:mm` **เวลาไทย** | **ได้ — ดูหมายเหตุ** |
-| `end_time` | string | เวลาจบ `HH:mm` **เวลาไทย** | **ได้ — ดูหมายเหตุ** |
+| `start_time` | string | เวลาเริ่มของ **วันแรก** `HH:mm` **เวลาไทย** | **ได้ — ดูหมายเหตุ** |
+| `end_time` | string | เวลาจบของ **วันสุดท้าย** `HH:mm` **เวลาไทย** | **ได้ — ดูหมายเหตุ** |
 | `cover_image_url` | string | รูปหน้าปกอีเวนต์ (ใช้ได้ตรง ๆ ไม่หมดอายุ ต่างจาก signature) | ได้ |
 | `updated_at` | string \| null | เวลาที่แก้ไขล่าสุด (ISO 8601) | ได้ |
 
 **หมายเหตุเรื่องเวลาของอีเวนต์**
 
+- **อีเวนต์หลายวัน:** `start_time` คือเวลาเริ่มของวันแรก และ `end_time` คือเวลาจบของ
+  วันสุดท้าย จึงเป็นไปได้ที่ `end_time` จะน้อยกว่า `start_time` — **ดูวิธีเรนเดอร์ที่ 5.5**
 - `end_time` เป็น `""` เมื่ออีเวนต์นั้น **ไม่ได้ระบุเวลาจบ** ในระบบ (เป็น optional)
 - `start_time` / `end_time` เป็น `""` เมื่อเวลานั้นตรงกับ **00:00 เวลาไทย**
   ซึ่งหมายถึง "มีแต่วัน ไม่ได้ระบุเวลา" ไม่ใช่ "เริ่มเที่ยงคืน"
@@ -420,21 +422,70 @@ day_count   dates   date_start   date_end   start_time   end_time
 ท่านจึง **เรนเดอร์มุมมองรายวันได้โดยไม่ต้องเช็ค `type` เลย**
 
 ```js
-// ทำงานได้กับทั้งคลาสและอีเวนต์
-function renderRow(item) {
-  const when = item.start_time
-    ? `${item.start_time}–${item.end_time || "?"}`
-    : "ทั้งวัน";
-  const title = item.class_name || item.title;   // ตรงนี้ค่อยต่างกัน
-  return `${item.date_start} ${when}  ${title}`;
-}
-
 // จัดกลุ่มตามวัน: ใช้ dates[] ของทั้งสองชนิดได้เหมือนกัน
 const byDay = {};
 for (const item of data.items) {
   for (const d of item.dates) (byDay[d] ||= []).push(item);
 }
 ```
+
+#### ⚠️ `start_time` / `end_time` เมื่อ `day_count > 1` — อ่านให้ดีก่อนเขียน UI
+
+สองฟิลด์นี้ **ไม่ใช่เวลาของวันเดียวกัน** เมื่อรายการนั้นกินเวลาหลายวัน
+
+| ฟิลด์ | ความหมายที่แท้จริง |
+| --- | --- |
+| `start_time` | เวลาเริ่มของ **วันแรก** (`date_start`) |
+| `end_time` | เวลาจบของ **วันสุดท้าย** (`date_end`) |
+
+ผลที่ตามมา: **`end_time` มีค่าน้อยกว่า `start_time` ได้ และไม่ใช่ข้อผิดพลาด**
+ตัวอย่างจริงจากระบบ — อีเวนต์ 3 วัน เริ่มบ่ายวันแรก จบตอนสายของวันสุดท้าย
+
+```json
+{
+  "day_count": 3,
+  "dates": ["2026-08-13", "2026-08-14", "2026-08-15"],
+  "date_start": "2026-08-13",
+  "date_end": "2026-08-15",
+  "start_time": "13:09",
+  "end_time": "11:10"
+}
+```
+
+ถ้าเอามาต่อกันเป็น `"13:09 – 11:10"` บรรทัดเดียว ผู้ใช้จะเห็นเป็นเวลาที่ดู "พัง"
+ทั้งที่ค่าถูกต้องทั้งคู่
+
+> คลาสอบรมมีโครงสร้างแบบเดียวกันทุกประการ ที่ผ่านมาไม่เคยเห็นปัญหานี้เพราะคลาสเกือบทั้งหมด
+> ใช้เวลา `09:00–16:00` เท่ากันทุกวัน — **อย่าพึ่งพาความบังเอิญนี้**
+
+**วิธีเรนเดอร์ที่ถูกต้อง** — ใช้ `start_time`–`end_time` คู่กันได้เฉพาะเมื่อ `day_count === 1`
+
+```js
+function renderRow(item) {
+  const title = item.class_name || item.title;   // ตรงนี้ค่อยต่างกันตาม type
+
+  // วันเดียว: จับคู่เวลาได้ตามปกติ
+  if (item.day_count === 1) {
+    const when = item.start_time
+      ? `${item.start_time}–${item.end_time || "?"}`
+      : "ทั้งวัน";
+    return `${item.date_start}  ${when}  ${title}`;
+  }
+
+  // หลายวัน: แยกช่วงวันกับเวลาออกจากกัน ห้ามจับคู่ start_time กับ end_time
+  const days = `${item.date_start} – ${item.date_end} (${item.day_count} วัน)`;
+  const times = [
+    item.start_time ? `เริ่มวันแรก ${item.start_time}` : null,
+    item.end_time ? `จบวันสุดท้าย ${item.end_time}` : null,
+  ].filter(Boolean).join(" · ");
+
+  return `${days}  ${times}  ${title}`;
+}
+```
+
+ถ้าท่านทำ **ปฏิทินรายวัน** (จัดกลุ่มด้วย `dates[]` แบบด้านบน) ทางที่ปลอดภัยที่สุดคือ
+แสดงเวลาเฉพาะบนวันที่มันหมายถึงจริง ๆ — `start_time` บน `date_start` และ
+`end_time` บน `date_end` ส่วนวันตรงกลางแสดงเป็น "ตลอดวัน"
 
 ส่วนที่เหลือต่างกันหมดและต้องดู `type`:
 
@@ -630,7 +681,18 @@ async function getCalendar(from, to) {
   for (const [day, items] of Object.entries(byDay).sort()) {
     console.log(day);
     for (const it of items) {
-      const when = it.start_time ? `${it.start_time}-${it.end_time || "?"}` : "ทั้งวัน";
+      // start_time/end_time จับคู่กันได้เฉพาะรายการวันเดียว (ดูข้อ 5.5)
+      let when;
+      if (it.day_count === 1) {
+        when = it.start_time ? `${it.start_time}-${it.end_time || "?"}` : "ทั้งวัน";
+      } else if (day === it.date_start) {
+        when = it.start_time ? `เริ่ม ${it.start_time}` : "ทั้งวัน";
+      } else if (day === it.date_end) {
+        when = it.end_time ? `ถึง ${it.end_time}` : "ทั้งวัน";
+      } else {
+        when = "ตลอดวัน";
+      }
+
       const where = it.type === "class" ? it.room : it.location;
       console.log(`   [${it.type}] ${when}  ${it.class_name || it.title}  @${where || "-"}`);
     }
@@ -797,6 +859,7 @@ curl -i "$BASE/classes"   # ไม่ใส่คีย์ -> ต้องได
 | ข้อมูลที่ **ไม่มี** | รายชื่อ/จำนวนผู้เรียน ผู้ลงทะเบียนอีเวนต์ การเช็คอิน ข้อมูลอาหาร ใบรับเอกสาร |
 | ปฏิทินรวม | `/schedule` — `included_types` บอกเสมอว่ารอบนี้รวมอะไร, `type` เป็นคีย์แรกของทุกรายการ |
 | ฟิลด์วันที่ที่ใช้ร่วมกัน | `day_count`, `dates`, `date_start`, `date_end`, `start_time`, `end_time` — เหมือนกันทั้ง class และ event |
+| หลายวัน | `start_time` = วันแรก, `end_time` = วันสุดท้าย → `end_time` อาจน้อยกว่า `start_time` ห้ามจับคู่แสดงบรรทัดเดียวเมื่อ `day_count > 1` (ข้อ 5.5) |
 | เขตเวลา | ทุก `date*` / `*_time` เป็น `Asia/Bangkok` แล้ว ห้ามแปลงซ้ำ |
 | Signature URL | ไม่ต้องใช้ API key แต่มีอายุ **15 นาที** |
 | Rate limit | ค่าเริ่มต้น 60 ครั้ง/นาที ต่อคีย์ |

@@ -260,7 +260,7 @@
     },
     {
       "name": "Schedule",
-      "description": "Unified day feed: classes and events in one merged, paged list. Read `included_types` on every response - it says whether events were in scope for that call. Every item carries `type` as its first key.",
+      "description": "Unified day feed: classes and events in one merged, paged list. Read `included_types` on every response - it says whether events were in scope for that call. Every item carries `type` as its first key.\n\nMULTI-DAY TIMES: when `day_count > 1`, `start_time` is the FIRST day's start and `end_time` is the LAST day's end, so `end_time` can be earlier than `start_time` (e.g. a 3-day event returning 13:09 and 11:10). Both values are correct. Only pair them on one line when `day_count === 1`; otherwise render the date range and the two times separately. See section 5.5 of the integration guide.",
       "item": [
         {
           "name": "GET /schedule (today)",

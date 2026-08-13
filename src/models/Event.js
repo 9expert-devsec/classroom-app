@@ -5,7 +5,9 @@ const EventSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true },
     location: { type: String, default: "", trim: true },
 
-    startAt: { type: Date, required: true },
+    // Indexed: /api/ext/v1/schedule range-filters and sorts on startAt on every
+    // call, and the admin event list orders by it too.
+    startAt: { type: Date, required: true, index: true },
     endAt: { type: Date, default: null },
 
     // ✅ NEW: cover image (เหมือน media ของเดิม)
