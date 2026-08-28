@@ -4,14 +4,11 @@ import dbConnect from "@/lib/mongoose";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
+import { addDaysYMD_BKK } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
 /* ---------------- helpers ---------------- */
-
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
 
 // แปลง dateInput ให้เป็น YYYY-MM-DD ตามเวลาไทย (Asia/Bangkok)
 // แปลงครั้งเดียว แล้ว format ตรง ๆ - ห้าม new Date(x.toLocaleString(...))
@@ -33,12 +30,9 @@ function todayYMD_BKK() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
 }
 
-// เพิ่มวันให้ YYYY-MM-DD (คง timezone +07:00)
-function addDaysYMD(ymd, addDays) {
-  const base = new Date(`${ymd}T00:00:00+07:00`);
-  base.setDate(base.getDate() + (Number(addDays) || 0));
-  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`;
-}
+// เพิ่มวันให้ YYYY-MM-DD: ใช้ addDaysYMD_BKK จาก @/lib/classDates
+// (เดิมมี copy ในไฟล์นี้ที่อ่าน local date fields ของ server → บน UTC
+//  ได้วันก่อนหน้า 1 วัน ทำให้ cutoff สายไปตกที่ 09:00 ของเมื่อวาน)
 
 function getDayCount(klass) {
   if (Array.isArray(klass?.days) && klass.days.length > 0)
@@ -55,7 +49,7 @@ function buildTrainingDaysYMD(klass) {
   const startYMD = toYMD_BKK(klass?.date || new Date());
   const n = getDayCount(klass);
   const out = [];
-  for (let i = 0; i < n; i++) out.push(addDaysYMD(startYMD, i));
+  for (let i = 0; i < n; i++) out.push(addDaysYMD_BKK(startYMD, i));
   return out;
 }
 
@@ -70,7 +64,7 @@ function resolveTrainingYMD(klass, day) {
   }
 
   const startYMD = toYMD_BKK(klass?.date || new Date());
-  return addDaysYMD(startYMD, d - 1);
+  return addDaysYMD_BKK(startYMD, d - 1);
 }
 
 // สร้าง cutoff เวลา 09:00 ของวันนั้น (เวลาไทย)
