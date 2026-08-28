@@ -34,6 +34,22 @@ const ClassSchema = new mongoose.Schema(
 
     room: String,
 
+    // แยกประเภท class: ปกติ vs Masterclass
+    // (ห้ามใช้ชื่อ classType เพราะ POST /api/admin/classes อ่าน body.classType
+    //  ไปเลือก prefix CR/H ของชื่อ class)
+    classKind: {
+      type: String,
+      enum: ["normal", "masterclass"],
+      default: "normal",
+      index: true,
+    },
+    masterclassCourseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MasterclassCourse",
+      default: null,
+      index: true,
+    },
+
     // hide "Cash Coupon" choice on the learner-facing food step
     disableCoupon: { type: Boolean, default: false },
 

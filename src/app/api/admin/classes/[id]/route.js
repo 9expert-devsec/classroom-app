@@ -456,6 +456,12 @@ export async function PATCH(req, { params }) {
       update.disableCoupon = !!body.disableCoupon;
     }
 
+    // ✅ แก้คอร์ส Masterclass ของ class ที่สร้างไปแล้วได้
+    // (แต่ classKind ห้ามเปลี่ยนผ่าน PATCH — สลับไปมาแล้วข้อมูลเช็คอินจะค้าง)
+    if (body.masterclassCourseId !== undefined) {
+      update.masterclassCourseId = body.masterclassCourseId || null;
+    }
+
     let days = null;
 
     if (body.days !== undefined) {

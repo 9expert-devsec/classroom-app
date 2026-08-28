@@ -366,6 +366,8 @@ export async function POST(req) {
     trainingType, // "classroom" | "hybrid" (optional)
     channel, // "PUB" (optional)
     disableCoupon, // ✅ ซ่อนตัวเลือก Cash Coupon ในหน้าเช็คอินผู้เรียน
+    classKind, // "normal" | "masterclass"
+    masterclassCourseId, // ObjectId ของ MasterclassCourse (เฉพาะ masterclass)
   } = body || {};
 
   const customName = clean(customCourseName);
@@ -414,6 +416,11 @@ export async function POST(req) {
 
   const src = source === "api" || source === "sync" ? source : "manual";
 
+  // ✅ Masterclass: normalize ก่อนบันทึก (default = normal)
+  const kind = classKind === "masterclass" ? "masterclass" : "normal";
+  const mcCourseId =
+    kind === "masterclass" && masterclassCourseId ? masterclassCourseId : null;
+
   // ✅ กรณีมาจาก schedule (api/sync หรือมี externalScheduleId) -> auto title เสมอ
   const shouldAutoTitle = src !== "manual" || !!externalScheduleId;
 
@@ -455,6 +462,8 @@ export async function POST(req) {
           trainingType: trainingType || "",
           channel: channel || "",
           disableCoupon: !!disableCoupon,
+          classKind: kind,
+          masterclassCourseId: mcCourseId,
         });
 
         return NextResponse.json({ ok: true, item: doc });
@@ -482,34 +491,53 @@ export async function POST(req) {
   // manual: ใช้ title ที่ user ส่งมา หรือ fallback เป็น courseName
   finalTitle = finalTitle || effectiveCourseName;
 
-  const doc = await Class.create({
-    source: src,
-    publicCourseId: publicCourseId || null,
-    courseCode: courseCode || "",
-    courseName: effectiveCourseName,
-    customCourseName: customName,
-    classImageUrl: clean(classImageUrl),
-    title: finalTitle,
+  let doc;
+  try {
+    doc = await Class.create({
+      source: src,
+      publicCourseId: publicCourseId || null,
+      courseCode: courseCode || "",
+      courseName: effectiveCourseName,
+      customCourseName: customName,
+      classImageUrl: clean(classImageUrl),
+      title: finalTitle,
 
-    // compat: date = วันแรก
-    date: startDateUTC,
+      // compat: date = วันแรก
+      date: startDateUTC,
 
-    // ✅ เก็บ days + dayCount
-    days: daysToStore,
-    dayCount: dayCnt,
-
-    duration: {
+      // ✅ เก็บ days + dayCount
+      days: daysToStore,
       dayCount: dayCnt,
-      startTime: startTime || "09:00",
-      endTime: endTime || "16:00",
-    },
-    room: room || "",
-    instructors: instructorList,
-    externalScheduleId: externalScheduleId ? String(externalScheduleId) : "",
-    trainingType: trainingType || "",
-    channel: channel || "",
-    disableCoupon: !!disableCoupon,
-  });
+
+      duration: {
+        dayCount: dayCnt,
+        startTime: startTime || "09:00",
+        endTime: endTime || "16:00",
+      },
+      room: room || "",
+      instructors: instructorList,
+      externalScheduleId: externalScheduleId ? String(externalScheduleId) : "",
+      trainingType: trainingType || "",
+      channel: channel || "",
+      disableCoupon: !!disableCoupon,
+      classKind: kind,
+      masterclassCourseId: mcCourseId,
+    });
+  } catch (err) {
+    const msg = String(err?.message || "");
+    // title ซ้ำ (เช่น admin 2 คน gen ชื่อเดียวกันพร้อมกัน) -> ให้ฟอร์มอ่านได้
+    if (err?.code === 11000 || msg.toLowerCase().includes("duplicate")) {
+      return NextResponse.json(
+        { ok: false, error: "duplicate_class_title" },
+        { status: 409 },
+      );
+    }
+    console.error(err);
+    return NextResponse.json(
+      { ok: false, error: "create class failed" },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ ok: true, item: doc });
 }

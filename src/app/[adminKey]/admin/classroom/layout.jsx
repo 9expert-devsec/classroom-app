@@ -18,6 +18,7 @@ import {
   PanelLeftOpen,
   PenLine,
   KeyRound,
+  GraduationCap,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -54,6 +55,18 @@ const NAV = [
       {
         label: "New Class (manual)",
         href: "/classroom/classes/new",
+        icon: PlusCircle,
+        perm: PERM.CLASSES_WRITE,
+      },
+      {
+        label: "New Course (Masterclass)",
+        href: "/classroom/masterclass/courses",
+        icon: GraduationCap,
+        perm: PERM.CLASSES_WRITE,
+      },
+      {
+        label: "New Class (Masterclass)",
+        href: "/classroom/masterclass/classes/new",
         icon: PlusCircle,
         perm: PERM.CLASSES_WRITE,
       },

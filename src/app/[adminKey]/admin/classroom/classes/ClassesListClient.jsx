@@ -337,6 +337,9 @@ export default function ClassesListClient({ initialClasses, total }) {
   // ✅ preset filter
   const [rangePreset, setRangePreset] = useState("today");
 
+  // ✅ filter ประเภท class: all | normal | masterclass
+  const [kindFilter, setKindFilter] = useState("all");
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -447,6 +450,13 @@ useEffect(() => {
       const cc = courseCode.trim().toLowerCase();
       const tt = title.trim().toLowerCase();
 
+      // ✅ Class ปกติ vs Masterclass (filter ฝั่ง client จาก classes ที่โหลดมาแล้ว)
+      if (kindFilter !== "all") {
+        const kind =
+          cls.classKind === "masterclass" ? "masterclass" : "normal";
+        if (kind !== kindFilter) return false;
+      }
+
       if (cc && !(cls.courseCode || "").toLowerCase().includes(cc)) {
         return false;
       }
@@ -502,7 +512,7 @@ useEffect(() => {
 
       return true;
     });
-  }, [classes, search, courseCode, title, dateFrom, dateTo]);
+  }, [classes, search, courseCode, title, dateFrom, dateTo, kindFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -741,6 +751,28 @@ useEffect(() => {
             Custom
           </button>
 
+          <div className="ml-2 text-xs text-admin-textMuted">ประเภท:</div>
+
+          {[
+            { key: "all", label: "ทั้งหมด" },
+            { key: "normal", label: "Class ปกติ" },
+            { key: "masterclass", label: "Masterclass" },
+          ].map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setKindFilter(opt.key)}
+              className={cx(
+                "h-8 rounded-xl px-3 text-xs ring-1 transition",
+                kindFilter === opt.key
+                  ? "bg-brand-primary text-white ring-brand-primary"
+                  : "bg-white text-admin-text ring-admin-border hover:bg-admin-surfaceMuted",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+
           <div className="ml-auto flex items-center gap-2">
             <div className="text-xs text-admin-textMuted">
               ทั้งหมด {classes.length} class — หลัง filter เหลือ{" "}
@@ -882,12 +914,19 @@ useEffect(() => {
 
                 const room = cls.room || cls.roomName || "-";
 
-                const instructor =
-                  cls.instructors && cls.instructors.length > 0
-                    ? cls.instructors[0].name ||
-                      cls.instructors[0].fullname ||
+                const instructorList = Array.isArray(cls.instructors)
+                  ? cls.instructors
+                  : [];
+                const instructorFirst =
+                  instructorList.length > 0
+                    ? instructorList[0].name ||
+                      instructorList[0].fullname ||
                       "-"
                     : "-";
+                const instructorMore = Math.max(
+                  0,
+                  instructorList.length - 1,
+                );
 
                 const daysYMD = getClassDaysYMD(cls);
                 const dayCount = getClassDayCount(cls);
@@ -906,8 +945,15 @@ useEffect(() => {
                     </td>
 
                     <td className="px-3 py-2">
-                      <div className="font-medium">
-                        {cls.title || "ไม่ตั้งชื่อ"}
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          {cls.title || "ไม่ตั้งชื่อ"}
+                        </span>
+                        {cls.classKind === "masterclass" && (
+                          <span className="shrink-0 rounded-full bg-brand-purple/15 px-2 py-0.5 text-[10px] font-medium text-brand-purple ring-1 ring-brand-purple/30">
+                            Masterclass
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-admin-textMuted">
                         {cls.courseCode || cls.course_id || ""}
@@ -919,7 +965,8 @@ useEffect(() => {
                     </td>
 
                     <td className="px-3 py-2 text-admin-textMuted">
-                      {instructor}
+                      {instructorFirst}
+                      {instructorMore > 0 ? ` +${instructorMore}` : ""}
                     </td>
 
                     <td className="px-3 py-2 text-center">{studentCount}</td>
