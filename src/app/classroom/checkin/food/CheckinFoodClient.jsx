@@ -496,6 +496,19 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         }
 
         const data = await res.json();
+
+        // ✅ Masterclass ไม่มีขั้นตอนอาหาร:
+        // ถ้ามาถึงหน้านี้ด้วย URL หรือ history ให้เด้งกลับเข้า flow Masterclass
+        if (data?.classInfo?.classKind === "masterclass") {
+          const qs = new URLSearchParams();
+          if (classId) qs.set("classId", classId);
+          qs.set("day", String(day));
+          router.replace(
+            `/classroom/masterclass/checkin?${qs.toString()}`,
+          );
+          return;
+        }
+
         setHasFoodSetup(
           typeof data?.hasFoodSetup === "boolean" ? data.hasFoodSetup : true,
         );

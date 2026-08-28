@@ -66,6 +66,7 @@ export async function GET(req) {
 
     classInfo = {
       // พยายามรองรับหลายชื่อ field เผื่อ schema ต่างจากนี้
+      classKind: klass.classKind || "normal",
       courseName:
         klass.courseName || klass.className || klass.title || klass.name || "",
       room: klass.roomName || klass.room || klass.roomTitle || "",
@@ -91,7 +92,13 @@ export async function GET(req) {
   // ----- ข้อมูลอาหาร (อ่านจาก student.food) -----
   let foodPreview = null;
 
-  const sf = student.food || null;
+  // ✅ Masterclass ไม่มีขั้นตอนอาหารเลย
+  // student.food มีค่า default จาก schema อยู่แล้วแม้ไม่มีใครเลือกอาหาร
+  // ถ้าไม่ตัดตรงนี้ หน้าสรุปก่อนเซ็นจะเดา “เมนูอาหาร” ให้ผู้เรียน Masterclass
+  // (ตัดที่ sf = null → ข้าม lookup Restaurant/FoodMenu/FoodAddon/FoodDrink ทั้งหมด)
+  const isMasterclass = klass?.classKind === "masterclass";
+
+  const sf = isMasterclass ? null : student.food || null;
   if (sf) {
     const choiceType = String(sf.choiceType || "");
     const noFood = !!sf.noFood;

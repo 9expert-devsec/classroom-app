@@ -72,6 +72,18 @@ async function isCouponDisabledForClass(classId) {
   }
 }
 
+// ✅ Masterclass ไม่มีขั้นตอนอาหาร (best-effort: ถ้าเช็คไม่ได้ = ถือว่าเป็นคลาสปกติ)
+async function isMasterclassClass(classId) {
+  try {
+    if (!isObjectId(classId)) return false;
+    const cls = await Class.findById(classId).select("classKind").lean();
+    return cls?.classKind === "masterclass";
+  } catch (e) {
+    console.warn("[food] check classKind failed:", e?.message || e);
+    return false;
+  }
+}
+
 function normalizeFoodSnapshot(food) {
   const f = food || {};
   const addonIds = uniqStrArr(f.addonIds).sort();
@@ -254,6 +266,15 @@ export async function POST(req) {
   const safeDay = Number.isFinite(Number(day))
     ? Number(day)
     : student.food?.day;
+
+  // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
+  // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
+  if (await isMasterclassClass(safeClassId)) {
+    return NextResponse.json(
+      { ok: false, error: "food_not_available_for_masterclass" },
+      { status: 400 },
+    );
+  }
 
   const finalChoiceType = normalizeChoiceType({
     choiceType,

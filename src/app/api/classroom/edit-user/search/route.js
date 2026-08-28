@@ -39,8 +39,9 @@ export async function POST(req) {
   if (classId) {
     targetClassIds = [classId];
   } else {
+    // ✅ ไม่รวม Masterclass: ไม่มีอาหารให้แก้ไข
     const allClasses = await Class.find(
-      {},
+      { classKind: { $ne: "masterclass" } },
       { _id: 1, date: 1, dayCount: 1, "duration.dayCount": 1 },
     ).lean();
 

@@ -178,3 +178,77 @@ export function expandEventDays(startAt, endAt) {
 
   return out;
 }
+
+/* ---------------- Which training day is "today" ---------------- */
+//
+// Lifted verbatim from src/app/api/checkin/search/route.js so the learner
+// check-in search and the Masterclass endpoints resolve "today" through one
+// implementation. search/route.js now imports these instead of keeping its
+// own copies; the maths is unchanged.
+//
+// The +07:00 literal below is the original code's. Bangkok has had no DST
+// since 1955, so a fixed offset and Intl agree; date->YMD still goes through
+// bangkokYMD, which asks Intl for the zone rather than assuming it.
+
+const BKK_TZ_OFFSET = "+07:00";
+
+function isValidDate(d) {
+  return d instanceof Date && !Number.isNaN(d.getTime());
+}
+
+/** base YMD + addDays -> YMD (Bangkok). */
+export function addDaysYMD_BKK(ymd, addDays) {
+  if (!ymd) return "";
+  const base = new Date(`${ymd}T00:00:00${BKK_TZ_OFFSET}`);
+  if (!isValidDate(base)) return "";
+  base.setDate(base.getDate() + Number(addDays || 0));
+  return bangkokYMD(base);
+}
+
+/** end - start, in whole Bangkok calendar days. */
+export function diffDaysYMD_BKK(startYMD, endYMD) {
+  const a = new Date(`${startYMD}T00:00:00${BKK_TZ_OFFSET}`);
+  const b = new Date(`${endYMD}T00:00:00${BKK_TZ_OFFSET}`);
+  if (!isValidDate(a) || !isValidDate(b)) return 0;
+  const ms = b.getTime() - a.getTime();
+  return Math.floor(ms / 86400000);
+}
+
+/** dayCount of a Class doc: top-level first, then duration.dayCount, else 1. */
+export function getDayCountFromClassDoc(c) {
+  return typeof c?.dayCount === "number"
+    ? c.dayCount
+    : typeof c?.duration?.dayCount === "number"
+      ? c.duration.dayCount
+      : 1;
+}
+
+/**
+ * 1-based index of todayYMD within a class's training days, or null when
+ * today is not a training day.
+ *
+ * days[] wins when present (it is the source of truth and may skip days);
+ * otherwise fall back to date + dayCount as a contiguous range.
+ */
+export function computeDayIndexToday(c, todayYMD) {
+  if (!c) return null;
+
+  if (Array.isArray(c.days) && c.days.length) {
+    const idx = c.days.findIndex((d) => String(d || "") === todayYMD);
+    if (idx >= 0) return idx + 1; // 1-based
+    return null;
+  }
+
+  if (!c.date) return null;
+  const dayCount = getDayCountFromClassDoc(c);
+  const startYMD = bangkokYMD(c.date);
+  if (!startYMD) return null;
+
+  const endYMD = addDaysYMD_BKK(startYMD, dayCount - 1);
+  if (!endYMD) return null;
+
+  if (!(todayYMD >= startYMD && todayYMD <= endYMD)) return null;
+
+  const dayToday = diffDaysYMD_BKK(startYMD, todayYMD) + 1;
+  return Math.min(Math.max(dayToday, 1), dayCount);
+}
