@@ -14,11 +14,17 @@ function pad2(n) {
 }
 
 // แปลง dateInput ให้เป็น YYYY-MM-DD ตามเวลาไทย (Asia/Bangkok)
+// แปลงครั้งเดียว แล้ว format ตรง ๆ - ห้าม new Date(x.toLocaleString(...))
+// เพราะ string จะถูก parse ซ้ำด้วย timezone ของ server (UTC บน production)
 function toYMD_BKK(dateInput) {
   const d = new Date(dateInput);
   if (Number.isNaN(d.getTime())) return "";
-  const bkk = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-  return `${bkk.getFullYear()}-${pad2(bkk.getMonth() + 1)}-${pad2(bkk.getDate())}`;
+  return d.toLocaleDateString("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 // YYYY-MM-DD ของ “วันนี้” เวลาไทย
