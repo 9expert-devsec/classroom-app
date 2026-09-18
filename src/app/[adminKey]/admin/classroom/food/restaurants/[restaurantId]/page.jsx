@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import { Settings } from "lucide-react";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -97,11 +98,14 @@ export default function RestaurantDetailPage({ params }) {
   const [uploadingAddonImage, setUploadingAddonImage] = useState(false);
   const [uploadingDrinkImage, setUploadingDrinkImage] = useState(false);
 
-  // ✅ coupon capability form (Restaurant.couponEnabled / couponLabel / couponAmount)
+  // ✅ restaurant settings modal (สถานะร้าน + คูปอง) — name/logo ยังแก้ที่หน้า list
+  const [openSettingsModal, setOpenSettingsModal] = useState(false);
+  const [settingsIsActive, setSettingsIsActive] = useState(true);
   const [couponEnabled, setCouponEnabled] = useState(false);
   const [couponLabel, setCouponLabel] = useState("Cash Coupon");
   const [couponAmount, setCouponAmount] = useState("0");
-  const [savingCoupon, setSavingCoupon] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
 
   // modals
   const [openMenuModal, setOpenMenuModal] = useState(false);
@@ -225,11 +229,6 @@ export default function RestaurantDetailPage({ params }) {
           (r) => String(r._id) === String(restaurantId),
         ) || null;
       setRestaurant(found);
-      if (found) {
-        setCouponEnabled(found.couponEnabled === true);
-        setCouponLabel(found.couponLabel || "Cash Coupon");
-        setCouponAmount(String(found.couponAmount ?? 0));
-      }
     } catch (err) {
       console.error(err);
       alert("โหลดข้อมูลร้านไม่สำเร็จ");
@@ -748,12 +747,27 @@ export default function RestaurantDetailPage({ params }) {
     }
   }
 
-  /* ---------------- coupon capability ---------------- */
-  async function handleSaveCoupon() {
-    setSavingCoupon(true);
+  /* ---------------- restaurant settings (status + coupon) ---------------- */
+  function openSettings() {
+    if (!restaurant) return;
+    // seed จากค่าปัจจุบันทุกครั้งที่เปิด (ยกเลิก = ทิ้งการแก้)
+    setSettingsIsActive(restaurant.isActive !== false);
+    setCouponEnabled(restaurant.couponEnabled === true);
+    setCouponLabel(restaurant.couponLabel || "Cash Coupon");
+    setCouponAmount(String(restaurant.couponAmount ?? 0));
+    setSettingsError("");
+    setOpenSettingsModal(true);
+  }
+
+  async function handleSaveSettings(e) {
+    e.preventDefault();
+    setSavingSettings(true);
+    setSettingsError("");
     try {
       const amount = Number(couponAmount);
+      // ส่งทั้ง 4 field ใน PUT เดียว — label/amount ส่งเสมอแม้ปิดคูปอง (ไม่ล้างค่า)
       const payload = {
+        isActive: !!settingsIsActive,
         couponEnabled: !!couponEnabled,
         couponLabel: String(couponLabel || "").trim() || "Cash Coupon",
         couponAmount: Number.isFinite(amount) && amount >= 0 ? amount : 0,
@@ -767,14 +781,17 @@ export default function RestaurantDetailPage({ params }) {
       const out = await safeJson(res);
       if (!res.ok) {
         console.error(out);
-        return alert(out?.error || "บันทึกการตั้งค่าคูปองไม่สำเร็จ");
+        // ❌ ไม่ปิด modal — ให้ user เห็น error และไม่เสียค่าที่แก้ไว้
+        setSettingsError(out?.error || "บันทึกการตั้งค่าร้านไม่สำเร็จ");
+        return;
       }
       await fetchRestaurant();
+      setOpenSettingsModal(false);
     } catch (err) {
       console.error(err);
-      alert("เกิดข้อผิดพลาดในการบันทึกการตั้งค่าคูปอง");
+      setSettingsError("เกิดข้อผิดพลาดในการบันทึกการตั้งค่าร้าน");
     } finally {
-      setSavingCoupon(false);
+      setSavingSettings(false);
     }
   }
 
@@ -794,67 +811,35 @@ export default function RestaurantDetailPage({ params }) {
             ← กลับไปร้านทั้งหมด
           </button>
 
-          <h1 className="mt-2 text-xl font-semibold">
-            {loadingRestaurant ? "กำลังโหลด..." : restaurant?.name || "Vendor"}
+          <h1 className="mt-2 flex items-center gap-2 text-xl font-semibold">
+            <span>
+              {loadingRestaurant
+                ? "กำลังโหลด..."
+                : restaurant?.name || "Vendor"}
+            </span>
+            {restaurant?.isActive === false && (
+              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                ปิดอยู่
+              </span>
+            )}
           </h1>
           <p className="text-sm text-admin-textMuted">
             จัดการ Menu Set / Menu และ Add-on / Drink (ผูกต่อเมนู)
           </p>
         </div>
 
-        <div className="flex items-start gap-3">
-          {/* ✅ Coupon capability card */}
-          <div className="w-72 rounded-2xl border border-admin-border bg-admin-surface p-3 shadow-slate-950/20">
-            <label className="flex cursor-pointer items-center justify-between gap-2">
-              <span className="text-sm font-medium text-admin-text">
-                เปิดใช้งานคูปอง (Coupon)
-              </span>
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={couponEnabled}
-                onChange={(ev) => setCouponEnabled(ev.target.checked)}
-                disabled={loadingRestaurant || !restaurant}
-              />
-            </label>
-            <p className="mt-1 text-[11px] text-admin-textMuted">
-              เปิดแล้วจะเลือก &apos;คูปองเงินสด&apos; ให้ร้านนี้ได้ในหน้า Food
-              Calendar
-            </p>
-
-            {couponEnabled && (
-              <div className="mt-2 space-y-2">
-                <label className="block text-xs">
-                  <span className="text-admin-textMuted">ชื่อที่แสดง</span>
-                  <TextInput
-                    value={couponLabel}
-                    onChange={(ev) => setCouponLabel(ev.target.value)}
-                    placeholder="Cash Coupon"
-                  />
-                </label>
-                <label className="block text-xs">
-                  <span className="text-admin-textMuted">มูลค่า (บาท)</span>
-                  <TextInput
-                    type="number"
-                    min="0"
-                    value={couponAmount}
-                    onChange={(ev) => setCouponAmount(ev.target.value)}
-                    placeholder="0"
-                  />
-                </label>
-              </div>
-            )}
-
-            <div className="mt-2 flex justify-end">
-              <PrimaryButton
-                type="button"
-                onClick={handleSaveCoupon}
-                disabled={savingCoupon || loadingRestaurant || !restaurant}
-              >
-                {savingCoupon ? "กำลังบันทึก..." : "บันทึกคูปอง"}
-              </PrimaryButton>
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          {/* ✅ ตั้งค่าร้าน (สถานะ + คูปอง) */}
+          <button
+            type="button"
+            onClick={openSettings}
+            disabled={loadingRestaurant || !restaurant}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-50"
+            aria-label="ตั้งค่าร้าน"
+            title="ตั้งค่าร้าน"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
 
           {restaurant?.logoUrl && (
             <div className="relative h-12 w-12 overflow-hidden rounded-xl bg-white/40">
@@ -1655,6 +1640,98 @@ export default function RestaurantDetailPage({ params }) {
                 : editingDrinkId
                   ? "อัปเดต Drink"
                   : "บันทึก Drink"}
+            </PrimaryButton>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: ตั้งค่าร้าน (สถานะ + คูปอง) */}
+      <Modal
+        open={openSettingsModal}
+        title={`ตั้งค่าร้าน — ${restaurant?.name || ""}`}
+        onClose={() => setOpenSettingsModal(false)}
+      >
+        <form onSubmit={handleSaveSettings} className="space-y-4">
+          {/* Section 1 — สถานะร้าน */}
+          <section className="rounded-xl border border-admin-border bg-admin-surface p-3">
+            <div className="text-sm font-semibold text-admin-text">
+              สถานะร้าน
+            </div>
+            <label className="mt-2 flex cursor-pointer items-center justify-between gap-2">
+              <span className="text-sm text-admin-text">เปิดใช้งานร้าน</span>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={settingsIsActive}
+                onChange={(ev) => setSettingsIsActive(ev.target.checked)}
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-admin-textMuted">
+              ปิดแล้วร้านนี้จะไม่แสดงให้ผู้เรียนเลือก แม้จะถูกตั้งไว้ใน Food
+              Calendar ของวันนั้น
+            </p>
+          </section>
+
+          {/* Section 2 — คูปอง */}
+          <section className="rounded-xl border border-admin-border bg-admin-surface p-3">
+            <div className="text-sm font-semibold text-admin-text">คูปอง</div>
+            <label className="mt-2 flex cursor-pointer items-center justify-between gap-2">
+              <span className="text-sm text-admin-text">
+                เปิดใช้งานคูปอง (Coupon)
+              </span>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={couponEnabled}
+                onChange={(ev) => setCouponEnabled(ev.target.checked)}
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-admin-textMuted">
+              เปิดแล้วจะเลือก &apos;คูปองเงินสด&apos; ให้ร้านนี้ได้ในหน้า Food
+              Calendar
+            </p>
+
+            {/* ปิดคูปอง = ซ่อน input แต่ค่ายังอยู่ใน state และถูกส่งตอน save */}
+            {couponEnabled && (
+              <div className="mt-2 space-y-2">
+                <label className="block text-xs">
+                  <span className="text-admin-textMuted">ชื่อที่แสดง</span>
+                  <TextInput
+                    value={couponLabel}
+                    onChange={(ev) => setCouponLabel(ev.target.value)}
+                    placeholder="Cash Coupon"
+                  />
+                </label>
+                <label className="block text-xs">
+                  <span className="text-admin-textMuted">มูลค่า (บาท)</span>
+                  <TextInput
+                    type="number"
+                    min="0"
+                    value={couponAmount}
+                    onChange={(ev) => setCouponAmount(ev.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+            )}
+          </section>
+
+          {settingsError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {settingsError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setOpenSettingsModal(false)}
+              className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm hover:bg-admin-surfaceMuted"
+            >
+              ยกเลิก
+            </button>
+            <PrimaryButton type="submit" disabled={savingSettings}>
+              {savingSettings ? "กำลังบันทึก..." : "บันทึกการตั้งค่า"}
             </PrimaryButton>
           </div>
         </form>
