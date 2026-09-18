@@ -14,6 +14,8 @@ const FoodDayEntrySchema = new mongoose.Schema(
       ref: "FoodSet",
       default: null,
     },
+    // ✅ Layer 2 (usage): ในวันนี้ ร้านนี้ "เป็น" คูปอง (ไม่ใช่ set/เมนู)
+    mode: { type: String, enum: ["set", "coupon"], default: "set" },
   },
   { _id: false }
 );
@@ -25,7 +27,7 @@ const FoodDaySetSchema = new mongoose.Schema(
       required: true,
       unique: true, // 1 วันมี 1 config
     },
-    entries: [FoodDayEntrySchema], // [{ restaurant, set }]
+    entries: [FoodDayEntrySchema], // [{ restaurant, set, mode }]
   },
   { timestamps: true }
 );

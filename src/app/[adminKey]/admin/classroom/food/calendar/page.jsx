@@ -21,6 +21,9 @@ function formatMonthYear(date) {
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
+// ค่า setId พิเศษใน <select> = วันนี้ร้านนี้เป็น "คูปองเงินสด" (ไม่ใช่ set)
+const COUPON_OPTION = "__coupon__";
+
 export default function FoodCalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(() =>
     startOfMonth(new Date())
@@ -29,7 +32,7 @@ export default function FoodCalendarPage() {
   const [dayConfigs, setDayConfigs] = useState([]); // [{ date, items: [{ restaurant, set }] }]
   const [selectedDate, setSelectedDate] = useState(null);
 
-  // [{ restaurantId, setId }]
+  // [{ restaurantId, setId }]  — setId === COUPON_OPTION หมายถึง mode "coupon"
   const [selectedItems, setSelectedItems] = useState([]);
 
   const [saving, setSaving] = useState(false);
@@ -130,11 +133,13 @@ export default function FoodCalendarPage() {
             ? item.restaurant
             : String(item.restaurant?._id),
         setId:
-          typeof item.set === "string"
-            ? item.set
-            : item.set?._id
-            ? String(item.set._id)
-            : "",
+          item.mode === "coupon"
+            ? COUPON_OPTION
+            : typeof item.set === "string"
+              ? item.set
+              : item.set?._id
+                ? String(item.set._id)
+                : "",
       }));
       setSelectedItems(mapped);
     } else if (cfg?.restaurants?.length) {
@@ -187,10 +192,15 @@ export default function FoodCalendarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: iso,
-          items: selectedItems.map((it) => ({
-            restaurantId: it.restaurantId,
-            setId: it.setId || null,
-          })),
+          items: selectedItems.map((it) =>
+            it.setId === COUPON_OPTION
+              ? { restaurantId: it.restaurantId, setId: null, mode: "coupon" }
+              : {
+                  restaurantId: it.restaurantId,
+                  setId: it.setId || null,
+                  mode: "set",
+                },
+          ),
         }),
       });
 
@@ -312,6 +322,7 @@ export default function FoodCalendarPage() {
             {restaurants.map((r) => {
               const checked = isRestaurantChecked(r._id);
               const sets = restaurantSets[r._id] || [];
+              const canCoupon = r.couponEnabled === true;
               const selectedItem = selectedItems.find(
                 (it) => it.restaurantId === r._id
               );
@@ -332,7 +343,7 @@ export default function FoodCalendarPage() {
                     <span>{r.name}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {checked && sets.length > 0 && (
+                    {checked && (sets.length > 0 || canCoupon) && (
                       <select
                         className="rounded-lg border border-admin-border bg-admin-surfaceMuted px-2 py-1 text-xs"
                         value={setId}
@@ -341,6 +352,9 @@ export default function FoodCalendarPage() {
                         }
                       >
                         <option value="">-- เลือก Set --</option>
+                        {canCoupon && (
+                          <option value={COUPON_OPTION}>คูปองเงินสด</option>
+                        )}
                         {sets.map((s) => (
                           <option key={s._id} value={s._id}>
                             {s.name}

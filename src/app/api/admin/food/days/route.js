@@ -31,17 +31,18 @@ export async function GET(req) {
 
   const docs = await FoodDaySet.find(filter)
     .sort({ date: 1 })
-    .populate("entries.restaurant", "name logoUrl")
+    .populate("entries.restaurant", "name logoUrl couponEnabled")
     .populate("entries.set", "name")
     .lean();
 
-  // แปลงให้อยู่ในรูป { date, items: [{ restaurant, set }] }
+  // แปลงให้อยู่ในรูป { date, items: [{ restaurant, set, mode }] }
   const items = docs.map((doc) => ({
     _id: doc._id,
     date: doc.date,
     items: (doc.entries || []).map((en) => ({
       restaurant: en.restaurant, // อาจเป็น object (จาก populate) หรือ ObjectId
       set: en.set || null,
+      mode: en.mode === "coupon" ? "coupon" : "set",
     })),
   }));
 
@@ -68,10 +69,15 @@ export async function POST(req) {
   if (Array.isArray(items)) {
     entries = items
       .filter((it) => it && it.restaurantId)
-      .map((it) => ({
-        restaurant: it.restaurantId,
-        set: it.setId || null,
-      }));
+      .map((it) => {
+        const mode = it.mode === "coupon" ? "coupon" : "set";
+        return {
+          restaurant: it.restaurantId,
+          // coupon ไม่มี set — บังคับ null กันข้อมูลค้าง
+          set: mode === "coupon" ? null : it.setId || null,
+          mode,
+        };
+      });
   }
 
   const doc = await FoodDaySet.findOneAndUpdate(
