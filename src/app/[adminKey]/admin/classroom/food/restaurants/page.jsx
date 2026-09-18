@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
@@ -58,7 +58,8 @@ function StatusBadge({ active = true }) {
 }
 
 export default function VendorsPage() {
-  const router = useRouter();
+  const { adminKey } = useParams();
+  const base = `/${adminKey}/admin/classroom/food/restaurants`;
 
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -257,97 +258,87 @@ export default function VendorsPage() {
           return (
             <div
               key={r._id}
-              className="group rounded-2xl bg-admin-surface p-3 shadow-slate-950/20 transition hover:-translate-y-0.5 hover:shadow-lg"
+              className="group relative rounded-2xl bg-admin-surface p-3 shadow-slate-950/20 transition hover:-translate-y-0.5 hover:shadow-lg focus-within:ring-2 focus-within:ring-brand-primary/50"
             >
-              {/* IMAGE (clickable) */}
-              <div className="relative mb-3 aspect-[4/3] w-full overflow-hidden rounded-2xl bg-admin-surfaceMuted">
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      `/admin/classroom/food/restaurants/${String(r._id)}`
-                    )
-                  }
-                  className="absolute inset-0 z-0"
-                  aria-label={`open ${r.name}`}
-                />
+              {/* ✅ full-card link overlay (ไม่ซ้อน interactive element ใน anchor) */}
+              <Link
+                href={`${base}/${String(r._id)}`}
+                className="absolute inset-0 z-[1] rounded-2xl"
+                aria-label={r.name}
+              />
 
-                {r.logoUrl ? (
-                  <Image
-                    src={r.logoUrl}
-                    alt={r.name || "vendor"}
-                    fill
-                    sizes="(max-width: 1024px) 50vw, 25vw"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-admin-textMuted">
-                    No Image
+              {/* IMAGE + NAME + STATUS (ให้ click ทะลุไปที่ overlay) */}
+              <div className="pointer-events-none">
+                <div className="relative mb-3 aspect-[4/3] w-full overflow-hidden rounded-2xl bg-admin-surfaceMuted">
+                  {r.logoUrl ? (
+                    <Image
+                      src={r.logoUrl}
+                      alt={r.name || "vendor"}
+                      fill
+                      sizes="(max-width: 1024px) 50vw, 25vw"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-admin-textMuted">
+                      No Image
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-sm font-semibold text-admin-text">
+                    {r.name}
                   </div>
-                )}
-
-                {/* ✅ kebab overlay อยู่ในกล่องรูป */}
-                <div className="absolute right-2 top-2 z-10">
-                  <DropdownMenu
-                    open={openMenuId === r._id}
-                    onOpenChange={(open) => setOpenMenuId(open ? r._id : null)}
-                  >
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full
-                       bg-white/85 text-admin-text shadow-md ring-1 ring-black/10
-                       backdrop-blur hover:bg-white"
-                        aria-label="เมนูการจัดการร้าน"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-
-                    <DropdownMenuContent
-                      align="end"
-                      sideOffset={8}
-                      className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <DropdownMenuItem
-                        onClick={() => {
-                          setOpenMenuId(null);
-                          openEdit(r);
-                        }}
-                      >
-                        แก้ไข
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        className="text-red-600 focus:text-red-600"
-                        onClick={() => {
-                          setOpenMenuId(null);
-                          handleDelete(r._id);
-                        }}
-                      >
-                        ลบ
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <StatusBadge active={active} />
                 </div>
               </div>
 
-              {/* NAME (clickable) */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    `/a1exqwvCqTXP7s0/admin/classroom/food/restaurants/${String(r._id)}`
-                  )
-                }
-                className="w-full text-left"
-              >
-                <div className="truncate text-sm font-semibold text-admin-text">
-                  {r.name}
-                </div>
-              </button>
+              {/* ✅ kebab อยู่เหนือ overlay */}
+              <div className="absolute right-5 top-5 z-[2]">
+                <DropdownMenu
+                  open={openMenuId === r._id}
+                  onOpenChange={(open) => setOpenMenuId(open ? r._id : null)}
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full
+                       bg-white/85 text-admin-text shadow-md ring-1 ring-black/10
+                       backdrop-blur hover:bg-white"
+                      aria-label="เมนูการจัดการร้าน"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={8}
+                    className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        openEdit(r);
+                      }}
+                    >
+                      แก้ไข
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      className="text-red-600 focus:text-red-600"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        handleDelete(r._id);
+                      }}
+                    >
+                      ลบ
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           );
         })}
