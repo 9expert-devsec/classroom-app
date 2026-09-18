@@ -106,9 +106,18 @@ export async function GET(req) {
 
     // 1) เคส coupon / noFood
     if (isCoupon) {
+      // ✅ coupon ใหม่มี restaurantId (ร้านที่ตั้งเป็นคูปอง) — record เก่าไม่มี ก็ยังแสดงได้
+      let couponRestaurant = null;
+      if (sf.restaurantId) {
+        couponRestaurant = await Restaurant.findById(sf.restaurantId)
+          .select("name")
+          .lean()
+          .catch(() => null);
+      }
+
       foodPreview = {
         choiceType: "coupon",
-        restaurantName: "",
+        restaurantName: couponRestaurant?.name || "",
         menuName: "",
         addons: [],
         drink: "",

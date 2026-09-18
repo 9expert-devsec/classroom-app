@@ -289,6 +289,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   const [restaurant, setRestaurant] = useState(null);
   const [menu, setMenu] = useState(null);
 
+  // ✅ coupon = ร้านที่ Calendar ตั้ง mode "coupon" ในวันนี้ (เก็บ id + name ไว้ส่งตอน submit)
+  const [couponRestaurant, setCouponRestaurant] = useState(null);
+
   const [addonId, setAddonId] = useState("");
   const [drinkId, setDrinkId] = useState("");
 
@@ -323,6 +326,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setDrinkId("");
     setAddonTouched(false);
     setDrinkTouched(false);
+    setCouponRestaurant(null);
   }
 
   function setNoteAuto(nextText) {
@@ -338,13 +342,16 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setNoteAuto("ไม่รับอาหาร");
   }
 
-  function chooseCoupon() {
-    setChoiceType("coupon");
-    resetFoodSelection();
-    setNoteAuto("COUPON");
-  }
-
   function chooseRestaurant(r) {
+    // ✅ ร้านที่เป็นคูปองวันนี้ → เลือกแล้วพร้อมบันทึกทันที ไม่เข้า flow เลือกเมนู
+    if (r?.isCoupon) {
+      setChoiceType("coupon");
+      resetFoodSelection();
+      setCouponRestaurant({ id: r.id, name: r.name });
+      setNoteAuto(r.couponLabel || "COUPON");
+      return;
+    }
+
     setChoiceType("food");
     setRestaurant(null);
     setMenu(null);
@@ -352,6 +359,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setDrinkId("");
     setAddonTouched(false);
     setDrinkTouched(false);
+    setCouponRestaurant(null);
 
     // ✅ เลือกร้าน = เริ่ม note ใหม่ (วันใหม่ไม่ควรดึง note เก่า)
     setNote("");
@@ -397,17 +405,30 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       return;
     }
 
-    // noFood/coupon
+    // coupon — ต้องเช็คก่อน noFood เพราะ record coupon มี noFood: true (compat) ติดมาด้วย
+    if (cfChoice === "coupon") {
+      // ✅ อย่าเชื่อค่าเดิม: ร้านคูปองที่เคยเลือกต้องยังเป็นคูปองใน items วันนี้
+      // (record เก่าที่ไม่มี restaurantId ก็เข้าเคสนี้ → ให้เลือกใหม่)
+      const restId = String(cf.restaurantId || "");
+      const foundCoupon = (items || []).find(
+        (r) => String(r.id) === restId && r.isCoupon,
+      );
+      resetFoodSelection();
+      if (!foundCoupon) {
+        setChoiceType("");
+        return;
+      }
+      setChoiceType("coupon");
+      setCouponRestaurant({ id: foundCoupon.id, name: foundCoupon.name });
+      setNote(cfNote.trim() || foundCoupon.couponLabel || "COUPON");
+      return;
+    }
+
+    // noFood
     if (cfChoice === "noFood" || cfNoFood) {
       setChoiceType("noFood");
       resetFoodSelection();
       setNote(cfNote.trim() || "ไม่รับอาหาร");
-      return;
-    }
-    if (cfChoice === "coupon") {
-      setChoiceType("coupon");
-      resetFoodSelection();
-      setNote(cfNote.trim() || "COUPON");
       return;
     }
 
@@ -617,7 +638,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 choiceType: "coupon",
                 coupon: true,
                 noFood: true,
-                restaurantId: "",
+                restaurantId: couponRestaurant?.id || "",
                 menuId: "",
                 addonIds: [],
                 drinkId: "",
@@ -661,9 +682,6 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setSubmitting(false);
   }
 
-  // ✅ class ที่ปิด Cash Coupon จะไม่แสดงการ์ด Coupon เลย
-  const couponEnabled = !classInfo.disableCoupon;
-
   const backHref = isEdit ? returnTo : `/classroom/checkin?day=${day}`;
   const primaryLabel = isEdit ? "บันทึกเมนู" : "ไปต่อ → เซ็นชื่อ";
 
@@ -691,17 +709,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
-                  className={couponEnabled ? "" : "col-span-2"}
+                  className="col-span-2"
                 />
-                {couponEnabled && (
-                  <QuickChoiceCard
-                    title="Cash Coupon"
-                    subtitle="คูปองส่วนลด 180 บาท"
-                    icon="/coupon.png"
-                    active={choiceType === "coupon"}
-                    onClick={chooseCoupon}
-                  />
-                )}
               </div>
 
               <div className="animate-fadeIn">
@@ -751,30 +760,31 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
                 />
-                {couponEnabled && (
-                  <QuickChoiceCard
-                    title="Cash Coupon"
-                    subtitle="คูปองส่วนลด 180 บาท"
-                    icon="/coupon.png"
-                    active={choiceType === "coupon"}
-                    onClick={chooseCoupon}
-                  />
-                )}
 
                 {restaurants.map((r) => (
                   <RestaurantCard
                     key={r.id}
-                    restaurant={{ id: r.id, name: r.name, logo: r.logoUrl }}
-                    active={choiceType === "food" && restaurant?.id === r.id}
+                    restaurant={{
+                      id: r.id,
+                      name: r.name,
+                      logo: r.logoUrl,
+                      isCoupon: !!r.isCoupon,
+                      couponAmount: Number(r.couponAmount) || 0,
+                    }}
+                    active={
+                      r.isCoupon
+                        ? choiceType === "coupon" &&
+                          couponRestaurant?.id === r.id
+                        : choiceType === "food" && restaurant?.id === r.id
+                    }
                     onClick={() => chooseRestaurant(r)}
                   />
                 ))}
 
                 {restaurants.length === 0 && (
                   <p className="col-span-2 text-sm text-front-textMuted">
-                    {couponEnabled
-                      ? "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” หรือ “Coupon” แล้วบันทึกได้)"
-                      : "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” แล้วบันทึกได้)"}
+                    วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก
+                    “ไม่รับอาหาร” แล้วบันทึกได้)
                   </p>
                 )}
               </div>

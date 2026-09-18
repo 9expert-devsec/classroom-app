@@ -214,7 +214,9 @@ export default function SignPage({ searchParams = {} }) {
                       เลือก:{" "}
                       <span className="font-medium">
                         {food.choiceType === "coupon"
-                          ? "Coupon"
+                          ? food.restaurantName
+                            ? `Coupon (ร้าน ${food.restaurantName})`
+                            : "Coupon"
                           : "ไม่รับอาหาร"}
                       </span>
                     </div>

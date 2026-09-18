@@ -145,25 +145,42 @@ export async function GET(req) {
       });
     }
 
-    const restaurantIds = daySet.entries.map((e) => e.restaurant);
+    // ✅ class-level exception: class นี้ห้ามใช้คูปอง → ตัด entry ที่เป็น coupon ทิ้งตั้งแต่ตรงนี้
+    // (นี่คือจุดเดียวที่ disableCoupon มีผลตอนอ่าน; class อื่นวันเดียวกันยังเห็นตามปกติ)
+    const dayEntries = classInfo.disableCoupon
+      ? daySet.entries.filter((en) => en.mode !== "coupon")
+      : daySet.entries;
+
+    // restKey -> true เมื่อวันนี้ร้านนั้น "เป็นคูปอง"
+    const couponRestKeys = new Set(
+      dayEntries
+        .filter((en) => en.mode === "coupon")
+        .map((en) => String(en.restaurant)),
+    );
+
+    const restaurantIds = dayEntries.map((e) => e.restaurant);
 
     const restaurants = await Restaurant.find({
       _id: { $in: restaurantIds },
       isActive: { $ne: false },
     })
-      .select("name logoUrl isActive")
+      .select("name logoUrl isActive couponLabel couponAmount")
       .lean();
 
     // restaurantId -> allowed menuIds (string) based on set
     const setMenuMap = new Map();
 
-    const setIds = daySet.entries.map((e) => e.set).filter(Boolean);
+    // coupon entry ไม่ต้อง resolve FoodSet เลย
+    const setIds = dayEntries
+      .filter((e) => e.mode !== "coupon")
+      .map((e) => e.set)
+      .filter(Boolean);
     if (setIds.length > 0) {
       const sets = await FoodSet.find({ _id: { $in: setIds } }).lean();
       const setsMap = new Map(sets.map((s) => [String(s._id), s]));
 
-      daySet.entries.forEach((entry) => {
-        if (!entry.set) return;
+      dayEntries.forEach((entry) => {
+        if (entry.mode === "coupon" || !entry.set) return;
         const setDoc = setsMap.get(String(entry.set));
         if (!setDoc) return;
 
@@ -173,16 +190,21 @@ export async function GET(req) {
       });
     }
 
-    const activeRestaurantIds = restaurants.map((r) => r._id);
+    // coupon restaurant ไม่ดึงเมนู/add-on/drink เลย
+    const activeRestaurantIds = restaurants
+      .filter((r) => !couponRestKeys.has(String(r._id)))
+      .map((r) => r._id);
 
-    const menus = await FoodMenu.find({
-      isActive: { $ne: false },
-      restaurant: { $in: activeRestaurantIds },
-    })
-      .select(
-        "restaurant name imageUrl addons drinks addonIds drinkIds isActive",
-      )
-      .lean();
+    const menus = activeRestaurantIds.length
+      ? await FoodMenu.find({
+          isActive: { $ne: false },
+          restaurant: { $in: activeRestaurantIds },
+        })
+          .select(
+            "restaurant name imageUrl addons drinks addonIds drinkIds isActive",
+          )
+          .lean()
+      : [];
 
     // ✅ ดึง add-on/drink เฉพาะที่ถูก “อ้างอิงโดยเมนูวันนี้” เพื่อไม่ให้ query หนัก
     const allAddonIds = new Set();
@@ -227,6 +249,7 @@ export async function GET(req) {
 
     restaurants.forEach((r) => {
       const restKey = String(r._id);
+      const isCoupon = couponRestKeys.has(restKey);
       map.set(restKey, {
         id: restKey,
         name: r.name,
@@ -236,6 +259,11 @@ export async function GET(req) {
         // ✅ NEW: ให้ FoodPage ใช้ (master list ของร้าน)
         addons: [],
         drinks: [],
+
+        // ✅ coupon-as-restaurant (มาจาก FoodDaySet.entries[].mode)
+        isCoupon,
+        couponLabel: isCoupon ? r.couponLabel || "Cash Coupon" : "",
+        couponAmount: isCoupon ? Number(r.couponAmount) || 0 : 0,
       });
       restaurantAddonIdsMap.set(restKey, new Set());
       restaurantDrinkIdsMap.set(restKey, new Set());
@@ -315,7 +343,10 @@ export async function GET(req) {
       restObj.drinks = drinks;
     }
 
-    const items = Array.from(map.values()).filter((r) => r.menus.length > 0);
+    // ✅ coupon restaurant ไม่มีเมนู แต่ต้องไม่ถูกตัดทิ้ง
+    const items = Array.from(map.values()).filter(
+      (r) => r.menus.length > 0 || r.isCoupon,
+    );
 
     return NextResponse.json({
       ok: true,

@@ -318,6 +318,11 @@ export async function POST(req) {
   if (finalChoiceType === "coupon" || finalChoiceType === "noFood") {
     const isCoupon = finalChoiceType === "coupon";
 
+    // ✅ coupon = ร้านที่ตั้งเป็นคูปองในวันนั้น → เก็บ restaurantId ไว้ให้ report/preview
+    // (ว่างได้ เพื่อ backward compat กับ client/record เก่า; noFood เก็บ "" เสมอ)
+    const couponRestaurantId =
+      isCoupon && isObjectId(restaurantId) ? clean(restaurantId) : "";
+
     const nextFood = {
       noFood: true,
       coupon: isCoupon, // compat
@@ -326,7 +331,7 @@ export async function POST(req) {
       classId: safeClassId || "",
       day: Number.isFinite(Number(safeDay)) ? Number(safeDay) : undefined,
 
-      restaurantId: "",
+      restaurantId: couponRestaurantId,
       menuId: "",
 
       addonIds: [],
