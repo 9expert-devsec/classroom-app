@@ -11,6 +11,17 @@ function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
 
+// ✅ coupon ผูกกับร้านที่ตั้งเป็นคูปอง (record เก่าไม่มี restaurantId → "")
+function couponRestaurantName(o) {
+  return String(o?.restaurantName ?? o?.food?.restaurantName ?? "").trim();
+}
+
+// ✅ label สรุปของแถว coupon — ใช้ที่เดียว อย่าพิมพ์ "Cash Coupon" ซ้ำหลายที่
+function couponLabelFor(o) {
+  const rest = couponRestaurantName(o);
+  return rest ? `Cash Coupon — ${rest}` : "Cash Coupon";
+}
+
 function toYMD(d) {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return "";
@@ -165,7 +176,7 @@ function buildSummaryItems(rows) {
       if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
     }
 
-    if (isCoupon) add("Cash Coupon", 1);
+    if (isCoupon) add(couponLabelFor(o), 1);
     else if (isNoFood) add("ไม่รับอาหาร", 1);
     else add(String(o.menuName || "-").trim() || "-", 1);
   });
@@ -286,6 +297,9 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
   const [editChoiceType, setEditChoiceType] = useState("noFood"); // food | noFood | coupon
   const [editRestaurantId, setEditRestaurantId] = useState("");
+
+  // ✅ ร้านที่เปิด couponEnabled (สำหรับ dropdown ตอนแก้เป็น COUPON เท่านั้น)
+  const [couponRestaurants, setCouponRestaurants] = useState([]);
   const [editMenuId, setEditMenuId] = useState("");
   const [editAddons, setEditAddons] = useState([]);
   const [editDrink, setEditDrink] = useState("");
@@ -327,6 +341,30 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/food/restaurants", {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!alive) return;
+        setCouponRestaurants(
+          (Array.isArray(data.items) ? data.items : [])
+            .filter((r) => r?.couponEnabled === true)
+            .map((r) => ({ id: String(r._id), name: r.name || "-" })),
+        );
+      } catch (err) {
+        console.error(err);
+        if (alive) setCouponRestaurants([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // ✅ class options (ใช้ชื่อที่ clean แล้ว)
   const classOptions = useMemo(() => {
@@ -506,8 +544,9 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
       const status = isCoupon ? "COUPON" : isNoFood ? "ไม่รับอาหาร" : "อาหาร";
 
+      // coupon: ร้านที่ตั้งเป็นคูปอง (ถ้ามี) — status ยังเป็น "COUPON" เสมอ
       const rest = isCoupon
-        ? "-"
+        ? couponRestaurantName(o) || "-"
         : isNoFood
           ? "-"
           : (o.restaurantName ?? o.food?.restaurantName ?? "");
@@ -796,7 +835,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             }
 
             const rest = isCoupon
-              ? "-"
+              ? couponRestaurantName(o) || "-"
               : isNoFood
                 ? "-"
                 : (o.restaurantName ?? o.food?.restaurantName ?? "");
@@ -1050,7 +1089,8 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     const restaurantId = String(f.restaurantId ?? row.restaurantId ?? "");
     const menuId = String(f.menuId ?? row.menuId ?? "");
 
-    setEditRestaurantId(isCoupon || isNo ? "" : restaurantId);
+    // coupon: seed จาก restaurantId เดิม (record เก่าไม่มี → "" = ไม่ระบุร้าน)
+    setEditRestaurantId(isNo ? "" : restaurantId);
     setEditMenuId(isCoupon || isNo ? "" : menuId);
 
     // addons/drink/note (food ก่อน)
@@ -1082,6 +1122,17 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEdit, editChoiceType]);
+
+  // ✅ สลับสถานะใน modal: ร้านของ food กับร้านของ coupon เป็นคนละ list
+  //    → ล้าง restaurant/menu/addon/drink ทุกครั้งที่สลับ กันส่ง id ผิดประเภท
+  function switchEditChoiceType(next) {
+    if (next === editChoiceType) return;
+    setEditChoiceType(next);
+    setEditRestaurantId("");
+    setEditMenuId("");
+    setEditAddons([]);
+    setEditDrink("");
+  }
 
   async function loadFoodOptionsForRow(row) {
     setOptLoading(true);
@@ -1229,7 +1280,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           choiceType: "coupon",
           coupon: true,
           noFood: true, // backward compat (API ก็เซ็ต noFood true อยู่แล้ว)
-          restaurantId: "",
+          restaurantId: editRestaurantId || "", // ร้านที่ตั้งเป็นคูปอง ("" = ไม่ระบุ)
           menuId: "",
           addonIds: [],
           drinkId: "",
@@ -1654,7 +1705,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                           }
 
                           const rest = isCoupon
-                            ? "-"
+                            ? couponRestaurantName(o) || "-"
                             : isNoFood
                               ? "ไม่รับอาหาร"
                               : o.restaurantName || "-";
@@ -1787,7 +1838,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "food"}
-                  onChange={() => setEditChoiceType("food")}
+                  onChange={() => switchEditChoiceType("food")}
                 />
                 <span>อาหาร</span>
               </label>
@@ -1796,7 +1847,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "coupon"}
-                  onChange={() => setEditChoiceType("coupon")}
+                  onChange={() => switchEditChoiceType("coupon")}
                 />
                 <span>COUPON</span>
               </label>
@@ -1805,12 +1856,45 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "noFood"}
-                  onChange={() => setEditChoiceType("noFood")}
+                  onChange={() => switchEditChoiceType("noFood")}
                 />
                 <span>ไม่รับอาหาร</span>
               </label>
             </div>
           </div>
+
+          {/* Coupon restaurant (เฉพาะร้านที่เปิด couponEnabled) */}
+          {editChoiceType === "coupon" && (
+            <div>
+              <div className="text-[11px] text-admin-textMuted">
+                ร้านที่ตั้งเป็นคูปอง
+              </div>
+              <select
+                className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-2 text-sm"
+                value={editRestaurantId}
+                onChange={(e) => setEditRestaurantId(e.target.value)}
+              >
+                <option value="">— ไม่ระบุร้าน —</option>
+                {couponRestaurants.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+                {/* record เก่าที่ผูกร้านซึ่งตอนนี้ปิด coupon ไปแล้ว: ยังแสดง id ให้เซฟผ่านได้ */}
+                {editRestaurantId &&
+                  !couponRestaurants.some((r) => r.id === editRestaurantId) && (
+                    <option value={editRestaurantId}>
+                      {couponRestaurantName(editingRow) || editRestaurantId}
+                    </option>
+                  )}
+              </select>
+              {!couponRestaurants.length && (
+                <div className="mt-1 text-[11px] text-admin-textMuted">
+                  * ยังไม่มีร้านที่เปิดใช้งานคูปอง (ตั้งได้ในหน้า ร้านอาหาร)
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Food selectors */}
           {editChoiceType === "food" && (

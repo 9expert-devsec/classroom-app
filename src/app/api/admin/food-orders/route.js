@@ -133,8 +133,13 @@ export async function GET(req) {
       ? restaurantMap[String(menuInfo.restaurantId)] || ""
       : "";
 
-    const restaurantName =
-      isCoupon || isNoFood ? "" : restNameFromFood || restNameFromMenu || "";
+    // ✅ coupon row เก็บชื่อร้านที่ตั้งเป็นคูปองไว้ (record เก่าไม่มี restaurantId → "")
+    //    noFood ยังเป็น "" เสมอ; food ใช้ restaurantId ก่อนแล้ว fallback ไปที่เมนู
+    const restaurantName = isNoFood
+      ? ""
+      : isCoupon
+        ? restNameFromFood
+        : restNameFromFood || restNameFromMenu || "";
 
     const menuName = isCoupon || isNoFood ? "" : menuInfo?.name || "";
 
@@ -214,10 +219,16 @@ export async function GET(req) {
   let noFoodCount = 0;
   let couponCount = 0;
   const counter = new Map();
+  // coupon แยกนับต่อร้าน: "Cash Coupon — {ร้าน}" / record เก่าไม่มีร้าน → "Cash Coupon"
+  const couponCounter = new Map();
 
   for (const row of items) {
     if (row.isCoupon) {
       couponCount += 1;
+      const label = row.restaurantName
+        ? `Cash Coupon — ${row.restaurantName}`
+        : "Cash Coupon";
+      couponCounter.set(label, (couponCounter.get(label) || 0) + 1);
       continue;
     }
     if (row.isNoFood || !row.menuName) {
@@ -235,9 +246,16 @@ export async function GET(req) {
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "th"));
 
-  // ใส่ coupon/noFood เป็นแถวแรก
+  const couponCounts = Array.from(couponCounter.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "th"));
+
+  // ไม่มี coupon เลย → ยังคงแถว "Cash Coupon: 0" ไว้เหมือนเดิม
+  if (!couponCounts.length) couponCounts.push({ label: "Cash Coupon", count: 0 });
+
+  // ลำดับเดิม: coupon (ต่อร้าน) → ไม่รับอาหาร → เมนู
   menuCounts.unshift({ label: "ไม่รับอาหาร", count: noFoodCount });
-  menuCounts.unshift({ label: "Cash Coupon", count: couponCount });
+  menuCounts.unshift(...couponCounts);
 
   return NextResponse.json({
     ok: true,
