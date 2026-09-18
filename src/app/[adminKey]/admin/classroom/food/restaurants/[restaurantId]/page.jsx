@@ -97,6 +97,12 @@ export default function RestaurantDetailPage({ params }) {
   const [uploadingAddonImage, setUploadingAddonImage] = useState(false);
   const [uploadingDrinkImage, setUploadingDrinkImage] = useState(false);
 
+  // ✅ coupon capability form (Restaurant.couponEnabled / couponLabel / couponAmount)
+  const [couponEnabled, setCouponEnabled] = useState(false);
+  const [couponLabel, setCouponLabel] = useState("Cash Coupon");
+  const [couponAmount, setCouponAmount] = useState("0");
+  const [savingCoupon, setSavingCoupon] = useState(false);
+
   // modals
   const [openMenuModal, setOpenMenuModal] = useState(false);
   const [openSetModal, setOpenSetModal] = useState(false);
@@ -219,6 +225,11 @@ export default function RestaurantDetailPage({ params }) {
           (r) => String(r._id) === String(restaurantId),
         ) || null;
       setRestaurant(found);
+      if (found) {
+        setCouponEnabled(found.couponEnabled === true);
+        setCouponLabel(found.couponLabel || "Cash Coupon");
+        setCouponAmount(String(found.couponAmount ?? 0));
+      }
     } catch (err) {
       console.error(err);
       alert("โหลดข้อมูลร้านไม่สำเร็จ");
@@ -737,6 +748,36 @@ export default function RestaurantDetailPage({ params }) {
     }
   }
 
+  /* ---------------- coupon capability ---------------- */
+  async function handleSaveCoupon() {
+    setSavingCoupon(true);
+    try {
+      const amount = Number(couponAmount);
+      const payload = {
+        couponEnabled: !!couponEnabled,
+        couponLabel: String(couponLabel || "").trim() || "Cash Coupon",
+        couponAmount: Number.isFinite(amount) && amount >= 0 ? amount : 0,
+      };
+
+      const res = await fetch(`/api/admin/food/restaurants/${restaurantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const out = await safeJson(res);
+      if (!res.ok) {
+        console.error(out);
+        return alert(out?.error || "บันทึกการตั้งค่าคูปองไม่สำเร็จ");
+      }
+      await fetchRestaurant();
+    } catch (err) {
+      console.error(err);
+      alert("เกิดข้อผิดพลาดในการบันทึกการตั้งค่าคูปอง");
+    } finally {
+      setSavingCoupon(false);
+    }
+  }
+
   /* ---------------- render ---------------- */
   return (
     <div className="flex h-[calc(100svh-64px)] min-h-0 flex-col gap-6">
@@ -761,17 +802,72 @@ export default function RestaurantDetailPage({ params }) {
           </p>
         </div>
 
-        {restaurant?.logoUrl && (
-          <div className="relative h-12 w-12 overflow-hidden rounded-xl bg-white/40">
-            <Image
-              src={restaurant.logoUrl}
-              alt={restaurant.name || "logo"}
-              fill
-              sizes="48px"
-              className="object-cover"
-            />
+        <div className="flex items-start gap-3">
+          {/* ✅ Coupon capability card */}
+          <div className="w-72 rounded-2xl border border-admin-border bg-admin-surface p-3 shadow-slate-950/20">
+            <label className="flex cursor-pointer items-center justify-between gap-2">
+              <span className="text-sm font-medium text-admin-text">
+                เปิดใช้งานคูปอง (Coupon)
+              </span>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={couponEnabled}
+                onChange={(ev) => setCouponEnabled(ev.target.checked)}
+                disabled={loadingRestaurant || !restaurant}
+              />
+            </label>
+            <p className="mt-1 text-[11px] text-admin-textMuted">
+              เปิดแล้วจะเลือก &apos;คูปองเงินสด&apos; ให้ร้านนี้ได้ในหน้า Food
+              Calendar
+            </p>
+
+            {couponEnabled && (
+              <div className="mt-2 space-y-2">
+                <label className="block text-xs">
+                  <span className="text-admin-textMuted">ชื่อที่แสดง</span>
+                  <TextInput
+                    value={couponLabel}
+                    onChange={(ev) => setCouponLabel(ev.target.value)}
+                    placeholder="Cash Coupon"
+                  />
+                </label>
+                <label className="block text-xs">
+                  <span className="text-admin-textMuted">มูลค่า (บาท)</span>
+                  <TextInput
+                    type="number"
+                    min="0"
+                    value={couponAmount}
+                    onChange={(ev) => setCouponAmount(ev.target.value)}
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="mt-2 flex justify-end">
+              <PrimaryButton
+                type="button"
+                onClick={handleSaveCoupon}
+                disabled={savingCoupon || loadingRestaurant || !restaurant}
+              >
+                {savingCoupon ? "กำลังบันทึก..." : "บันทึกคูปอง"}
+              </PrimaryButton>
+            </div>
           </div>
-        )}
+
+          {restaurant?.logoUrl && (
+            <div className="relative h-12 w-12 overflow-hidden rounded-xl bg-white/40">
+              <Image
+                src={restaurant.logoUrl}
+                alt={restaurant.name || "logo"}
+                fill
+                sizes="48px"
+                className="object-cover"
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* TOP: Set + Menu */}

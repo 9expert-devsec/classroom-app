@@ -13,12 +13,22 @@ export async function PUT(req, { params }) {
   }
 
   const body = await req.json();
-  const { name, logoUrl, isActive } = body || {};
+  const { name, logoUrl, isActive, couponEnabled, couponLabel, couponAmount } =
+    body || {};
 
   const update = {};
   if (name !== undefined) update.name = String(name).trim();
   if (logoUrl !== undefined) update.logoUrl = logoUrl || "";
   if (typeof isActive === "boolean") update.isActive = isActive;
+
+  // ✅ coupon capability
+  if (typeof couponEnabled === "boolean") update.couponEnabled = couponEnabled;
+  if (couponLabel !== undefined)
+    update.couponLabel = String(couponLabel || "").trim() || "Cash Coupon";
+  if (couponAmount !== undefined) {
+    const n = Number(couponAmount);
+    update.couponAmount = Number.isFinite(n) && n >= 0 ? n : 0;
+  }
 
   const item = await Restaurant.findByIdAndUpdate(id, update, {
     new: true,
