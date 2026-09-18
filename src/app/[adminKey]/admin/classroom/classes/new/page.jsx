@@ -492,15 +492,15 @@ export default function NewClassManualPage() {
           </label>
         </div>
 
-        {/* ปิดตัวเลือก Cash Coupon */}
+        {/* class-level coupon exception (คอร์สพิเศษ) */}
         <div className="flex items-center justify-between rounded-2xl border border-admin-border bg-white px-4 py-3">
           <div>
             <div className="text-sm font-medium text-admin-text">
-              ปิดตัวเลือก Cash Coupon
+              ไม่ให้ใช้คูปองใน class นี้
             </div>
             <div className="text-[11px] text-admin-textMuted">
-              เปิดเพื่อซ่อนตัวเลือก Cash Coupon
-              ในหน้าเช็คอินของผู้เรียน (แสดงเฉพาะร้านที่ตั้งไว้ตาม plan)
+              ซ่อนร้านที่ตั้งเป็นคูปองในหน้าเช็คอินของผู้เรียน (class
+              อื่นที่เรียนวันเดียวกันยังเห็นตามปกติ)
             </div>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2">

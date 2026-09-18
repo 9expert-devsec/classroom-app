@@ -1582,10 +1582,14 @@ export default function ClassDetailPage() {
                       }))
                     }
                   />
-                  <span className="text-[11px] text-admin-textMuted">
-                    ปิดตัวเลือก Cash Coupon (หน้าเช็คอินผู้เรียน)
+                  <span className="text-[11px] text-admin-text">
+                    ไม่ให้ใช้คูปองใน class นี้
                   </span>
                 </label>
+                <div className="mt-0.5 pl-5 text-[11px] text-admin-textMuted">
+                  ซ่อนร้านที่ตั้งเป็นคูปองในหน้าเช็คอินของผู้เรียน (class
+                  อื่นที่เรียนวันเดียวกันยังเห็นตามปกติ)
+                </div>
               </div>
 
               <div className="rounded-xl border border-admin-border bg-admin-surface p-3">
