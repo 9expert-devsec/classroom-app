@@ -158,6 +158,15 @@ export default function FoodCalendarPage() {
     return selectedItems.some((it) => it.restaurantId === id);
   }
 
+  // ⚠️ /api/food/today กรอง isActive: { $ne: false } — ร้านที่ปิดอยู่ถูกตั้งไว้ก็จริง
+  // แต่ผู้เรียนจะไม่เห็น → เตือนเฉย ๆ ไม่บล็อกการบันทึก ไม่ auto-uncheck
+  const hasInactiveChecked = useMemo(() => {
+    const inactiveIds = new Set(
+      restaurants.filter((r) => r.isActive === false).map((r) => String(r._id))
+    );
+    return selectedItems.some((it) => inactiveIds.has(String(it.restaurantId)));
+  }, [restaurants, selectedItems]);
+
   function toggleRestaurant(id) {
     setSelectedItems((prev) => {
       const exists = prev.some((it) => it.restaurantId === id);
@@ -341,6 +350,11 @@ export default function FoodCalendarPage() {
                       onChange={() => toggleRestaurant(r._id)}
                     />
                     <span>{r.name}</span>
+                    {r.isActive === false && (
+                      <span className="inline-flex items-center rounded-full bg-admin-surfaceMuted px-1.5 py-0.5 text-[10px] font-medium text-admin-textMuted">
+                        ปิดอยู่
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {checked && (sets.length > 0 || canCoupon) && (
@@ -382,6 +396,12 @@ export default function FoodCalendarPage() {
               </p>
             )}
           </div>
+
+          {hasInactiveChecked && (
+            <p className="mt-2 text-xs text-amber-700">
+              มีร้านที่ปิดอยู่ถูกตั้งไว้ในวันนี้ ผู้เรียนจะไม่เห็นร้านนั้น
+            </p>
+          )}
 
           <PrimaryButton
             className="mt-3 w-full"
