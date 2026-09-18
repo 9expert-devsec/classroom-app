@@ -332,6 +332,11 @@ export default function FoodCalendarPage() {
               const checked = isRestaurantChecked(r._id);
               const sets = restaurantSets[r._id] || [];
               const canCoupon = r.couponEnabled === true;
+              // ข้อความ option คูปองมาจากร้าน (label + มูลค่า) — value ยังเป็น sentinel เดิม
+              const couponAmount = Number(r.couponAmount) || 0;
+              const couponText =
+                (r.couponLabel || "คูปองเงินสด") +
+                (couponAmount > 0 ? ` (${couponAmount} บาท)` : "");
               const selectedItem = selectedItems.find(
                 (it) => it.restaurantId === r._id
               );
@@ -367,14 +372,25 @@ export default function FoodCalendarPage() {
                       >
                         <option value="">-- เลือก Set --</option>
                         {canCoupon && (
-                          <option value={COUPON_OPTION}>คูปองเงินสด</option>
+                          <optgroup label="คูปอง">
+                            <option value={COUPON_OPTION}>{couponText}</option>
+                          </optgroup>
                         )}
-                        {sets.map((s) => (
-                          <option key={s._id} value={s._id}>
-                            {s.name}
-                          </option>
-                        ))}
+                        {sets.length > 0 && (
+                          <optgroup label="ชุดเมนู">
+                            {sets.map((s) => (
+                              <option key={s._id} value={s._id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
+                    )}
+                    {checked && sets.length === 0 && !canCoupon && (
+                      <span className="text-[11px] text-admin-textMuted">
+                        ร้านนี้ยังไม่มีชุดเมนู และยังไม่ได้เปิดคูปอง
+                      </span>
                     )}
                     {r.logoUrl && (
                       <Image
