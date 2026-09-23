@@ -7,6 +7,13 @@ import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
+import CouponSettingsCard from "./_components/CouponSettingsCard";
+import CategoryPanel from "./_components/CategoryPanel";
+import OptionGroupsEditor, {
+  toEditorGroups,
+  toPayloadGroups,
+} from "./_components/OptionGroupsEditor";
+
 function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
@@ -85,6 +92,10 @@ export default function RestaurantDetailPage({ params }) {
   const [addonsList, setAddonsList] = useState([]);
   const [drinksList, setDrinksList] = useState([]);
 
+  // ✅ lunch pre-order (P1b)
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
   // loading
   const [loadingRestaurant, setLoadingRestaurant] = useState(false);
   const [loadingMenus, setLoadingMenus] = useState(false);
@@ -116,6 +127,13 @@ export default function RestaurantDetailPage({ params }) {
   // ✅ modal search (แยกจากหน้า list)
   const [qMenuAddon, setQMenuAddon] = useState("");
   const [qMenuDrink, setQMenuDrink] = useState("");
+
+  // ✅ menu form: ฟิลด์ใหม่สำหรับร้านคูปอง (P1b)
+  const [menuCategoryId, setMenuCategoryId] = useState("");
+  const [menuPrice, setMenuPrice] = useState("");
+  const [menuDescription, setMenuDescription] = useState("");
+  const [menuSortOrder, setMenuSortOrder] = useState("0");
+  const [menuOptionGroups, setMenuOptionGroups] = useState([]);
 
   // set form
   const [editingSetId, setEditingSetId] = useState(null);
@@ -295,12 +313,30 @@ export default function RestaurantDetailPage({ params }) {
     }
   }
 
+  async function fetchCategories() {
+    setLoadingCategories(true);
+    try {
+      const res = await fetch(
+        `/api/admin/food/categories?restaurantId=${encodeURIComponent(restaurantId)}`,
+        { cache: "no-store" },
+      );
+      const data = await safeJson(res);
+      setCategories(data.items || []);
+    } catch (err) {
+      console.error(err);
+      alert("โหลดหมวดหมู่เมนูไม่สำเร็จ");
+    } finally {
+      setLoadingCategories(false);
+    }
+  }
+
   useEffect(() => {
     fetchRestaurant();
     fetchMenus();
     fetchSets();
     fetchAddons();
     fetchDrinks();
+    fetchCategories();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
 
@@ -315,6 +351,44 @@ export default function RestaurantDetailPage({ params }) {
         .includes(kw),
     );
   }, [menus, q]);
+
+  // ✅ P1b: จัดกลุ่มเมนูตามหมวดหมู่ (ตามลำดับหมวด, ไม่มีหมวดหมู่ไว้ท้ายสุด)
+  const groupedMenus = useMemo(() => {
+    const byCat = new Map();
+    for (const m of filteredMenus) {
+      const key = toIdString(m.categoryId) || "";
+      if (!byCat.has(key)) byCat.set(key, []);
+      byCat.get(key).push(m);
+    }
+
+    const sortMenus = (list) =>
+      [...list].sort(
+        (a, b) =>
+          (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+          String(a.name || "").localeCompare(String(b.name || "")),
+      );
+
+    const groups = categories
+      .map((c) => ({
+        id: String(c._id),
+        name: c.name,
+        isActive: c.isActive !== false,
+        items: sortMenus(byCat.get(String(c._id)) || []),
+      }))
+      .filter((g) => g.items.length > 0);
+
+    const uncategorised = sortMenus(byCat.get("") || []);
+    if (uncategorised.length > 0) {
+      groups.push({
+        id: "",
+        name: "ไม่มีหมวดหมู่",
+        isActive: true,
+        items: uncategorised,
+      });
+    }
+
+    return groups;
+  }, [filteredMenus, categories]);
 
   const filteredAddons = useMemo(() => {
     const kw = qAddon.trim().toLowerCase();
@@ -380,6 +454,13 @@ export default function RestaurantDetailPage({ params }) {
     setQMenuAddon("");
     setQMenuDrink("");
 
+    // ✅ P1b
+    setMenuCategoryId("");
+    setMenuPrice("");
+    setMenuDescription("");
+    setMenuSortOrder("0");
+    setMenuOptionGroups([]);
+
     setOpenMenuModal(true);
   }
 
@@ -393,6 +474,15 @@ export default function RestaurantDetailPage({ params }) {
 
     setQMenuAddon("");
     setQMenuDrink("");
+
+    // ✅ P1b
+    setMenuCategoryId(toIdString(m.categoryId) || "");
+    setMenuPrice(
+      m.price === null || m.price === undefined ? "" : String(m.price),
+    );
+    setMenuDescription(m.description || "");
+    setMenuSortOrder(String(m.sortOrder ?? 0));
+    setMenuOptionGroups(toEditorGroups(m.optionGroups));
 
     setOpenMenuModal(true);
   }
@@ -412,6 +502,28 @@ export default function RestaurantDetailPage({ params }) {
       activeDrinkIdSet.has(String(id)),
     );
 
+    // ✅ P1b: ตรวจเบื้องต้นฝั่ง client (server ตรวจซ้ำอยู่แล้ว)
+    const priceRaw = String(menuPrice).trim();
+    if (priceRaw !== "") {
+      const n = Number(priceRaw);
+      if (!Number.isFinite(n) || n < 0) {
+        return alert("ราคาต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป");
+      }
+    }
+    for (const g of menuOptionGroups) {
+      if (!String(g.name || "").trim()) {
+        return alert("กรุณากรอกชื่อกลุ่มตัวเลือกให้ครบ");
+      }
+      if (!(g.choices || []).length) {
+        return alert(`กลุ่ม "${g.name}" ต้องมีตัวเลือกอย่างน้อย 1 รายการ`);
+      }
+      for (const c of g.choices || []) {
+        if (!String(c.name || "").trim()) {
+          return alert(`กรุณากรอกชื่อตัวเลือกในกลุ่ม "${g.name}" ให้ครบ`);
+        }
+      }
+    }
+
     setSavingMenu(true);
     try {
       const payload = {
@@ -422,6 +534,13 @@ export default function RestaurantDetailPage({ params }) {
         // ✅ new refs
         addonIds: cleanAddonIds,
         drinkIds: cleanDrinkIds,
+
+        // ✅ P1b
+        categoryId: menuCategoryId || null,
+        price: priceRaw === "" ? null : Number(priceRaw),
+        description: menuDescription.trim(),
+        sortOrder: Number(menuSortOrder) || 0,
+        optionGroups: toPayloadGroups(menuOptionGroups),
       };
 
       const url = editingMenuId
@@ -739,7 +858,8 @@ export default function RestaurantDetailPage({ params }) {
 
   /* ---------------- render ---------------- */
   return (
-    <div className="flex h-[calc(100svh-64px)] min-h-0 flex-col gap-6">
+    // ✅ P1b: เปลี่ยนเป็น min-h เพื่อให้หน้ายาวขึ้นได้เมื่อมีการ์ดคูปอง/หมวดหมู่เพิ่มเข้ามา
+    <div className="flex min-h-[calc(100svh-64px)] flex-col gap-6">
       {/* Top bar */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -772,6 +892,20 @@ export default function RestaurantDetailPage({ params }) {
             />
           </div>
         )}
+      </div>
+
+      {/* ✅ P1b: การใช้งานคูปอง + หมวดหมู่เมนู */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CouponSettingsCard
+          restaurant={restaurant}
+          onSaved={(item) => setRestaurant(item)}
+        />
+        <CategoryPanel
+          restaurantId={restaurantId}
+          categories={categories}
+          loading={loadingCategories}
+          onChanged={fetchCategories}
+        />
       </div>
 
       {/* TOP: Set + Menu */}
@@ -879,49 +1013,91 @@ export default function RestaurantDetailPage({ params }) {
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
-            {filteredMenus.map((m) => (
-              <div
-                key={m._id}
-                className="flex items-start gap-3 rounded-2xl border border-admin-border bg-white p-3"
-              >
-                <div className="relative h-12 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-white/40">
-                  {m.imageUrl && (
-                    <Image
-                      src={m.imageUrl}
-                      alt={m.name || "menu"}
-                      fill
-                      sizes="64px"
-                      className="object-cover"
-                    />
+          {/* ✅ P1b: จัดกลุ่มตามหมวดหมู่ + แสดงราคา */}
+          <div className="min-h-0 flex-1 overflow-y-auto space-y-4">
+            {groupedMenus.map((g) => (
+              <div key={g.id || "__none"} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-admin-text">
+                    {g.name}
+                  </span>
+                  <span className="text-[11px] text-admin-textMuted">
+                    {g.items.length} เมนู
+                  </span>
+                  {!g.isActive && (
+                    <span className="rounded-full bg-admin-surfaceMuted px-2 py-0.5 text-[10px] text-admin-textMuted">
+                      ปิดใช้งาน
+                    </span>
                   )}
                 </div>
 
-                <div className="flex-1">
-                  <div className="font-semibold text-admin-text">{m.name}</div>
-                  <div className="mt-1 text-[11px] text-admin-textMuted">
-                    Add-on: {(m.addonIds || []).length || 0} • Drinks:{" "}
-                    {(m.drinkIds || []).length || 0}
-                  </div>
-                </div>
+                {g.items.map((m) => {
+                  const hasPrice = m.price !== null && m.price !== undefined;
+                  const needsPrice = !!restaurant?.couponEnabled && !hasPrice;
 
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
-                    onClick={() => openEditMenu(m)}
-                  >
-                    edit
-                  </button>
-                  <button
-                    type="button"
-                    className="flex p-2 items-center justify-center rounded-full bg-red-50 text-red-500"
-                    onClick={() => handleDeleteMenu(m._id)}
-                    title="ลบเมนู"
-                  >
-                    delete
-                  </button>
-                </div>
+                  return (
+                    <div
+                      key={m._id}
+                      className="flex items-start gap-3 rounded-2xl border border-admin-border bg-white p-3"
+                    >
+                      <div className="relative h-12 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-white/40">
+                        {m.imageUrl && (
+                          <Image
+                            src={m.imageUrl}
+                            alt={m.name || "menu"}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-admin-text">
+                            {m.name}
+                          </span>
+
+                          {hasPrice && (
+                            <span className="rounded-full bg-admin-surfaceMuted px-2 py-0.5 text-[11px] font-semibold text-admin-text">
+                              {m.price} บาท
+                            </span>
+                          )}
+
+                          {needsPrice && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                              ยังไม่ใส่ราคา
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1 text-[11px] text-admin-textMuted">
+                          Add-on: {(m.addonIds || []).length || 0} • Drinks:{" "}
+                          {(m.drinkIds || []).length || 0} • Option:{" "}
+                          {(m.optionGroups || []).length || 0}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
+                          onClick={() => openEditMenu(m)}
+                        >
+                          edit
+                        </button>
+                        <button
+                          type="button"
+                          className="flex p-2 items-center justify-center rounded-full bg-red-50 text-red-500"
+                          onClick={() => handleDeleteMenu(m._id)}
+                          title="ลบเมนู"
+                        >
+                          delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ))}
 
@@ -1141,6 +1317,67 @@ export default function RestaurantDetailPage({ params }) {
               placeholder="เช่น สเต็กไก่กรอบเทอริยากิ"
             />
           </label>
+
+          {/* ✅ P1b: หมวดหมู่ / ราคา / คำอธิบาย / ลำดับ */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="text-admin-text">หมวดหมู่</span>
+              <select
+                value={menuCategoryId}
+                onChange={(e) => setMenuCategoryId(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-brand-border bg-white p-2 text-base text-front-text outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
+              >
+                <option value="">ไม่มีหมวดหมู่</option>
+                {categories.map((c) => (
+                  <option key={String(c._id)} value={String(c._id)}>
+                    {c.name}
+                    {c.isActive === false ? " (ปิดใช้งาน)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-admin-text">ราคา (บาท)</span>
+              <TextInput
+                type="number"
+                min="0"
+                step="1"
+                value={menuPrice}
+                onChange={(e) => setMenuPrice(e.target.value)}
+                placeholder="เว้นว่างได้ถ้าเป็นร้าน set menu"
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm">
+            <span className="text-admin-text">คำอธิบาย (ไม่บังคับ)</span>
+            <TextInput
+              value={menuDescription}
+              onChange={(e) => setMenuDescription(e.target.value)}
+              maxLength={300}
+              placeholder="รายละเอียดสั้น ๆ ที่ผู้เรียนจะเห็นตอนสั่ง"
+            />
+            <span className="mt-1 block text-[11px] text-admin-textMuted">
+              {menuDescription.length}/300
+            </span>
+          </label>
+
+          <label className="block text-sm sm:w-40">
+            <span className="text-admin-text">ลำดับ</span>
+            <TextInput
+              type="number"
+              step="1"
+              value={menuSortOrder}
+              onChange={(e) => setMenuSortOrder(e.target.value)}
+              placeholder="0"
+            />
+          </label>
+
+          <OptionGroupsEditor
+            value={menuOptionGroups}
+            onChange={setMenuOptionGroups}
+          />
 
           <label className="block text-sm">
             <span className="text-admin-text">รูปเมนู (URL รูป)</span>

@@ -348,6 +348,22 @@ export default function VendorsPage() {
                   {r.name}
                 </div>
               </button>
+
+              {/* ✅ P1b: สถานะการใช้งานคูปอง */}
+              {(r.couponEnabled || r.usesCouponStock) && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {r.couponEnabled && (
+                    <span className="inline-flex items-center rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-semibold text-brand-primary">
+                      คูปอง
+                    </span>
+                  )}
+                  {r.usesCouponStock && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      stock
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
