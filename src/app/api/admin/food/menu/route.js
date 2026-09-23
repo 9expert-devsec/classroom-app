@@ -13,7 +13,7 @@ import {
   normalizeOptionGroups,
   normalizePrice,
   normalizeSortOrder,
-  resolveCategoryId,
+  resolveCategoryIds,
 } from "@/lib/foodMenuOptions.server";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ export async function GET(req) {
 }
 
 // POST body: { restaurantId, name, imageUrl, addonIds, drinkIds,
-//              categoryId, sortOrder, price, description, optionGroups }
+//              categoryIds, sortOrder, price, description, optionGroups }
 export async function POST(req) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -100,9 +100,12 @@ export async function POST(req) {
     };
 
     // ✅ lunch pre-order (P1b) — ฟิลด์ที่ไม่ได้ส่งมา ปล่อยให้ใช้ default ของ schema
-    if (body?.categoryId !== undefined) {
-      doc.categoryId = await resolveCategoryId(
-        body.categoryId,
+    // categoryIds คือของจริง; categoryId เดี่ยวรับไว้เพื่อ client เก่าเท่านั้น
+    const rawCategories =
+      body?.categoryIds !== undefined ? body.categoryIds : body?.categoryId;
+    if (rawCategories !== undefined) {
+      doc.categoryIds = await resolveCategoryIds(
+        rawCategories,
         restaurantId,
         FoodMenuCategory,
       );
@@ -128,7 +131,7 @@ export async function POST(req) {
       after: {
         name: item.name,
         price: item.price,
-        categoryId: String(item.categoryId || ""),
+        categoryIds: (item.categoryIds || []).map(String),
         sortOrder: item.sortOrder,
         optionGroups: (item.optionGroups || []).length,
       },

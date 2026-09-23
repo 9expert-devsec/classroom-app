@@ -94,7 +94,8 @@ export async function DELETE(req, { params }) {
     if (!before) return jsonError("ไม่พบหมวดหมู่", 404);
 
     // ห้ามลบถ้ายังมีเมนูผูกอยู่ ให้ย้ายเมนูออกก่อน
-    const used = await FoodMenu.countDocuments({ categoryId: id });
+    // เมนูอยู่ได้หลายหมวด จึงต้องนับจาก categoryIds ที่ "มี" id นี้อยู่
+    const used = await FoodMenu.countDocuments({ categoryIds: id });
     if (used > 0) {
       return jsonError(
         `ยังมีเมนูใช้หมวดหมู่นี้อยู่ ${used} รายการ กรุณาย้ายเมนูไปหมวดหมู่อื่นก่อนลบ`,

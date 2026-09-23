@@ -129,7 +129,7 @@ export default function RestaurantDetailPage({ params }) {
   const [qMenuDrink, setQMenuDrink] = useState("");
 
   // ✅ menu form: ฟิลด์ใหม่สำหรับร้านคูปอง (P1b)
-  const [menuCategoryId, setMenuCategoryId] = useState("");
+  const [menuCategoryIds, setMenuCategoryIds] = useState([]);
   const [menuPrice, setMenuPrice] = useState("");
   const [menuDescription, setMenuDescription] = useState("");
   const [menuSortOrder, setMenuSortOrder] = useState("0");
@@ -352,13 +352,22 @@ export default function RestaurantDetailPage({ params }) {
     );
   }, [menus, q]);
 
+  const categoryNameById = useMemo(
+    () => new Map(categories.map((c) => [String(c._id), c.name])),
+    [categories],
+  );
+
   // ✅ P1b: จัดกลุ่มเมนูตามหมวดหมู่ (ตามลำดับหมวด, ไม่มีหมวดหมู่ไว้ท้ายสุด)
   const groupedMenus = useMemo(() => {
+    // ✅ P1b-2: 1 เมนูโผล่ได้หลายหมวด จึง push เข้าไปทุกหมวดที่มันสังกัด
     const byCat = new Map();
     for (const m of filteredMenus) {
-      const key = toIdString(m.categoryId) || "";
-      if (!byCat.has(key)) byCat.set(key, []);
-      byCat.get(key).push(m);
+      const keys = uniq((m.categoryIds || []).map(toIdString));
+      if (keys.length === 0) keys.push("");
+      for (const key of keys) {
+        if (!byCat.has(key)) byCat.set(key, []);
+        byCat.get(key).push(m);
+      }
     }
 
     const sortMenus = (list) =>
@@ -455,7 +464,7 @@ export default function RestaurantDetailPage({ params }) {
     setQMenuDrink("");
 
     // ✅ P1b
-    setMenuCategoryId("");
+    setMenuCategoryIds([]);
     setMenuPrice("");
     setMenuDescription("");
     setMenuSortOrder("0");
@@ -476,7 +485,7 @@ export default function RestaurantDetailPage({ params }) {
     setQMenuDrink("");
 
     // ✅ P1b
-    setMenuCategoryId(toIdString(m.categoryId) || "");
+    setMenuCategoryIds(uniq((m.categoryIds || []).map(toIdString)));
     setMenuPrice(
       m.price === null || m.price === undefined ? "" : String(m.price),
     );
@@ -536,7 +545,7 @@ export default function RestaurantDetailPage({ params }) {
         drinkIds: cleanDrinkIds,
 
         // ✅ P1b
-        categoryId: menuCategoryId || null,
+        categoryIds: menuCategoryIds,
         price: priceRaw === "" ? null : Number(priceRaw),
         description: menuDescription.trim(),
         sortOrder: Number(menuSortOrder) || 0,
@@ -1039,6 +1048,14 @@ export default function RestaurantDetailPage({ params }) {
                   const hasPrice = m.price !== null && m.price !== undefined;
                   const needsPrice = !!restaurant?.couponEnabled && !hasPrice;
 
+                  // ✅ P1b-2: เมนูนี้อยู่หมวดอื่นอีกไหม (อธิบายว่าทำไมโผล่ซ้ำ)
+                  const otherCategoryNames = uniq(
+                    (m.categoryIds || []).map(toIdString),
+                  )
+                    .filter((cid) => cid !== g.id)
+                    .map((cid) => categoryNameById.get(cid))
+                    .filter(Boolean);
+
                   return (
                     <div
                       key={m._id}
@@ -1074,6 +1091,22 @@ export default function RestaurantDetailPage({ params }) {
                             </span>
                           )}
                         </div>
+
+                        {otherCategoryNames.length > 0 && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] text-admin-textMuted">
+                              อยู่ในหมวดอื่นด้วย:
+                            </span>
+                            {otherCategoryNames.map((n) => (
+                              <span
+                                key={n}
+                                className="inline-flex items-center rounded-full bg-brand-primary/10 px-2 py-0.5 text-[10px] font-medium text-brand-primary"
+                              >
+                                {n}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         <div className="mt-1 text-[11px] text-admin-textMuted">
                           Add-on: {(m.addonIds || []).length || 0} • Drinks:{" "}
@@ -1322,25 +1355,63 @@ export default function RestaurantDetailPage({ params }) {
             />
           </label>
 
-          {/* ✅ P1b: หมวดหมู่ / ราคา / คำอธิบาย / ลำดับ */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-admin-text">หมวดหมู่</span>
-              <select
-                value={menuCategoryId}
-                onChange={(e) => setMenuCategoryId(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-brand-border bg-white p-2 text-base text-front-text outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20"
-              >
-                <option value="">ไม่มีหมวดหมู่</option>
-                {categories.map((c) => (
-                  <option key={String(c._id)} value={String(c._id)}>
-                    {c.name}
-                    {c.isActive === false ? " (ปิดใช้งาน)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* ✅ P1b-2: หมวดหมู่เลือกได้หลายหมวด */}
+          <div className="text-sm">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-admin-text">
+                หมวดหมู่ (เลือกได้หลายหมวด)
+              </span>
+              {menuCategoryIds.length > 0 && (
+                <button
+                  type="button"
+                  className="text-[11px] text-admin-textMuted underline"
+                  onClick={() => setMenuCategoryIds([])}
+                >
+                  ล้างที่เลือก
+                </button>
+              )}
+            </div>
 
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-admin-border bg-white p-2 space-y-1">
+              {categories.map((c) => {
+                const id = String(c._id);
+                const off = c.isActive === false;
+                return (
+                  <label
+                    key={id}
+                    className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-admin-surfaceMuted/70"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5"
+                      checked={menuCategoryIds.includes(id)}
+                      onChange={() =>
+                        setMenuCategoryIds((prev) => toggleId(prev, id))
+                      }
+                    />
+                    <span className={off ? "text-admin-textMuted" : ""}>
+                      {c.name}
+                      {off ? " (ปิดใช้งาน)" : ""}
+                    </span>
+                  </label>
+                );
+              })}
+
+              {categories.length === 0 && (
+                <p className="text-[11px] text-admin-textMuted">
+                  ยังไม่มีหมวดหมู่ในร้านนี้
+                </p>
+              )}
+            </div>
+
+            <span className="mt-1 block text-[11px] text-admin-textMuted">
+              {menuCategoryIds.length === 0
+                ? "ไม่ได้เลือก = ไม่มีหมวดหมู่"
+                : `เลือกแล้ว ${menuCategoryIds.length} หมวด — เมนูจะแสดงในทุกหมวดที่เลือก`}
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="text-admin-text">ราคา (บาท)</span>
               <TextInput
@@ -1351,6 +1422,20 @@ export default function RestaurantDetailPage({ params }) {
                 onChange={(e) => setMenuPrice(e.target.value)}
                 placeholder="เว้นว่างได้ถ้าเป็นร้าน set menu"
               />
+            </label>
+
+            <label className="block text-sm">
+              <span className="text-admin-text">ลำดับ</span>
+              <TextInput
+                type="number"
+                step="1"
+                value={menuSortOrder}
+                onChange={(e) => setMenuSortOrder(e.target.value)}
+                placeholder="0"
+              />
+              <span className="mt-1 block text-[11px] text-admin-textMuted">
+                ใช้ลำดับเดียวกันในทุกหมวดที่เมนูนี้อยู่
+              </span>
             </label>
           </div>
 
@@ -1365,17 +1450,6 @@ export default function RestaurantDetailPage({ params }) {
             <span className="mt-1 block text-[11px] text-admin-textMuted">
               {menuDescription.length}/300
             </span>
-          </label>
-
-          <label className="block text-sm sm:w-40">
-            <span className="text-admin-text">ลำดับ</span>
-            <TextInput
-              type="number"
-              step="1"
-              value={menuSortOrder}
-              onChange={(e) => setMenuSortOrder(e.target.value)}
-              placeholder="0"
-            />
           </label>
 
           <OptionGroupsEditor

@@ -109,20 +109,40 @@ export function normalizeOptionGroups(raw) {
   });
 }
 
-// categoryId ต้องเป็นหมวดของร้านเดียวกัน (หรือ null = ไม่มีหมวดหมู่)
-export async function resolveCategoryId(raw, restaurantId, FoodMenuCategory) {
-  if (raw === null || raw === "" || raw === undefined) return null;
+// 1 เมนูอยู่ได้หลายหมวด แต่ต้องเป็นหมวดของร้านเดียวกันทั้งหมด
+// null / "" / [] / ไม่ส่งมา = ไม่มีหมวดหมู่
+export async function resolveCategoryIds(raw, restaurantId, FoodMenuCategory) {
+  if (raw === null || raw === "" || raw === undefined) return [];
 
-  const id = clean(raw);
-  if (!isObjectId(id)) {
-    throw new FoodMenuFieldError("หมวดหมู่ไม่ถูกต้อง");
+  // เผื่อ client เก่าที่ส่ง categoryId เดี่ยวมา
+  const list = Array.isArray(raw) ? raw : [raw];
+
+  const ids = [];
+  for (const one of list) {
+    const id = clean(one);
+    if (!id) continue;
+    if (!isObjectId(id)) {
+      throw new FoodMenuFieldError("หมวดหมู่ไม่ถูกต้อง");
+    }
+    if (!ids.includes(id)) ids.push(id);
+  }
+  if (ids.length === 0) return [];
+
+  const cats = await FoodMenuCategory.find({ _id: { $in: ids } })
+    .select("restaurant name")
+    .lean();
+
+  const byId = new Map(cats.map((c) => [String(c._id), c]));
+
+  for (const id of ids) {
+    const cat = byId.get(id);
+    if (!cat) throw new FoodMenuFieldError("ไม่พบหมวดหมู่ที่เลือก");
+    if (String(cat.restaurant) !== String(restaurantId)) {
+      throw new FoodMenuFieldError(
+        `หมวดหมู่ "${cat.name}" ไม่ได้อยู่ในร้านนี้`,
+      );
+    }
   }
 
-  const cat = await FoodMenuCategory.findById(id).select("restaurant").lean();
-  if (!cat) throw new FoodMenuFieldError("ไม่พบหมวดหมู่ที่เลือก");
-
-  if (String(cat.restaurant) !== String(restaurantId)) {
-    throw new FoodMenuFieldError("หมวดหมู่ไม่ได้อยู่ในร้านนี้");
-  }
-  return id;
+  return ids;
 }

@@ -41,11 +41,12 @@ const FoodMenuSchema = new Schema(
 
     isActive: { type: Boolean, default: true, index: true },
 
-    // ✅ lunch pre-order (P1a)
-    categoryId: {
-      type: Schema.Types.ObjectId,
-      ref: "FoodMenuCategory",
-      default: null,
+    // ✅ lunch pre-order (P1a, ปรับใน P1b-2)
+    // 1 เมนูอยู่ได้หลายหมวดของร้านเดียวกัน (เช่น Espresso อยู่ทั้ง "Hot Coffee" และ "แนะนำ")
+    // ลำดับใช้ sortOrder ตัวเดียวร่วมกันทุกหมวด
+    categoryIds: {
+      type: [{ type: Schema.Types.ObjectId, ref: "FoodMenuCategory" }],
+      default: [],
       index: true,
     },
     sortOrder: { type: Number, default: 0 },

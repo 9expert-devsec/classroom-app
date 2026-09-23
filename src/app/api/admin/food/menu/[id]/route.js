@@ -13,7 +13,7 @@ import {
   normalizeOptionGroups,
   normalizePrice,
   normalizeSortOrder,
-  resolveCategoryId,
+  resolveCategoryIds,
 } from "@/lib/foodMenuOptions.server";
 
 export const dynamic = "force-dynamic";
@@ -85,9 +85,12 @@ export async function PUT(req, { params }) {
     // ฟิลด์ที่ไม่ได้ส่งมาใน body จะไม่ถูกแตะ (ของเดิมคงอยู่)
     const ownerRestaurantId = restaurantId || String(before.restaurant || "");
 
-    if (body?.categoryId !== undefined) {
-      update.categoryId = await resolveCategoryId(
-        body.categoryId,
+    // categoryIds คือของจริง; categoryId เดี่ยวรับไว้เพื่อ client เก่าเท่านั้น
+    const rawCategories =
+      body?.categoryIds !== undefined ? body.categoryIds : body?.categoryId;
+    if (rawCategories !== undefined) {
+      update.categoryIds = await resolveCategoryIds(
+        rawCategories,
         ownerRestaurantId,
         FoodMenuCategory,
       );
@@ -119,14 +122,14 @@ export async function PUT(req, { params }) {
       before: {
         name: before.name,
         price: before.price ?? null,
-        categoryId: String(before.categoryId || ""),
+        categoryIds: (before.categoryIds || []).map(String),
         sortOrder: before.sortOrder ?? 0,
         optionGroups: (before.optionGroups || []).length,
       },
       after: {
         name: item.name,
         price: item.price ?? null,
-        categoryId: String(item.categoryId || ""),
+        categoryIds: (item.categoryIds || []).map(String),
         sortOrder: item.sortOrder ?? 0,
         optionGroups: (item.optionGroups || []).length,
       },
