@@ -858,10 +858,12 @@ export default function RestaurantDetailPage({ params }) {
 
   /* ---------------- render ---------------- */
   return (
-    // ✅ P1b: เปลี่ยนเป็น min-h เพื่อให้หน้ายาวขึ้นได้เมื่อมีการ์ดคูปอง/หมวดหมู่เพิ่มเข้ามา
-    <div className="flex min-h-[calc(100svh-64px)] flex-col gap-6">
+    // ✅ P1b-fix: layout แม่ (<main>) เป็น overflow-hidden และส่ง slot ที่สูงคงที่มาให้
+    // (flex-1 min-h-0) หน้านี้จึงต้องสูงเท่า slot แล้วเลื่อนในตัวเอง
+    // ถ้าใช้ min-h เนื้อหาส่วนล่างจะถูก clip จนกดไม่ถึง
+    <div className="flex h-full flex-col gap-6 overflow-y-auto overscroll-contain pr-1">
       {/* Top bar */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex shrink-0 items-start justify-between gap-3">
         <div>
           <button
             type="button"
@@ -895,7 +897,7 @@ export default function RestaurantDetailPage({ params }) {
       </div>
 
       {/* ✅ P1b: การใช้งานคูปอง + หมวดหมู่เมนู */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid shrink-0 auto-rows-[minmax(0,22rem)] gap-6 lg:grid-cols-2">
         <CouponSettingsCard
           restaurant={restaurant}
           onSaved={(item) => setRestaurant(item)}
@@ -909,7 +911,9 @@ export default function RestaurantDetailPage({ params }) {
       </div>
 
       {/* TOP: Set + Menu */}
-      <div className="grid flex-1 min-h-0 gap-6 lg:grid-cols-2 lg:grid-rows-2">
+      {/* ✅ P1b-fix: หน้าเลื่อนเองแล้ว แถวจึงต้องมีความสูงชัดเจน (ไม่ใช่ flex-1)
+          เพื่อให้ list ในแต่ละ panel ยังเลื่อนของตัวเองได้เหมือนเดิม */}
+      <div className="grid shrink-0 auto-rows-[minmax(0,28rem)] gap-6 lg:grid-cols-2">
         {/* LEFT: MENU SET */}
         <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
           <div className="mb-3 flex items-center justify-between">

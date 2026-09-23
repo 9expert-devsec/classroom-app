@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
@@ -59,6 +59,17 @@ function StatusBadge({ active = true }) {
 
 export default function VendorsPage() {
   const router = useRouter();
+
+  // adminKey มาจาก route ([adminKey]) — เดิมการ์ดใบนี้มีลิงก์ 2 แบบที่ไม่ตรงกัน
+  // (อันหนึ่งไม่มี adminKey เลย อีกอันฮาร์ดโค้ดไว้) ทำให้กดแล้วหลุด 404
+  const params = useParams();
+  const adminKey = String(params?.adminKey || "");
+
+  function goToDetail(id) {
+    router.push(
+      `/${adminKey}/admin/classroom/food/restaurants/${String(id)}`,
+    );
+  }
 
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -215,7 +226,9 @@ export default function VendorsPage() {
   }, [restaurants, q]);
 
   return (
-    <div className="space-y-6">
+    // ✅ P1b-fix: <main> ของ layout เป็น overflow-hidden หน้านี้จึงต้องเลื่อนเอง
+    // ไม่งั้นการ์ดแถวล่าง ๆ จะถูก clip เมื่อมีร้านเยอะ
+    <div className="h-full space-y-6 overflow-y-auto overscroll-contain pr-1">
       {/* Header */}
       <div className="flex items-end justify-between gap-3">
         <div>
@@ -257,21 +270,20 @@ export default function VendorsPage() {
           return (
             <div
               key={r._id}
-              className="group rounded-2xl bg-admin-surface p-3 shadow-slate-950/20 transition hover:-translate-y-0.5 hover:shadow-lg"
+              role="link"
+              tabIndex={0}
+              aria-label={`เปิดร้าน ${r.name}`}
+              onClick={() => goToDetail(r._id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToDetail(r._id);
+                }
+              }}
+              className="group cursor-pointer rounded-2xl bg-admin-surface p-3 shadow-slate-950/20 transition hover:-translate-y-0.5 hover:bg-admin-surfaceMuted/40 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70"
             >
-              {/* IMAGE (clickable) */}
+              {/* IMAGE */}
               <div className="relative mb-3 aspect-[4/3] w-full overflow-hidden rounded-2xl bg-admin-surfaceMuted">
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      `/admin/classroom/food/restaurants/${String(r._id)}`
-                    )
-                  }
-                  className="absolute inset-0 z-0"
-                  aria-label={`open ${r.name}`}
-                />
-
                 {r.logoUrl ? (
                   <Image
                     src={r.logoUrl}
@@ -295,7 +307,9 @@ export default function VendorsPage() {
                     <DropdownMenuTrigger asChild>
                       <button
                         type="button"
+                        // กันไม่ให้คลิก/กดปุ่มบนเคบับไปเปิดหน้ารายละเอียดของการ์ด
                         onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-full
                        bg-white/85 text-admin-text shadow-md ring-1 ring-black/10
                        backdrop-blur hover:bg-white"
@@ -310,9 +324,11 @@ export default function VendorsPage() {
                       sideOffset={8}
                       className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                       onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     >
                       <DropdownMenuItem
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setOpenMenuId(null);
                           openEdit(r);
                         }}
@@ -322,7 +338,8 @@ export default function VendorsPage() {
 
                       <DropdownMenuItem
                         className="text-red-600 focus:text-red-600"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setOpenMenuId(null);
                           handleDelete(r._id);
                         }}
@@ -334,20 +351,10 @@ export default function VendorsPage() {
                 </div>
               </div>
 
-              {/* NAME (clickable) */}
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    `/a1exqwvCqTXP7s0/admin/classroom/food/restaurants/${String(r._id)}`
-                  )
-                }
-                className="w-full text-left"
-              >
-                <div className="truncate text-sm font-semibold text-admin-text">
-                  {r.name}
-                </div>
-              </button>
+              {/* NAME (ทั้งการ์ดคลิกได้แล้ว ไม่ต้องมีปุ่มซ้อน) */}
+              <div className="truncate text-sm font-semibold text-admin-text">
+                {r.name}
+              </div>
 
               {/* ✅ P1b: สถานะการใช้งานคูปอง */}
               {(r.couponEnabled || r.usesCouponStock) && (
