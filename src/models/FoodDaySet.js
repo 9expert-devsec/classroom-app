@@ -14,6 +14,16 @@ const FoodDayEntrySchema = new mongoose.Schema(
       ref: "FoodSet",
       default: null,
     },
+    // ✅ โหมดของร้านนี้ "ในวันนั้น" — 1 ร้าน 1 โหมดต่อวัน
+    //    set    = flow set-menu เดิม
+    //    coupon = ร้านคูปอง (pre-order)
+    //    closed = ปิดรับวันนั้น
+    mode: { type: String, enum: ["set", "coupon", "closed"], default: "set" },
+    // ✅ เมนูที่ร้านแจ้งว่าหมดเฉพาะวันนั้น
+    soldOutMenuIds: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "FoodMenu" }],
+      default: [],
+    },
   },
   { _id: false }
 );
@@ -25,7 +35,7 @@ const FoodDaySetSchema = new mongoose.Schema(
       required: true,
       unique: true, // 1 วันมี 1 config
     },
-    entries: [FoodDayEntrySchema], // [{ restaurant, set }]
+    entries: [FoodDayEntrySchema], // [{ restaurant, set, mode, soldOutMenuIds }]
   },
   { timestamps: true }
 );
