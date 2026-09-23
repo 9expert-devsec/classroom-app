@@ -5,6 +5,7 @@ import {
   FileSignature,
   CalendarPlus,
   UserCog,
+  GraduationCap,
   ArrowRight,
 } from "lucide-react";
 
@@ -84,6 +85,13 @@ export default function ClassroomHomePage() {
           title="แก้ไขข้อมูลลงทะเบียนเข้าเรียน"
           desc="ค้นหาผู้ที่เช็กอินแล้ว → แก้ไขข้อมูล (เช่น อาหาร) → ยืนยัน"
           Icon={UserCog}
+        />
+
+        <CardLink
+          href="/classroom/masterclass"
+          title="ลงทะเบียนเข้าเรียน Masterclass"
+          desc="เลือกคอร์ส Masterclass → ค้นหาชื่อ → เซ็นลายเซ็น"
+          Icon={GraduationCap}
         />
       </div>
 

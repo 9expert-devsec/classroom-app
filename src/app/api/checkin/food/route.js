@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Student from "@/models/Student";
+import Class from "@/models/Class";
 import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
@@ -53,6 +54,34 @@ function normalizeChoiceType({
 
   if (!clean(restaurantId) && !clean(menuId)) return "noFood";
   return "food";
+}
+
+function isObjectId(x) {
+  return /^[0-9a-fA-F]{24}$/.test(clean(x));
+}
+
+// ✅ บาง class ปิดตัวเลือก Cash Coupon ไว้ (best-effort: ถ้าเช็คไม่ได้ = ไม่ปิด)
+async function isCouponDisabledForClass(classId) {
+  try {
+    if (!isObjectId(classId)) return false;
+    const cls = await Class.findById(classId).select("disableCoupon").lean();
+    return !!cls?.disableCoupon;
+  } catch (e) {
+    console.warn("[food] check disableCoupon failed:", e?.message || e);
+    return false;
+  }
+}
+
+// ✅ Masterclass ไม่มีขั้นตอนอาหาร (best-effort: ถ้าเช็คไม่ได้ = ถือว่าเป็นคลาสปกติ)
+async function isMasterclassClass(classId) {
+  try {
+    if (!isObjectId(classId)) return false;
+    const cls = await Class.findById(classId).select("classKind").lean();
+    return cls?.classKind === "masterclass";
+  } catch (e) {
+    console.warn("[food] check classKind failed:", e?.message || e);
+    return false;
+  }
 }
 
 function normalizeFoodSnapshot(food) {
@@ -238,6 +267,15 @@ export async function POST(req) {
     ? Number(day)
     : student.food?.day;
 
+  // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
+  // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
+  if (await isMasterclassClass(safeClassId)) {
+    return NextResponse.json(
+      { ok: false, error: "food_not_available_for_masterclass" },
+      { status: 400 },
+    );
+  }
+
   const finalChoiceType = normalizeChoiceType({
     choiceType,
     noFood,
@@ -245,6 +283,17 @@ export async function POST(req) {
     restaurantId,
     menuId,
   });
+
+  // ✅ กันฝั่ง server: class ที่ปิด Cash Coupon ห้ามบันทึก choiceType = "coupon"
+  if (finalChoiceType === "coupon") {
+    const couponDisabled = await isCouponDisabledForClass(safeClassId);
+    if (couponDisabled) {
+      return NextResponse.json(
+        { ok: false, error: "coupon_disabled_for_class" },
+        { status: 400 },
+      );
+    }
+  }
 
   const safeNote = clean(note);
 

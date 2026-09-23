@@ -27,12 +27,9 @@ export async function POST(req) {
     );
   }
 
-  const created = [];
-
-  for (const s of students) {
+  const docs = students.map((s) => {
     const docReceiveType = s.documentReceiveType || "ems";
-
-    const newStudent = await Student.create({
+    return {
       classId,
       thaiName: s.thaiName || "",
       engName: s.engName || "",
@@ -56,10 +53,12 @@ export async function POST(req) {
         classId: String(classId),
         day: null,
       },
-    });
+    };
+  });
 
-    created.push(newStudent);
-  }
+  // insertMany writes documents in array order so createdAt is sequential,
+  // preserving the CSV row order when the admin UI sorts by createdAt.
+  const created = await Student.insertMany(docs);
 
   return NextResponse.json({
     ok: true,

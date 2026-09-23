@@ -1094,11 +1094,17 @@ export default function StudentsTable({
   const mergedStudents = useMemo(() => {
     const list = Array.isArray(students) ? students : [];
     if (!list.length) return [];
-    return list.map((s) => {
-      const id = getStudentId(s);
-      const ov = id ? overridesById[id] : null;
-      return ov ? { ...s, ...ov } : s;
-    });
+    return list
+      .map((s) => {
+        const id = getStudentId(s);
+        const ov = id ? overridesById[id] : null;
+        return ov ? { ...s, ...ov } : s;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a?.createdAt || 0).getTime() -
+          new Date(b?.createdAt || 0).getTime(),
+      );
   }, [students, overridesById]);
 
   /* ================= Filters ================= */

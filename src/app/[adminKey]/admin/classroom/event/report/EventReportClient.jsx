@@ -275,17 +275,17 @@ export default function EventReportClient() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <div className=" flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-extrabold">Event Report</div>
-          <div className="mt-1 text-sm text-zinc-600">
+          <div className="text-xl font-extrabold">Event Report</div>
+          <div className="text-sm text-zinc-600">
             Dashboard / Export / Print
           </div>
         </div>
 
         <button
-          className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
+          className="h-10 rounded-xl border px-4 text-sm font-normal hover:bg-zinc-50"
           onClick={loadReport}
           disabled={!canLoad || loading}
         >
@@ -299,7 +299,7 @@ export default function EventReportClient() {
         </div>
       )}
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="text-sm sm:col-span-2">
             <div className="mb-1 font-medium text-zinc-700">เลือก Event</div>
@@ -332,7 +332,7 @@ export default function EventReportClient() {
                 "h-11 flex-1 rounded-xl px-4 text-sm font-semibold",
                 !report
                   ? "bg-zinc-200 text-zinc-500"
-                  : "bg-emerald-600 text-white",
+                  : "bg-[#66ccff] text-[#0A1F33]",
               )}
               disabled={!report}
               onClick={printReport}
@@ -342,28 +342,30 @@ export default function EventReportClient() {
           </div>
         </div>
 
-        {!!event && (
-          <div className="mt-4 rounded-xl bg-zinc-50 p-4 text-sm">
-            <div className="font-semibold">{event.title}</div>
-            <div className="mt-1 text-zinc-700">
-              สถานที่: {event.location || "-"}
+        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+          {!!event && (
+            <div className="rounded-xl bg-zinc-50 p-4 text-sm xl:col-span-4">
+              <div className="font-semibold">{event.title}</div>
+              <div className="mt-1 text-zinc-700">
+                สถานที่: {event.location || "-"}
+              </div>
+              <div className="text-zinc-700">
+                เวลา: {formatDTTH(event.startAt)}
+              </div>
             </div>
-            <div className="text-zinc-700">
-              เวลา: {formatDTTH(event.startAt)}
-            </div>
-          </div>
-        )}
+          )}
 
-        {!!report?.totals && (
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <Stat label="ผู้ลงทะเบียนทั้งหมด" value={report.totals.total} />
-            <Stat label="เช็คอินแล้ว" value={report.totals.checkedIn} />
-            <Stat label="ยังไม่เช็คอิน" value={report.totals.notCheckedIn} />
-          </div>
-        )}
+          {!!report?.totals && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 xl:col-span-8">
+              <Stat label="ผู้ลงทะเบียนทั้งหมด" value={report.totals.total} />
+              <Stat label="เช็คอินแล้ว" value={report.totals.checkedIn} />
+              <Stat label="ยังไม่เช็คอิน" value={report.totals.notCheckedIn} />
+            </div>
+          )}
+        </div>
 
         {!!report?.breakdowns && (
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <BreakCard
               title="ช่องที่ทราบข่าวกิจกรรม"
               items={report.breakdowns.sourceChannel}
@@ -378,9 +380,9 @@ export default function EventReportClient() {
         )}
 
         {!!items.length && (
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-2 min-h-0 flex-1 overflow-auto">
             <table className="min-w-[980px] w-full text-sm">
-              <thead className="bg-zinc-50">
+              <thead className="sticky top-0 z-10 bg-zinc-50">
                 <tr className="text-left">
                   <th className="px-4 py-3">#</th>
                   <th className="px-4 py-3">ชื่อ</th>
@@ -441,36 +443,34 @@ function Stat({ label, value }) {
 
 function BreakCard({ title, items }) {
   const rows = Array.isArray(items) ? items : [];
+
   return (
-    <div className="rounded-2xl border bg-white p-4">
-      <div className="text-sm font-extrabold">{title}</div>
+    <div className="flex h-[180px] min-h-0 flex-col rounded-2xl border bg-white p-4">
+      <div className="shrink-0 text-sm font-extrabold">{title}</div>
+
       <div className="mt-3 overflow-hidden rounded-xl border">
-        <table className="w-full text-sm">
-          <thead className="bg-zinc-50">
-            <tr>
-              <th className="px-3 py-2 text-left">รายการ</th>
-              <th className="px-3 py-2 text-right">จำนวน</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length ? (
-              rows.map((r) => (
-                <tr key={r.label} className="border-t">
-                  <td className="px-3 py-2">{r.label}</td>
-                  <td className="px-3 py-2 text-right font-semibold">
-                    {r.count}
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="px-3 py-4 text-center text-zinc-500" colSpan={2}>
-                  -
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-[1fr_auto] bg-zinc-50 text-sm font-semibold">
+          <div className="px-3 py-2 text-left">รายการ</div>
+          <div className="px-3 py-2 text-right">จำนวน</div>
+        </div>
+
+        <div className="max-h-[80px] overflow-y-auto">
+          {rows.length ? (
+            rows.map((r) => (
+              <div
+                key={r.label}
+                className="grid grid-cols-[1fr_auto] border-t text-sm"
+              >
+                <div className="truncate px-3 py-2">{r.label}</div>
+                <div className="px-3 py-2 text-right font-semibold">
+                  {r.count}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-4 text-center text-zinc-500">-</div>
+          )}
+        </div>
       </div>
     </div>
   );

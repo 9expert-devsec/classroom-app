@@ -164,6 +164,7 @@ export async function GET(req, { params }) {
           "isLate",
         ].join(" "),
       )
+      .sort({ createdAt: 1 })
       .lean();
 
     const checkins = await Checkin.find({ classId: id })
@@ -445,6 +446,20 @@ export async function PATCH(req, { params }) {
       update.instructors = body.trainerName
         ? [{ name: body.trainerName, email: "" }]
         : [];
+    }
+
+    if (body.classImageUrl !== undefined) {
+      update.classImageUrl = String(body.classImageUrl || "").trim();
+    }
+
+    if (body.disableCoupon !== undefined) {
+      update.disableCoupon = !!body.disableCoupon;
+    }
+
+    // ✅ แก้คอร์ส Masterclass ของ class ที่สร้างไปแล้วได้
+    // (แต่ classKind ห้ามเปลี่ยนผ่าน PATCH — สลับไปมาแล้วข้อมูลเช็คอินจะค้าง)
+    if (body.masterclassCourseId !== undefined) {
+      update.masterclassCourseId = body.masterclassCourseId || null;
     }
 
     let days = null;

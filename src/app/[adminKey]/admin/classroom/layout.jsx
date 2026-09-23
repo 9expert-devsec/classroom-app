@@ -17,6 +17,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Ticket,
+  PenLine,
+  KeyRound,
+  GraduationCap,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -57,10 +60,28 @@ const NAV = [
         perm: PERM.CLASSES_WRITE,
       },
       {
+        label: "New Course (Masterclass)",
+        href: "/classroom/masterclass/courses",
+        icon: GraduationCap,
+        perm: PERM.CLASSES_WRITE,
+      },
+      {
+        label: "New Class (Masterclass)",
+        href: "/classroom/masterclass/classes/new",
+        icon: PlusCircle,
+        perm: PERM.CLASSES_WRITE,
+      },
+      {
         label: "Import CSV Students",
         href: "/classroom/import",
         icon: Upload,
         perm: PERM.CLASSES_IMPORT,
+      },
+      {
+        label: "ลายเซ็นอาจารย์",
+        href: "/classroom/instructors",
+        icon: PenLine,
+        perm: PERM.CLASSES_READ,
       },
     ],
   },
@@ -160,6 +181,13 @@ const NAV = [
         perm: PERM.ACCOUNTS_MANAGE,
       },
     ],
+  },
+
+  {
+    label: "API Keys",
+    href: "/classroom/api-keys",
+    icon: KeyRound,
+    perm: PERM.API_KEYS_MANAGE,
   },
 
   {

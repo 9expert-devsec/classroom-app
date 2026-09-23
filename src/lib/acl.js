@@ -36,6 +36,10 @@ export const PERM = {
   MY_ACCOUNT: "my.account",
 
   AUDIT_READ: "audit.read",
+
+  // External (partner) API keys. SA only - granted implicitly through
+  // ROLE_PERMS[SA] = Object.values(PERM); deliberately absent from OPS/EVT.
+  API_KEYS_MANAGE: "apikeys.manage",
 };
 
 export const ROLE_PERMS = {
@@ -58,6 +62,8 @@ export const ROLE_PERMS = {
     PERM.EVENTS_CHECKIN,
 
     PERM.EVENTS_SETTINGS_READ,
+    PERM.EVENTS_SETTINGS_WRITE,
+    PERM.EVENTS_SETTINGS_DELETE,
 
     PERM.AUDIT_READ,
     PERM.MY_ACCOUNT,

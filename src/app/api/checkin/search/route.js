@@ -4,19 +4,18 @@ import dbConnect from "@/lib/mongoose";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
+import {
+  bangkokYMD as toYMD_BKK,
+  computeDayIndexToday,
+  getDayCountFromClassDoc,
+} from "@/lib/classDates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const TZ_OFFSET = "+07:00"; // Bangkok
-
 function safeNum(x, fallback = 1) {
   const n = Number(x);
   return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function isValidDate(d) {
-  return d instanceof Date && !Number.isNaN(d.getTime());
 }
 
 function clean(s) {
@@ -25,74 +24,6 @@ function clean(s) {
 
 function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// YYYY-MM-DD ตามเวลาไทย
-function toYMD_BKK(dateInput) {
-  const d = new Date(dateInput);
-  if (!isValidDate(d)) return "";
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return fmt.format(d);
-}
-
-// base YMD + addDays → YMD (BKK)
-function addDaysYMD_BKK(ymd, addDays) {
-  if (!ymd) return "";
-  const base = new Date(`${ymd}T00:00:00${TZ_OFFSET}`);
-  if (!isValidDate(base)) return "";
-  base.setDate(base.getDate() + Number(addDays || 0));
-  return toYMD_BKK(base);
-}
-
-// diff days (end - start) in Bangkok date space
-function diffDaysYMD_BKK(startYMD, endYMD) {
-  const a = new Date(`${startYMD}T00:00:00${TZ_OFFSET}`);
-  const b = new Date(`${endYMD}T00:00:00${TZ_OFFSET}`);
-  if (!isValidDate(a) || !isValidDate(b)) return 0;
-  const ms = b.getTime() - a.getTime();
-  return Math.floor(ms / 86400000);
-}
-
-function getDayCountFromClassDoc(c) {
-  return typeof c?.dayCount === "number"
-    ? c.dayCount
-    : typeof c?.duration?.dayCount === "number"
-      ? c.duration.dayCount
-      : 1;
-}
-
-// หา dayIndex ของ "วันนี้" สำหรับคลาสนั้น
-// 1) ถ้ามี days[] (YYYY-MM-DD) ใช้อันนี้แม่นสุด
-// 2) fallback ใช้ date + dayCount คำนวณช่วง
-function computeDayIndexToday(c, todayYMD) {
-  if (!c) return null;
-
-  // ✅ ถ้ามี days[] เช่น ["2026-01-26","2026-01-27",...]
-  if (Array.isArray(c.days) && c.days.length) {
-    const idx = c.days.findIndex((d) => String(d || "") === todayYMD);
-    if (idx >= 0) return idx + 1; // 1-based
-    return null;
-  }
-
-  // fallback แบบ date + dayCount
-  if (!c.date) return null;
-  const dayCount = getDayCountFromClassDoc(c);
-  const startYMD = toYMD_BKK(c.date);
-  if (!startYMD) return null;
-
-  const endYMD = addDaysYMD_BKK(startYMD, dayCount - 1);
-  if (!endYMD) return null;
-
-  // วันนี้ต้องอยู่ในช่วงวันอบรม
-  if (!(todayYMD >= startYMD && todayYMD <= endYMD)) return null;
-
-  const dayToday = diffDaysYMD_BKK(startYMD, todayYMD) + 1;
-  return Math.min(Math.max(dayToday, 1), dayCount);
 }
 
 export async function POST(req) {
@@ -157,8 +88,10 @@ export async function POST(req) {
     dayByClassId.set(String(c._id), useDay);
   } else {
     // ไม่มี classId → เอาคลาสที่วันนี้อยู่ในช่วงอบรมทั้งหมด
+    // ✅ ยกเว้น Masterclass: มีทางเข้าของตัวเองที่ /classroom/masterclass
+    //    และไม่มีขั้นตอนอาหาร ถ้าโผล่ในผลค้นหานี้ผู้เรียนจะถูกพาไปหน้าอาหาร
     const all = await Class.find(
-      {},
+      { classKind: { $ne: "masterclass" } },
       { _id: 1, date: 1, days: 1, dayCount: 1, "duration.dayCount": 1 },
     ).lean();
 

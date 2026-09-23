@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { MoreVertical } from "lucide-react";
+import Link from "next/link";
+
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 
 function formatTH(dt) {
   if (!dt) return "-";
@@ -54,23 +63,27 @@ export default function EventListClient() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="shrink-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-2xl font-extrabold">Event Management</div>
-          <div className="mt-1 text-sm text-zinc-600">รายการ Event ทั้งหมด</div>
+          <div className="text-xl font-semibold">Event Management</div>
+          <div className="text-sm text-admin-textMuted">
+            รายการ Event ทั้งหมด
+          </div>
         </div>
 
         <div className="flex gap-2">
           <button
-            className="h-10 rounded-xl bg-black px-4 text-sm font-semibold text-white"
-            onClick={() => router.push("/a1exqwvCqTXP7s0/admin/classroom/event/new")}
+            className="h-10 rounded-xl bg-brand-primary px-4 text-xs font-medium text-white shadow-sm transition hover:bg-brand-primaryDark hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/70"
+            onClick={() =>
+              router.push("/a1exqwvCqTXP7s0/admin/classroom/event/new")
+            }
           >
             + Create Event
           </button>
 
           <button
-            className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
+            className="h-10 rounded-xl border px-4 text-xs font-medium hover:bg-zinc-50"
             onClick={load}
             disabled={loading}
           >
@@ -80,30 +93,32 @@ export default function EventListClient() {
       </div>
 
       {err && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shrink-0">
           {err}
         </div>
       )}
 
-      <div className="rounded-2xl border bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-sm">
-            <thead className="bg-zinc-50">
-              <tr className="text-left">
-                <th className="px-4 py-3">Cover</th>
-                <th className="px-4 py-3">ชื่อ</th>
-                <th className="px-4 py-3">สถานที่</th>
-                <th className="px-4 py-3">เริ่ม</th>
-                <th className="px-4 py-3">Active</th>
-                <th className="px-4 py-3 text-right">Action</th>
+      <div className="flex flex-1 min-h-0 flex-col rounded-2xl bg-white p-4 shadow-card">
+        <div className="flex-1 min-h-0">
+        <div className="h-full w-full overflow-auto">
+          <table className="w-full table-fixed text-base sm:text-sm">
+            <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
+              <tr>
+                <th className="w-[150px] px-3 py-2 text-center">Cover</th>
+                <th className="px-3 py-2 text-left">ชื่อ</th>
+                <th className="w-[200px] px-3 py-2 text-center">สถานที่</th>
+                <th className="w-[180px] px-3 py-2 text-center">เริ่ม</th>
+                <th className="w-[110px] px-3 py-2 text-center">สถานะ</th>
+                <th className="w-[100px] px-3 py-2 text-right">จัดการ</th>
               </tr>
             </thead>
 
             <tbody>
               {items.map((it) => (
-                <tr key={it._id} className="border-t">
-                  <td className="px-4 py-3">
-                    <div className="relative h-12 w-20 overflow-hidden rounded-lg bg-zinc-100">
+                <tr key={it._id} className="border-t border-admin-border hover:bg-admin-surfaceMuted/60">
+                  <td className="px-3 py-2">
+                    <div className="flex justify-center">
+                    <div className="relative h-16 w-full overflow-hidden rounded-lg bg-zinc-100">
                       {it.coverImageUrl ? (
                         <Image
                           src={it.coverImageUrl}
@@ -114,13 +129,16 @@ export default function EventListClient() {
                         />
                       ) : null}
                     </div>
+                    </div>
                   </td>
 
-                  <td className="px-4 py-3 font-semibold">{it.title}</td>
-                  <td className="px-4 py-3">{it.location || "-"}</td>
-                  <td className="px-4 py-3">{formatTH(it.startAt)}</td>
+                  <td className="px-3 py-2 font-semibold">{it.title}</td>
+                  <td className="px-3 py-2">{it.location || "-"}</td>
+                  <td className="px-3 py-2 text-center">
+                    {formatTH(it.startAt)}
+                  </td>
 
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2 text-center">
                     {it.isActive ? (
                       <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
                         Active
@@ -132,8 +150,48 @@ export default function EventListClient() {
                     )}
                   </td>
 
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex gap-2">
+                  <td className="px-3 py-2 text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full
+                          border border-admin-border bg-white text-admin-text
+                          hover:bg-admin-surfaceMuted focus:outline-none"
+                          aria-label="เมนูการจัดการ"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+
+                      <DropdownMenuContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-32 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+                      >
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/a1exqwvCqTXP7s0/admin/classroom/event/${it._id}`}
+                          >
+                            เปิดดู
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/a1exqwvCqTXP7s0/admin/classroom/event/${it._id}/edit`}
+                          >
+                            แก้ไข
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onSelect={() => remove(it._id)}>
+                          ลบ
+                        </DropdownMenuItem>
+
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {/* <div className="inline-flex gap-2">
                       <button
                         className="h-9 rounded-xl border px-3 text-sm font-semibold hover:bg-zinc-50"
                         onClick={() =>
@@ -159,7 +217,7 @@ export default function EventListClient() {
                       >
                         Delete
                       </button>
-                    </div>
+                    </div> */}
                   </td>
                 </tr>
               ))}
@@ -178,6 +236,7 @@ export default function EventListClient() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
     </div>

@@ -81,6 +81,7 @@ export async function GET(req) {
     const items = await EventAttendee.find({
       eventId: event._id,
       status: { $ne: "cancelled" },
+      checkedInAt: null,
       $or: [{ fullName: rx }, { phone: rx }, { email: rx }],
     })
       .sort({ fullName: 1 })

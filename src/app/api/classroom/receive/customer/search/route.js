@@ -34,18 +34,18 @@ function normalizeDocId(x) {
   return s;
 }
 
-function bangkokNow() {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Bangkok" }),
-  );
-}
-
-function toYMD_BKK(d) {
-  const x = new Date(d.toLocaleString("en-US", { timeZone: "Asia/Bangkok" }));
-  const y = x.getFullYear();
-  const m = String(x.getMonth() + 1).padStart(2, "0");
-  const day = String(x.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+// YYYY-MM-DD ตามเวลาไทย - แปลงครั้งเดียว แล้ว format ตรง ๆ
+// (ห้าม new Date(x.toLocaleString(...)): string จะถูก parse ซ้ำด้วย timezone
+//  ของ server ทำให้ instant เลื่อนไปอีก 7 ชม. และวันที่พลิกตั้งแต่ 17:00 ICT)
+function toYMD_BKK(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function addDays(date, n) {
@@ -209,7 +209,8 @@ export async function GET(req) {
   const qLower = q.toLowerCase();
   const qDoc = normalizeDocId(q);
 
-  const today = bangkokNow();
+  // instant จริง ไม่ต้อง pre-shift: toYMD_BKK อ่านเป็นเวลาไทยให้เองแล้ว
+  const today = new Date();
   const todayYMD = toYMD_BKK(today);
 
   // ✅ ไม่ค้นหา = ไม่โชว์รายการเลย

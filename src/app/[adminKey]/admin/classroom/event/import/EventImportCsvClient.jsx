@@ -288,19 +288,19 @@ export default function EventImportCsvClient() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <div className=" flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-extrabold">
+          <div className="text-xl font-extrabold">
             Import CSV ผู้เข้าร่วม Event
           </div>
-          <div className="mt-1 text-sm text-zinc-600">
+          <div className=" text-sm text-zinc-600">
             อัปโหลด CSV → Preview/Validate → Import (กันซ้ำในไฟล์และในฐานข้อมูล)
           </div>
         </div>
 
         <button
-          className="h-10 rounded-xl border px-4 text-sm font-semibold hover:bg-zinc-50"
+          className="h-10 rounded-xl border px-4 text-sm font-normal hover:bg-zinc-50"
           onClick={downloadTemplate}
         >
           ดาวน์โหลด Template
@@ -313,7 +313,7 @@ export default function EventImportCsvClient() {
         </div>
       )}
 
-      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-white p-5 shadow-sm">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="text-sm">
             <div className="mb-1 font-medium text-zinc-700">เลือก Event</div>
@@ -362,7 +362,7 @@ export default function EventImportCsvClient() {
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <button
             className={cx(
-              "h-11 rounded-xl px-4 font-semibold",
+              "h-10 rounded-xl px-4 font-normal text-sm",
               !canValidate || loading
                 ? "bg-zinc-200 text-zinc-500"
                 : "bg-black text-white",
@@ -375,7 +375,7 @@ export default function EventImportCsvClient() {
 
           <button
             className={cx(
-              "h-11 rounded-xl px-4 font-semibold",
+              "h-10 rounded-xl px-4 font-normal text-sm",
               !validated?.items?.length || loading
                 ? "bg-zinc-200 text-zinc-500"
                 : "bg-emerald-600 text-white",
@@ -401,9 +401,9 @@ export default function EventImportCsvClient() {
 
         {/* Preview table */}
         {validated?.items?.length ? (
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-3 min-h-0 flex-1 overflow-auto">
             <table className="min-w-[1100px] w-full text-sm">
-              <thead className="bg-zinc-50">
+              <thead className="sticky top-0 z-10 bg-admin-surfaceMuted text-[14px] uppercase text-admin-textMuted">
                 <tr className="text-left">
                   <th className="px-4 py-3">แถว</th>
                   <th className="px-4 py-3">ชื่อ-นามสกุล</th>

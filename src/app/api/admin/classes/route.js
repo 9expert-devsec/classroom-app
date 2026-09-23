@@ -5,6 +5,12 @@ import Class from "@/models/Class";
 import Student from "@/models/Student";
 import Checkin from "@/models/Checkin";
 import DocumentReceipt from "@/models/DocumentReceipt";
+import {
+  buildContiguousDaysFromStart,
+  isYMD,
+  uniqSortYMD,
+  ymdToUTCDate,
+} from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -123,51 +129,6 @@ function pickStudentName(stu) {
   );
 }
 
-/* ---------- days helpers (เลือกวันเอง) ---------- */
-
-function isYMD(x) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(x || "").trim());
-}
-
-function uniqSortYMD(list) {
-  const m = new Map();
-  for (const v of Array.isArray(list) ? list : []) {
-    const s = String(v || "").trim();
-    if (!isYMD(s)) continue;
-    m.set(s, true);
-  }
-  return Array.from(m.keys()).sort(); // YMD sort ได้ด้วย string
-}
-
-function ymdToUTCDate(ymd) {
-  // ymd "YYYY-MM-DD" -> Date (UTC)
-  const [y, m, d] = String(ymd)
-    .split("-")
-    .map((n) => Number(n));
-  if (!y || !m || !d) return null;
-  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-}
-
-function utcDateToYMD(dt) {
-  if (!dt || Number.isNaN(dt.getTime())) return "";
-  const y = dt.getUTCFullYear();
-  const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(dt.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function buildContiguousDaysFromStart(ymdStart, dayCount) {
-  const base = ymdToUTCDate(ymdStart);
-  if (!base) return [];
-  const n = Number(dayCount) || 1;
-  const out = [];
-  for (let i = 0; i < n; i += 1) {
-    const dt = new Date(base.getTime() + i * 86400000);
-    out.push(utcDateToYMD(dt));
-  }
-  return out;
-}
-
 /* ---------------- GET ---------------- */
 
 export async function GET(req) {
@@ -198,7 +159,9 @@ export async function GET(req) {
       1;
 
     // ดึงรายชื่อนักเรียน
-    const students = await Student.find({ classId: id }).lean();
+    const students = await Student.find({ classId: id })
+      .sort({ createdAt: 1 })
+      .lean();
 
     // ดึงเช็คอินทั้งหมด
     const checkins = await Checkin.find({ classId: id }).lean();
@@ -388,6 +351,8 @@ export async function POST(req) {
     publicCourseId,
     courseCode,
     courseName,
+    customCourseName,
+    classImageUrl,
     title, // manual override (ใช้เฉพาะ manual)
     date, // "YYYY-MM-DD" (compat)
     days, // ✅ ["YYYY-MM-DD", ...] (เลือกวันเอง)
@@ -400,11 +365,17 @@ export async function POST(req) {
     externalScheduleId,
     trainingType, // "classroom" | "hybrid" (optional)
     channel, // "PUB" (optional)
+    disableCoupon, // ✅ ซ่อนตัวเลือก Cash Coupon ในหน้าเช็คอินผู้เรียน
+    classKind, // "normal" | "masterclass"
+    masterclassCourseId, // ObjectId ของ MasterclassCourse (เฉพาะ masterclass)
   } = body || {};
 
-  if (!courseCode || !courseName) {
+  const customName = clean(customCourseName);
+  const effectiveCourseName = clean(courseName) || customName;
+
+  if (!effectiveCourseName) {
     return NextResponse.json(
-      { ok: false, error: "missing courseCode / courseName" },
+      { ok: false, error: "missing courseName / customCourseName" },
       { status: 400 },
     );
   }
@@ -445,6 +416,11 @@ export async function POST(req) {
 
   const src = source === "api" || source === "sync" ? source : "manual";
 
+  // ✅ Masterclass: normalize ก่อนบันทึก (default = normal)
+  const kind = classKind === "masterclass" ? "masterclass" : "normal";
+  const mcCourseId =
+    kind === "masterclass" && masterclassCourseId ? masterclassCourseId : null;
+
   // ✅ กรณีมาจาก schedule (api/sync หรือมี externalScheduleId) -> auto title เสมอ
   const shouldAutoTitle = src !== "manual" || !!externalScheduleId;
 
@@ -460,8 +436,10 @@ export async function POST(req) {
         const doc = await Class.create({
           source: src,
           publicCourseId: publicCourseId || null,
-          courseCode,
-          courseName,
+          courseCode: courseCode || "",
+          courseName: effectiveCourseName,
+          customCourseName: customName,
+          classImageUrl: clean(classImageUrl),
           title: finalTitle,
 
           // compat: date = วันแรก
@@ -483,6 +461,9 @@ export async function POST(req) {
             : "",
           trainingType: trainingType || "",
           channel: channel || "",
+          disableCoupon: !!disableCoupon,
+          classKind: kind,
+          masterclassCourseId: mcCourseId,
         });
 
         return NextResponse.json({ ok: true, item: doc });
@@ -508,33 +489,55 @@ export async function POST(req) {
   }
 
   // manual: ใช้ title ที่ user ส่งมา หรือ fallback เป็น courseName
-  finalTitle = finalTitle || courseName;
+  finalTitle = finalTitle || effectiveCourseName;
 
-  const doc = await Class.create({
-    source: src,
-    publicCourseId: publicCourseId || null,
-    courseCode,
-    courseName,
-    title: finalTitle,
+  let doc;
+  try {
+    doc = await Class.create({
+      source: src,
+      publicCourseId: publicCourseId || null,
+      courseCode: courseCode || "",
+      courseName: effectiveCourseName,
+      customCourseName: customName,
+      classImageUrl: clean(classImageUrl),
+      title: finalTitle,
 
-    // compat: date = วันแรก
-    date: startDateUTC,
+      // compat: date = วันแรก
+      date: startDateUTC,
 
-    // ✅ เก็บ days + dayCount
-    days: daysToStore,
-    dayCount: dayCnt,
-
-    duration: {
+      // ✅ เก็บ days + dayCount
+      days: daysToStore,
       dayCount: dayCnt,
-      startTime: startTime || "09:00",
-      endTime: endTime || "16:00",
-    },
-    room: room || "",
-    instructors: instructorList,
-    externalScheduleId: externalScheduleId ? String(externalScheduleId) : "",
-    trainingType: trainingType || "",
-    channel: channel || "",
-  });
+
+      duration: {
+        dayCount: dayCnt,
+        startTime: startTime || "09:00",
+        endTime: endTime || "16:00",
+      },
+      room: room || "",
+      instructors: instructorList,
+      externalScheduleId: externalScheduleId ? String(externalScheduleId) : "",
+      trainingType: trainingType || "",
+      channel: channel || "",
+      disableCoupon: !!disableCoupon,
+      classKind: kind,
+      masterclassCourseId: mcCourseId,
+    });
+  } catch (err) {
+    const msg = String(err?.message || "");
+    // title ซ้ำ (เช่น admin 2 คน gen ชื่อเดียวกันพร้อมกัน) -> ให้ฟอร์มอ่านได้
+    if (err?.code === 11000 || msg.toLowerCase().includes("duplicate")) {
+      return NextResponse.json(
+        { ok: false, error: "duplicate_class_title" },
+        { status: 409 },
+      );
+    }
+    console.error(err);
+    return NextResponse.json(
+      { ok: false, error: "create class failed" },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ ok: true, item: doc });
 }
