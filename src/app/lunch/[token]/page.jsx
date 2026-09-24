@@ -28,7 +28,13 @@ export function InvalidScreen() {
   );
 }
 
-export default async function LunchPage({ params }) {
+// ข้อความที่หน้าอื่นส่งกลับมาทาง ?notice= (เช่น submit แล้วคูปองหมด)
+const NOTICES = {
+  sold_out: "คูปองร้านนี้หมดแล้ว กรุณาเลือกร้านอื่น",
+  restaurant_unavailable: "ร้านนี้ไม่เปิดรับคูปองในวันนี้ กรุณาเลือกร้านอื่น",
+};
+
+export default async function LunchPage({ params, searchParams }) {
   await dbConnect();
 
   const token = String(params?.token || "");
@@ -84,6 +90,7 @@ export default async function LunchPage({ params }) {
         session={session}
         headerLine={headerLine}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+        notice={NOTICES[String(searchParams?.notice || "")] || ""}
       />
     </Shell>
   );

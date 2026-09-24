@@ -20,8 +20,18 @@ function emptyState() {
     nicknameConfirmed: false,
     restaurantId: "",
     lines: [],
+    // requestId ของการ submit ครั้งนี้ — กดซ้ำ / reload / เน็ตหลุดแล้วลองใหม่
+    // ใช้ id เดิม ส่วนการแก้เนื้อหาตะกร้าทุกครั้งจะล้างทิ้ง (ดู withContent)
+    requestId: "",
   };
 }
+
+export const MIN_QTY = 1;
+export const MAX_QTY = 20;
+export const MAX_NOTE = 200;
+
+const clampQty = (q) =>
+  Math.min(MAX_QTY, Math.max(MIN_QTY, Math.round(Number(q) || MIN_QTY)));
 
 /* ---------------- request id ---------------- */
 
@@ -56,6 +66,7 @@ export function readCart(token) {
       nicknameConfirmed: !!parsed?.nicknameConfirmed,
       restaurantId: String(parsed?.restaurantId || ""),
       lines: Array.isArray(parsed?.lines) ? parsed.lines : [],
+      requestId: String(parsed?.requestId || ""),
     };
   } catch {
     // storage เต็ม / ปิดอยู่ / JSON เสีย -> เริ่มใหม่แบบว่าง ๆ ดีกว่าพัง
@@ -73,9 +84,25 @@ export function writeCart(token, state) {
 }
 
 export function clearCartLines(token, state) {
-  const next = { ...state, lines: [] };
+  const next = { ...state, lines: [], requestId: "" };
   writeCart(token, next);
   return next;
+}
+
+/** เนื้อหาตะกร้าเปลี่ยน = คำสั่งซื้อใหม่ -> requestId เดิมใช้ไม่ได้แล้ว */
+function withContent(state, patch) {
+  return { ...state, ...patch, requestId: "" };
+}
+
+/** เปลี่ยนร้าน: ล้างรายการ + requestId */
+export function switchRestaurant(state, restaurantId) {
+  return withContent(state, { restaurantId: String(restaurantId || ""), lines: [] });
+}
+
+/** requestId ที่จะใช้ submit — มีอยู่แล้วใช้ของเดิม ไม่มีค่อยสร้าง */
+export function ensureRequestId(state) {
+  if (state.requestId) return state;
+  return { ...state, requestId: newRequestId() };
 }
 
 /* ---------------- line identity ---------------- */
@@ -104,8 +131,9 @@ export function makeLineKey(menuId, choices, note) {
 
 /**
  * เพิ่มลงตะกร้า
- * เมนูเดิมที่ไม่มีตัวเลือกและไม่มีโน้ต -> บวก qty ในบรรทัดเดิม
- * อย่างอื่น -> บรรทัดใหม่
+ * รวมเข้าบรรทัดเดิมก็ต่อเมื่อ เมนู + ชุดตัวเลือก (ไม่สนลำดับ) + โน้ตที่ trim แล้ว
+ * ตรงกันทั้งหมด (= lineKey เดียวกัน) นอกนั้นเป็นบรรทัดใหม่
+ * qty ต่อบรรทัดไม่เกิน MAX_QTY เท่ากับที่ server ยอมรับ
  */
 export function addLine(state, { menuId, qty = 1, choices = [], note = "" }) {
   const lineKey = makeLineKey(menuId, choices, note);
@@ -113,28 +141,31 @@ export function addLine(state, { menuId, qty = 1, choices = [], note = "" }) {
   const idx = lines.findIndex((l) => l.lineKey === lineKey);
 
   if (idx >= 0) {
-    lines[idx] = { ...lines[idx], qty: (lines[idx].qty || 0) + qty };
+    lines[idx] = { ...lines[idx], qty: clampQty((lines[idx].qty || 0) + qty) };
   } else {
     lines.push({
       lineKey,
       menuId: String(menuId),
-      qty,
+      qty: clampQty(qty),
       choices: normChoices(choices),
       note: String(note || "").trim(),
     });
   }
-  return { ...state, lines };
+  return withContent(state, { lines });
 }
 
+/** ปรับจำนวน — ขั้นต่ำ 1 เสมอ การลบบรรทัดทำได้ทาง removeLine เท่านั้น */
 export function setLineQty(state, lineKey, qty) {
-  const lines = (state.lines || [])
-    .map((l) => (l.lineKey === lineKey ? { ...l, qty } : l))
-    .filter((l) => l.qty > 0);
-  return { ...state, lines };
+  const lines = (state.lines || []).map((l) =>
+    l.lineKey === lineKey ? { ...l, qty: clampQty(qty) } : l,
+  );
+  return withContent(state, { lines });
 }
 
 export function removeLine(state, lineKey) {
-  return { ...state, lines: (state.lines || []).filter((l) => l.lineKey !== lineKey) };
+  return withContent(state, {
+    lines: (state.lines || []).filter((l) => l.lineKey !== lineKey),
+  });
 }
 
 /* ---------------- reconcile + totals ---------------- */
@@ -160,7 +191,25 @@ export function reconcile(state, menus) {
     kept.push(l);
   }
 
-  return { state: { ...state, lines: kept }, removed };
+  if (removed === 0) return { state, removed };
+  return { state: withContent(state, { lines: kept }), removed };
+}
+
+/** ชื่อตัวเลือกที่เลือกไว้ เรียงตามกลุ่มและตัวเลือกใน DTO */
+export function choiceNamesOf(line, menu) {
+  if (!menu) return [];
+  const picked = new Map(
+    (line.choices || []).map((g) => [String(g.groupId), new Set((g.choiceIds || []).map(String))]),
+  );
+  const names = [];
+  for (const group of menu.optionGroups || []) {
+    const ids = picked.get(String(group.id));
+    if (!ids) continue;
+    for (const c of group.choices || []) {
+      if (ids.has(String(c.id))) names.push(c.name);
+    }
+  }
+  return names;
 }
 
 /** ราคาต่อหน่วยของบรรทัด = ราคาเมนู + priceDelta ของตัวเลือกที่เลือก */

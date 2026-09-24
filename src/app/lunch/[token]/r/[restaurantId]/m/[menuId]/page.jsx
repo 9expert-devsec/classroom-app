@@ -1,29 +1,78 @@
 // src/app/lunch/[token]/r/[restaurantId]/m/[menuId]/page.jsx
 //
-// Placeholder — P3e สร้างหน้ารายละเอียดเมนู (ตัวเลือก/จำนวน/โน้ต) ที่นี่
-import Link from "next/link";
+// หน้ารายละเอียดเมนู: ตัวเลือก / หมายเหตุ / จำนวน แล้วเพิ่มลงตะกร้า
+import { redirect } from "next/navigation";
+
+import dbConnect from "@/lib/mongoose";
+import {
+  loadLunchGate,
+  LUNCH_GATE,
+  deadlineLabel,
+} from "@/lib/lunchGuards.server";
+import { getDaySet } from "@/lib/couponAvailability.server";
+import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
+
 import { Shell } from "../../../../_components/Shell";
+import GateNotice, { BackNotice } from "../../../../_components/GateNotice";
+import MenuDetailClient from "./MenuDetailClient";
 
 export const dynamic = "force-dynamic";
 
-export default function MenuDetailPlaceholder({ params }) {
+export default async function MenuDetailPage({ params }) {
+  await dbConnect();
+
   const token = String(params?.token || "");
   const restaurantId = String(params?.restaurantId || "");
+  const menuId = String(params?.menuId || "");
+  const { gate, session } = await loadLunchGate(token);
+
+  const notice = GateNotice({ gate, session });
+  if (notice) return notice;
+  if (gate === LUNCH_GATE.PLACED) redirect(`/lunch/${token}`);
+
+  // ร้านไม่อยู่ในรายการ / ปิด / คูปองหมด -> หน้าเมนูของร้านเป็นคนแจ้งเหตุผล
+  const restaurant = (session.restaurants || []).find((r) => r.id === restaurantId);
+  if (!restaurant || restaurant.state !== "open") {
+    redirect(`/lunch/${token}/r/${restaurantId}`);
+  }
+
+  const daySet = await getDaySet(session.class?.dayYMD);
+  const { menus } = await loadRestaurantMenu({ daySet, restaurantId });
+  const menu = menus.find((m) => m.id === menuId);
+  const backHref = `/lunch/${token}/r/${restaurantId}`;
+
+  if (!menu) {
+    return (
+      <BackNotice
+        title="ไม่พบเมนูนี้"
+        body={`เมนูนี้ไม่มีอยู่ในร้าน ${restaurant.name} แล้ว`}
+        href={backHref}
+        label="กลับไปหน้าเมนู"
+      />
+    );
+  }
+  if (menu.unavailableToday || menu.price === null) {
+    return (
+      <BackNotice
+        title={`${menu.name} หมดวันนี้`}
+        body="กรุณาเลือกเมนูอื่น"
+        href={backHref}
+        label="กลับไปหน้าเมนู"
+      />
+    );
+  }
 
   return (
     <Shell>
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 text-center">
-        <h1 className="text-[18px] font-bold text-[#0d1b2a]">รายละเอียดเมนู</h1>
-        <p className="text-[14px] text-slate-500">
-          หน้านี้จะเปิดใช้งานในขั้นถัดไป
-        </p>
-        <Link
-          href={`/lunch/${token}/r/${restaurantId}`}
-          className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold leading-[44px] text-white shadow-sm"
-        >
-          กลับไปหน้าเมนู
-        </Link>
-      </div>
+      <MenuDetailClient
+        token={token}
+        restaurant={restaurant}
+        budget={session.budget}
+        windowInfo={session.window}
+        deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+        menu={menu}
+        menus={menus}
+      />
     </Shell>
   );
 }

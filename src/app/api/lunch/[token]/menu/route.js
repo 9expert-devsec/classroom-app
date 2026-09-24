@@ -5,11 +5,9 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 
-import FoodMenu from "@/models/FoodMenu";
-import FoodMenuCategory from "@/models/FoodMenuCategory";
-
 import { getOrderByToken } from "@/lib/lunchOrders.server";
 import { getDaySet } from "@/lib/couponAvailability.server";
+import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
 
 export const dynamic = "force-dynamic";
 
@@ -59,55 +57,10 @@ export async function GET(req, { params }) {
       );
     }
 
-    // เมนูที่ร้านแจ้งว่าหมดเฉพาะวันนี้
-    const soldOut = new Set(
-      (entry.soldOutMenuIds || []).map((x) => String(x)),
-    );
-
-    const [categories, menus] = await Promise.all([
-      FoodMenuCategory.find({ restaurant: restaurantId, isActive: { $ne: false } })
-        .sort({ sortOrder: 1, createdAt: 1 })
-        .select("name sortOrder")
-        .lean(),
-      FoodMenu.find({ restaurant: restaurantId, isActive: { $ne: false } })
-        .sort({ sortOrder: 1, name: 1 })
-        .select(
-          "name imageUrl price description categoryIds sortOrder optionGroups",
-        )
-        .lean(),
-    ]);
+    const { categories, menus } = await loadRestaurantMenu({ daySet, restaurantId });
 
     return NextResponse.json(
-      {
-        restaurantId,
-        dayYMD: ymd,
-        categories: categories.map((c) => ({
-          id: String(c._id),
-          name: c.name || "",
-        })),
-        menus: menus.map((m) => ({
-          id: String(m._id),
-          name: m.name || "",
-          image: m.imageUrl || "",
-          price: m.price ?? null,
-          description: m.description || "",
-          categoryIds: (m.categoryIds || []).map((x) => String(x)),
-          unavailableToday: soldOut.has(String(m._id)),
-          optionGroups: (m.optionGroups || []).map((g) => ({
-            id: String(g._id),
-            name: g.name || "",
-            required: !!g.required,
-            selectType: g.selectType === "multi" ? "multi" : "single",
-            choices: (g.choices || [])
-              .filter((c) => c?.isActive !== false)
-              .map((c) => ({
-                id: String(c._id),
-                name: c.name || "",
-                priceDelta: c.priceDelta || 0,
-              })),
-          })),
-        })),
-      },
+      { restaurantId, dayYMD: ymd, categories, menus },
       { headers: NO_STORE },
     );
   } catch (err) {

@@ -5,8 +5,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import dbConnect from "@/lib/mongoose";
-import FoodMenu from "@/models/FoodMenu";
-import FoodMenuCategory from "@/models/FoodMenuCategory";
 
 import {
   loadLunchGate,
@@ -14,8 +12,10 @@ import {
   deadlineLabel,
 } from "@/lib/lunchGuards.server";
 import { getDaySet } from "@/lib/couponAvailability.server";
+import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
 
 import { Shell, NoticeScreen } from "../../_components/Shell";
+import GateNotice from "../../_components/GateNotice";
 import MenuClient from "./MenuClient";
 
 export const dynamic = "force-dynamic";
@@ -27,36 +27,8 @@ export default async function RestaurantMenuPage({ params }) {
   const restaurantId = String(params?.restaurantId || "");
   const { gate, session } = await loadLunchGate(token);
 
-  if (gate === LUNCH_GATE.INVALID) {
-    return (
-      <NoticeScreen
-        icon="✕"
-        tone="red"
-        title="QR ไม่ถูกต้อง"
-        body="กรุณาตรวจสอบ QR อีกครั้ง หรือติดต่อเจ้าหน้าที่"
-      />
-    );
-  }
-  if (gate === LUNCH_GATE.REPLACED) {
-    return (
-      <NoticeScreen
-        icon="⟳"
-        tone="amber"
-        title="QR นี้ถูกแทนที่แล้ว"
-        body="กรุณาติดต่อเจ้าหน้าที่"
-      />
-    );
-  }
-  if (gate === LUNCH_GATE.CLOSED) {
-    return (
-      <NoticeScreen
-        icon="🕚"
-        tone="red"
-        title={`ปิดรับออเดอร์แล้ว (${deadlineLabel(session.window?.deadlineAt)} น.)`}
-        body="หากยังต้องการสั่งอาหาร กรุณาติดต่อเจ้าหน้าที่ที่ Counter"
-      />
-    );
-  }
+  const notice = GateNotice({ gate, session });
+  if (notice) return notice;
   // สั่งไปแล้ว -> กลับหน้าแรก
   if (gate === LUNCH_GATE.PLACED) redirect(`/lunch/${token}`);
 
@@ -100,44 +72,7 @@ export default async function RestaurantMenuPage({ params }) {
 
   // ---- เมนูของร้านนี้สำหรับวันนั้น ----
   const daySet = await getDaySet(session.class?.dayYMD);
-  const entry = (daySet?.entries || []).find(
-    (e) => String(e.restaurant) === restaurantId,
-  );
-  const soldOut = new Set((entry?.soldOutMenuIds || []).map((x) => String(x)));
-
-  const [categories, menus] = await Promise.all([
-    FoodMenuCategory.find({ restaurant: restaurantId, isActive: { $ne: false } })
-      .sort({ sortOrder: 1, createdAt: 1 })
-      .select("name")
-      .lean(),
-    FoodMenu.find({ restaurant: restaurantId, isActive: { $ne: false } })
-      .sort({ sortOrder: 1, name: 1 })
-      .select("name imageUrl price description categoryIds optionGroups")
-      .lean(),
-  ]);
-
-  const menuDTO = menus.map((m) => ({
-    id: String(m._id),
-    name: m.name || "",
-    image: m.imageUrl || "",
-    price: m.price ?? null,
-    description: m.description || "",
-    categoryIds: (m.categoryIds || []).map((x) => String(x)),
-    unavailableToday: soldOut.has(String(m._id)),
-    optionGroups: (m.optionGroups || []).map((g) => ({
-      id: String(g._id),
-      name: g.name || "",
-      required: !!g.required,
-      selectType: g.selectType === "multi" ? "multi" : "single",
-      choices: (g.choices || [])
-        .filter((c) => c?.isActive !== false)
-        .map((c) => ({
-          id: String(c._id),
-          name: c.name || "",
-          priceDelta: c.priceDelta || 0,
-        })),
-    })),
-  }));
+  const { categories, menus } = await loadRestaurantMenu({ daySet, restaurantId });
 
   return (
     <Shell>
@@ -148,8 +83,8 @@ export default async function RestaurantMenuPage({ params }) {
         budget={session.budget}
         windowInfo={session.window}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
-        categories={categories.map((c) => ({ id: String(c._id), name: c.name }))}
-        menus={menuDTO}
+        categories={categories}
+        menus={menus}
       />
     </Shell>
   );

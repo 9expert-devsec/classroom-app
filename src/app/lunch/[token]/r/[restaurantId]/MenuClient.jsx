@@ -12,6 +12,7 @@ import {
   cartTotals,
   canQuickAdd,
   newRequestId,
+  switchRestaurant,
 } from "@/lib/lunchCart.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
 import BudgetBar from "../../_components/BudgetBar";
@@ -230,7 +231,7 @@ export default function MenuClient({
     const forThisShop =
       stored.restaurantId === restaurant.id
         ? stored
-        : { ...stored, restaurantId: restaurant.id, lines: [] };
+        : switchRestaurant(stored, restaurant.id);
 
     const { state, removed } = reconcile(forThisShop, menus);
     setCart(state);
@@ -280,7 +281,7 @@ export default function MenuClient({
   }
 
   function doSwitch(target) {
-    const next = { ...cart, restaurantId: target.id, lines: [] };
+    const next = switchRestaurant(cart, target.id);
     writeCart(token, next);
     setSwitchTarget(null);
     router.push(`/lunch/${token}/r/${target.id}`);
