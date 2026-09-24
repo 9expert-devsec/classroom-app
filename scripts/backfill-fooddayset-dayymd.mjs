@@ -7,14 +7,21 @@
 // midnight = 17:00Z ของวันก่อนหน้า) การค้นด้วยช่วง $gte/$lt จึงให้ผลต่างกัน
 // ตาม timezone ของ server ส่วน toBkkYMD(date) ให้ "วันที่ตั้งใจ" ถูกทั้งสองแบบ
 //
-// สคริปต์นี้ไม่แตะ field `date` เลย — $set เฉพาะ dayYMD
+// สคริปต์นี้ไม่แตะ field `date` เลย และไม่ลบเอกสารใด ๆ
 //
 //   node scripts/backfill-fooddayset-dayymd.mjs --db=classroom_phase2
 //   node scripts/backfill-fooddayset-dayymd.mjs --db=classroom_phase2 --apply
+//   node scripts/backfill-fooddayset-dayymd.mjs --db=classroom_phase2 --resolve=latest
+//   node scripts/backfill-fooddayset-dayymd.mjs --db=classroom_phase2 --apply --resolve=latest
 //
 // ค่าเริ่มต้นคือ DRY RUN เขียนจริงเมื่อใส่ --apply เท่านั้น
 // ถ้าเจอ "วันชนกัน" (2 เอกสารได้ dayYMD เดียวกัน) จะพิมพ์รายการแล้ว exit 1
 // โดยไม่เขียนอะไรเลย แม้จะสั่ง --apply ก็ตาม
+//
+// --resolve=latest : แทนที่จะ exit ให้เลือกผู้ชนะของแต่ละวัน = เอกสารที่
+// updatedAt ใหม่สุด (ไม่มีก็ใช้ createdAt แล้ว _id) ผู้ชนะได้ dayYMD ส่วนตัวที่
+// แพ้ได้ supersededBy = <id ผู้ชนะ> และไม่ได้ dayYMD จึงหาไม่เจอในทุก read path
+// ที่ค้นด้วย dayYMD — ไม่มีการลบเอกสาร และไม่แตะ date เช่นเดิม
 
 import fs from "node:fs";
 import path from "node:path";
@@ -32,6 +39,9 @@ const args = process.argv.slice(2);
 const APPLY = args.includes("--apply");
 const dbArg = args.find((a) => a.startsWith("--db="));
 const REQUESTED_DB = dbArg ? dbArg.slice("--db=".length).trim() : "";
+
+const resolveArg = args.find((a) => a.startsWith("--resolve="));
+const RESOLVE = resolveArg ? resolveArg.slice("--resolve=".length).trim() : "";
 
 function die(msg) {
   console.error(`\n❌ ${msg}\n`);
@@ -72,7 +82,12 @@ console.log("FoodDaySet.dayYMD backfill");
 console.log(`  host   : ${maskUri(URI)}`);
 console.log(`  db     : ${DBNAME}`);
 console.log(`  mode   : ${APPLY ? "APPLY (เขียนจริง)" : "DRY RUN (อ่านอย่างเดียว)"}`);
+console.log(`  resolve: ${RESOLVE || "(ไม่เลือก — ชนกันแล้วหยุด)"}`);
 console.log("─".repeat(64));
+
+if (RESOLVE && RESOLVE !== "latest") {
+  die(`--resolve=${RESOLVE} ไม่รองรับ — ตอนนี้มีแค่ --resolve=latest`);
+}
 
 if (!REQUESTED_DB) {
   die(
@@ -103,6 +118,37 @@ function toBkkYMD(date) {
   return bkkFmt.format(d);
 }
 
+/* ---------------- ranking helpers ---------------- */
+
+// ผู้ชนะ = updatedAt ใหม่สุด, ไม่มีก็ createdAt, ไม่มีอีกก็ _id (ObjectId เรียงตามเวลา)
+function rankTime(d) {
+  if (d.updatedAt instanceof Date) return d.updatedAt.getTime();
+  if (d.createdAt instanceof Date) return d.createdAt.getTime();
+  return 0;
+}
+
+function pickWinner(docs) {
+  return [...docs].sort((a, b) => {
+    const ta = rankTime(a);
+    const tb = rankTime(b);
+    if (tb !== ta) return tb - ta; // ใหม่สุดมาก่อน
+    return String(b._id).localeCompare(String(a._id));
+  })[0];
+}
+
+function describe(d) {
+  const n = Array.isArray(d.entries) ? d.entries.length : 0;
+  const iso = d.date instanceof Date ? d.date.toISOString() : String(d.date);
+  const up =
+    d.updatedAt instanceof Date
+      ? d.updatedAt.toISOString()
+      : d.createdAt instanceof Date
+        ? `${d.createdAt.toISOString()} (createdAt)`
+        : "-";
+  const modes = (d.entries || []).map((e) => e.mode || "no-mode").join(",");
+  return `date=${iso}  updatedAt=${up}  entries=${n}${modes ? ` [${modes}]` : ""}`;
+}
+
 /* ---------------- run ---------------- */
 
 const client = new MongoClient(URI, { serverSelectionTimeoutMS: 15000 });
@@ -113,17 +159,33 @@ try {
 
   const total = await coll.countDocuments({});
   const already = await coll.countDocuments({
-    dayYMD: { $exists: true, $ne: null, $ne: "" },
+    dayYMD: { $exists: true, $nin: [null, ""] },
+  });
+  // เอกสารที่ถูก supersede ไปแล้วไม่ต้องยุ่งอีก
+  const supersededCount = await coll.countDocuments({
+    supersededBy: { $exists: true, $ne: null },
   });
 
   const todo = await coll
-    .find({ $or: [{ dayYMD: { $exists: false } }, { dayYMD: null }, { dayYMD: "" }] })
-    .project({ date: 1, entries: 1 })
+    .find({
+      $and: [
+        {
+          $or: [
+            { dayYMD: { $exists: false } },
+            { dayYMD: null },
+            { dayYMD: "" },
+          ],
+        },
+        { $or: [{ supersededBy: { $exists: false } }, { supersededBy: null }] },
+      ],
+    })
+    .project({ date: 1, entries: 1, createdAt: 1, updatedAt: 1 })
     .toArray();
 
-  console.log(`\nfooddaysets ทั้งหมด        : ${total}`);
-  console.log(`มี dayYMD อยู่แล้ว         : ${already}`);
-  console.log(`ต้องเติม                  : ${todo.length}`);
+  console.log(`\ntotal fooddaysets   : ${total}`);
+  console.log(`already has dayYMD  : ${already}`);
+  console.log(`already superseded  : ${supersededCount}`);
+  console.log(`to fill             : ${todo.length}`);
 
   // map: dayYMD -> docs ที่จะได้ค่านั้น
   const planned = new Map();
@@ -157,7 +219,7 @@ try {
   if (wantedYMDs.length > 0) {
     const existing = await coll
       .find({ dayYMD: { $in: wantedYMDs } })
-      .project({ date: 1, dayYMD: 1, entries: 1 })
+      .project({ date: 1, dayYMD: 1, entries: 1, createdAt: 1, updatedAt: 1 })
       .toArray();
 
     for (const ex of existing) {
@@ -170,25 +232,51 @@ try {
     }
   }
 
-  if (collisions.length > 0) {
+  // loserId -> winnerId
+  const supersedePlan = [];
+
+  if (collisions.length > 0 && RESOLVE !== "latest") {
     console.log(`\n❌ พบวันที่ชนกัน ${collisions.length} วัน — ไม่เขียนอะไรทั้งสิ้น`);
-    console.log("   (ต้องรวม/ลบเอกสารซ้ำด้วยมือก่อน แล้วรันใหม่)\n");
+    console.log("   (รวมด้วยมือ หรือรันใหม่พร้อม --resolve=latest)\n");
     for (const c of collisions) {
       console.log(`  dayYMD = ${c.ymd}${c.note ? `  (${c.note})` : ""}`);
       for (const d of c.docs) {
-        const n = Array.isArray(d.entries) ? d.entries.length : 0;
-        const iso = d.date instanceof Date ? d.date.toISOString() : String(d.date);
-        console.log(`    _id=${d._id}  date=${iso}  entries=${n}`);
+        console.log(`    _id=${d._id}  ${describe(d)}`);
       }
     }
     process.exit(1);
   }
 
-  console.log("\n✅ ไม่พบวันที่ชนกัน");
+  if (collisions.length > 0) {
+    console.log(`\n⚠️  พบวันที่ชนกัน ${collisions.length} วัน — แก้ด้วย --resolve=latest`);
+    console.log("   ผู้ชนะ = updatedAt ใหม่สุด / ผู้แพ้ได้ supersededBy");
+    console.log("   ไม่ลบเอกสาร และไม่แตะ date\n");
+
+    for (const c of collisions) {
+      const winner = pickWinner(c.docs);
+      const losers = c.docs.filter((d) => String(d._id) !== String(winner._id));
+
+      console.log(`  dayYMD = ${c.ymd}${c.note ? `  (${c.note})` : ""}`);
+      console.log(`    WINNER _id=${winner._id}  ${describe(winner)}`);
+      for (const l of losers) {
+        console.log(`    loser  _id=${l._id}  ${describe(l)}`);
+        supersedePlan.push({ loserId: l._id, winnerId: winner._id, ymd: c.ymd });
+      }
+
+      // เขียน dayYMD ให้เฉพาะผู้ชนะ (ถ้าผู้ชนะมี dayYMD อยู่แล้วก็ไม่ต้องเขียนซ้ำ)
+      const winnerNeedsYMD = (planned.get(c.ymd) || []).some(
+        (d) => String(d._id) === String(winner._id),
+      );
+      if (winnerNeedsYMD) planned.set(c.ymd, [winner]);
+      else planned.delete(c.ymd);
+    }
+  } else {
+    console.log("\n✅ ไม่พบวันที่ชนกัน");
+  }
 
   const preview = Array.from(planned.entries()).slice(0, 5);
   if (preview.length > 0) {
-    console.log("\nตัวอย่างที่จะเขียน (สูงสุด 5):");
+    console.log("\nตัวอย่างที่จะเขียน dayYMD (สูงสุด 5):");
     for (const [ymd, docs] of preview) {
       const d = docs[0];
       const iso = d.date instanceof Date ? d.date.toISOString() : String(d.date);
@@ -197,11 +285,25 @@ try {
   }
 
   if (!APPLY) {
-    console.log(`\nDRY RUN: จะเขียน ${planned.size} เอกสาร — ใส่ --apply เพื่อเขียนจริง`);
-  } else if (planned.size === 0) {
+    console.log(
+      `\nDRY RUN: จะเขียน dayYMD ${planned.size} เอกสาร` +
+        `, supersededBy ${supersedePlan.length} เอกสาร — ใส่ --apply เพื่อเขียนจริง`,
+    );
+  } else if (planned.size === 0 && supersedePlan.length === 0) {
     console.log("\nไม่มีอะไรต้องเขียน");
   } else {
     const ops = [];
+
+    // ผู้แพ้ก่อน: ปลด dayYMD ออกจากสมการให้เรียบร้อยก่อนเขียนของผู้ชนะ
+    for (const s of supersedePlan) {
+      ops.push({
+        updateOne: {
+          filter: { _id: s.loserId },
+          update: { $set: { supersededBy: s.winnerId } }, // ไม่ให้ dayYMD, ไม่แตะ date
+        },
+      });
+    }
+
     for (const [ymd, docs] of planned.entries()) {
       ops.push({
         updateOne: {
@@ -210,13 +312,26 @@ try {
         },
       });
     }
-    const res = await coll.bulkWrite(ops, { ordered: false });
-    console.log(`\nเขียนแล้ว: matched=${res.matchedCount} modified=${res.modifiedCount}`);
+
+    const res = await coll.bulkWrite(ops, { ordered: true });
+    console.log(
+      `\nเขียนแล้ว: matched=${res.matchedCount} modified=${res.modifiedCount}` +
+        ` (dayYMD ${planned.size}, supersededBy ${supersedePlan.length})`,
+    );
 
     const remaining = await coll.countDocuments({
-      $or: [{ dayYMD: { $exists: false } }, { dayYMD: null }, { dayYMD: "" }],
+      $and: [
+        {
+          $or: [
+            { dayYMD: { $exists: false } },
+            { dayYMD: null },
+            { dayYMD: "" },
+          ],
+        },
+        { $or: [{ supersededBy: { $exists: false } }, { supersededBy: null }] },
+      ],
     });
-    console.log(`เหลือที่ยังไม่มี dayYMD   : ${remaining}`);
+    console.log(`เหลือที่ยังไม่มี dayYMD (ไม่นับที่ถูก supersede): ${remaining}`);
   }
 
   console.log("\nDONE\n");

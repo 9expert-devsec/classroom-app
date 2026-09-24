@@ -39,6 +39,14 @@ const FoodDaySetSchema = new mongoose.Schema(
     //    (date ใน DB มี 2 encoding: 00:00Z กับ 17:00Z การค้นด้วยช่วงเวลาจึงเพี้ยน)
     //    sparse ไว้ก่อน เพราะเอกสารเก่ายังไม่มีค่าจนกว่าจะ backfill
     dayYMD: { type: String, unique: true, sparse: true },
+    // ✅ P1c: เอกสารเก่าที่ซ้ำวันเดียวกัน (คนละ encoding ของ date) จะถูกชี้มาที่
+    //    ตัวที่ใช้จริง แทนการลบทิ้ง — ตัวที่ถูก supersede จะไม่มี dayYMD
+    //    จึงหาไม่เจอในทุก read path ที่ค้นด้วย dayYMD
+    supersededBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FoodDaySet",
+      default: null,
+    },
     entries: [FoodDayEntrySchema], // [{ restaurant, set, mode, soldOutMenuIds }]
   },
   { timestamps: true }
