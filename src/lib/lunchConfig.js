@@ -31,49 +31,37 @@ export function toBkkYMD(date = new Date()) {
   }).format(d);
 }
 
-// "YYYY-MM-DD" + "HH:mm" (เวลาไทย) -> Date
-// ไทยเป็น +07:00 ตลอดปี ไม่มี DST จึง fix offset ได้ตรง ๆ
-export function bkkDateTime(ymd, hhmm) {
-  const d = new Date(`${ymd}T${hhmm}:00+07:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-// ช่วงเวลารับออเดอร์ของวันนั้น
-export function getOrderWindow(ymd) {
-  return {
-    softCloseAt: bkkDateTime(ymd, ORDER_SOFT_CLOSE_HHMM),
-    hardCloseAt: bkkDateTime(ymd, ORDER_HARD_CLOSE_HHMM),
-  };
-}
-
-// เปิดพิเศษรายคน: ได้อย่างน้อย SPECIAL_REOPEN_MINUTES นาทีเสมอ
-// (ถ้ายังไม่ถึงเวลาปิด ก็ไม่ควรสั้นกว่าเวลาปิดปกติ)
-export function computeReopenDeadline(ymd, now = new Date()) {
-  const { hardCloseAt } = getOrderWindow(ymd);
-  const extended = new Date(
-    new Date(now).getTime() + SPECIAL_REOPEN_MINUTES * 60 * 1000,
-  );
-  if (!hardCloseAt) return extended;
-  return extended > hardCloseAt ? extended : hardCloseAt;
-}
-
 export function isValidNickname(s) {
   const v = String(s ?? "").trim();
   return NICKNAME_REGEX.test(v);
 }
 
-/* ---------------- P3a: หน้าต่างเวลาสั่งอาหาร ---------------- */
+/* ---------------- หน้าต่างเวลาสั่งอาหาร ---------------- */
 //
 // ฟังก์ชันด้านล่างเป็น pure ทั้งหมดและรับ `now` เข้ามาได้ เพื่อให้ทดสอบได้
 // โดยไม่ต้องแกล้งนาฬิกาเครื่อง — server เป็นเจ้าของเวลาแต่ผู้เดียว
 // client แค่วาดตามผลลัพธ์ของ orderWindow() ไม่คำนวณเองซ้ำ
+//
+// P3b-0: P1a กับ P3a เคยมีฟังก์ชันคำนวณเรื่องเดียวกันคนละชุด ตอนนี้เหลือ
+// implementation เดียวต่อหนึ่งการคำนวณ (ยึดความหมายของ P3a ที่ verify แล้ว)
+// ชื่อเดิมจาก P1a ยังอยู่แต่เป็นแค่ alias บาง ๆ ไม่มีสูตรซ้ำอีก
 
 // นาทีก่อนหมดเวลาที่เริ่มนับถอยหลัง (ใช้กับ deadline ที่ถูกเลื่อนออกไปด้วย)
 export const CLOSING_SOON_MINUTES = 15;
 
-/** "YYYY-MM-DD" + "HH:MM" (เวลาไทย) -> Date */
+/**
+ * "YYYY-MM-DD" + "HH:MM" (เวลาไทย) -> Date
+ * ไทยเป็น +07:00 ตลอดปี ไม่มี DST จึง fix offset ได้ตรง ๆ
+ * ตัวจริงตัวเดียวที่แปลง wall-clock ไทยเป็น Date
+ */
 export function bkkAt(dayYMD, hhmm) {
-  return bkkDateTime(dayYMD, hhmm);
+  const d = new Date(`${dayYMD}T${hhmm}:00+07:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** alias เดิมจาก P1a */
+export function bkkDateTime(ymd, hhmm) {
+  return bkkAt(ymd, hhmm);
 }
 
 /** เส้นตายปกติของวันนั้น = 11:15 เวลาไทย */
@@ -86,7 +74,25 @@ export function defaultDeadline(dayYMD) {
  * แต่ถ้ายังไม่ถึงเวลาปิดปกติ ก็ไม่ควรสั้นกว่านั้น
  */
 export function reissueDeadline(dayYMD, now = new Date()) {
-  return computeReopenDeadline(dayYMD, now);
+  const hardCloseAt = defaultDeadline(dayYMD);
+  const extended = new Date(
+    new Date(now).getTime() + SPECIAL_REOPEN_MINUTES * 60 * 1000,
+  );
+  if (!hardCloseAt) return extended;
+  return extended > hardCloseAt ? extended : hardCloseAt;
+}
+
+/** alias เดิมจาก P1a */
+export function computeReopenDeadline(ymd, now = new Date()) {
+  return reissueDeadline(ymd, now);
+}
+
+/** alias เดิมจาก P1a — คืนแค่จุดเริ่มนับถอยหลังกับเส้นตายปกติ */
+export function getOrderWindow(ymd) {
+  return {
+    softCloseAt: bkkAt(ymd, ORDER_SOFT_CLOSE_HHMM),
+    hardCloseAt: defaultDeadline(ymd),
+  };
 }
 
 /**
