@@ -12,6 +12,12 @@ import FoodEditLog from "@/models/FoodEditLog";
 import { requireAdmin } from "@/lib/adminAuth.server";
 import { writeAuditLog } from "@/lib/auditLog.server";
 
+import {
+  resolveClassDayYMD,
+  getCouponAvailability,
+  couponUnavailableMessage,
+} from "@/lib/couponAvailability.server";
+
 export const dynamic = "force-dynamic";
 
 /* ---------------- helpers ---------------- */
@@ -60,15 +66,23 @@ function isObjectId(x) {
   return /^[0-9a-fA-F]{24}$/.test(clean(x));
 }
 
-// ✅ บาง class ปิดตัวเลือก Cash Coupon ไว้ (best-effort: ถ้าเช็คไม่ได้ = ไม่ปิด)
-async function isCouponDisabledForClass(classId) {
+// ✅ P1c: กฎเดียวสำหรับคูปอง — รวม disableCoupon ของคลาส เข้ากับ
+//    "วันนั้นมีร้านคูปองที่ใช้ได้จริงไหม" ไว้ที่ couponAvailability.server.js
+//    (best-effort: ถ้าเช็คไม่ได้ = ปล่อยผ่าน ไม่บล็อกการเช็คอิน)
+async function checkCouponAvailability(classId, day) {
   try {
-    if (!isObjectId(classId)) return false;
-    const cls = await Class.findById(classId).select("disableCoupon").lean();
-    return !!cls?.disableCoupon;
+    if (!isObjectId(classId)) return { available: true, reason: null };
+
+    const cls = await Class.findById(classId)
+      .select("date days disableCoupon")
+      .lean();
+    if (!cls) return { available: true, reason: null };
+
+    const dayYMD = resolveClassDayYMD(cls, day);
+    return await getCouponAvailability({ classDoc: cls, dayYMD });
   } catch (e) {
-    console.warn("[food] check disableCoupon failed:", e?.message || e);
-    return false;
+    console.warn("[food] check coupon availability failed:", e?.message || e);
+    return { available: true, reason: null };
   }
 }
 
@@ -284,13 +298,18 @@ export async function POST(req) {
     menuId,
   });
 
-  // ✅ กันฝั่ง server: class ที่ปิด Cash Coupon ห้ามบันทึก choiceType = "coupon"
+  // ✅ กันฝั่ง server: บันทึก choiceType = "coupon" ได้เฉพาะเมื่อกฎกลางอนุญาต
+  //    (คลาสไม่ได้ปิดคูปอง และวันนั้นมีร้านคูปองที่ใช้ได้จริง)
   if (finalChoiceType === "coupon") {
-    const couponDisabled = await isCouponDisabledForClass(safeClassId);
-    if (couponDisabled) {
+    const avail = await checkCouponAvailability(safeClassId, safeDay);
+    if (!avail.available) {
       return NextResponse.json(
-        { ok: false, error: "coupon_disabled_for_class" },
-        { status: 400 },
+        {
+          ok: false,
+          error: couponUnavailableMessage(avail.reason),
+          reason: avail.reason,
+        },
+        { status: 409 },
       );
     }
   }

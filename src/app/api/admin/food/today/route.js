@@ -10,13 +10,13 @@ import Class from "@/models/Class";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 
-export const dynamic = "force-dynamic";
+import {
+  resolveClassDayYMD,
+  getDaySet,
+} from "@/lib/couponAvailability.server";
+import { toBkkYMD } from "@/lib/lunchConfig";
 
-function normalizeDay(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET(req) {
   await dbConnect();
@@ -29,18 +29,11 @@ export async function GET(req) {
   const day = Number(dayParam);
   const hasDay = Number.isFinite(day) && day > 0;
 
-  let targetDate = new Date();
-
-  const applyOffset = (baseDate) => {
-    const d = new Date(baseDate);
-    if (hasDay) d.setDate(d.getDate() + (day - 1));
-    return d;
-  };
+  let classDoc = null;
 
   // 1) มี classId → ใช้วันที่ของ Class
   if (classId) {
-    const klass = await Class.findById(classId).select("date").lean();
-    if (klass?.date) targetDate = applyOffset(klass.date);
+    classDoc = await Class.findById(classId).select("date days").lean();
   }
   // 2) มี studentId → หา class จาก Student
   else if (studentId) {
@@ -49,27 +42,23 @@ export async function GET(req) {
       .lean();
     const cId = student?.classId || student?.class;
     if (cId) {
-      const klass = await Class.findById(cId).select("date").lean();
-      if (klass?.date) targetDate = applyOffset(klass.date);
+      classDoc = await Class.findById(cId).select("date days").lean();
     }
   }
-  // 3) ไม่มีอะไรเลยแต่มี day → ขยับจากวันนี้
-  else if (hasDay) {
-    targetDate = applyOffset(targetDate);
-  }
 
-  const dayStart = normalizeDay(targetDate);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
+  // ✅ P1c: หา FoodDaySet ด้วย dayYMD (เอกสารที่ถูก supersede ไม่มี dayYMD
+  //    จึงถูกกรองออกเอง ไม่ต้องใส่เงื่อนไข supersededBy เพิ่ม)
+  const dayYMD = classDoc
+    ? resolveClassDayYMD(classDoc, hasDay ? day : 1)
+    : toBkkYMD(new Date());
 
-  // ===== ใช้ FoodDaySet (entries) =====
-  const daySet = await FoodDaySet.findOne({
-    date: { $gte: dayStart, $lt: dayEnd },
-  }).lean();
+  const daySet = await getDaySet(dayYMD);
 
   let restaurantDocs;
   if (daySet && Array.isArray(daySet.entries) && daySet.entries.length > 0) {
-    const restaurantIds = daySet.entries.map((e) => e.restaurant);
+    const restaurantIds = daySet.entries
+      .filter((e) => (e.mode || "set") === "set")
+      .map((e) => e.restaurant);
     restaurantDocs = await Restaurant.find({
       _id: { $in: restaurantIds },
       isActive: { $ne: false },

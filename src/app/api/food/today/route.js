@@ -11,13 +11,14 @@ import Class from "@/models/Class";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 
-export const dynamic = "force-dynamic";
+import {
+  resolveClassDayYMD,
+  getDaySet,
+  getCouponAvailability,
+} from "@/lib/couponAvailability.server";
+import { toBkkYMD } from "@/lib/lunchConfig";
 
-function normalizeDay(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+export const dynamic = "force-dynamic";
 
 function toStr(x) {
   return x == null ? "" : String(x);
@@ -67,19 +68,13 @@ export async function GET(req) {
       if (stu) currentFood = buildCurrentFood(stu);
     }
 
-    let targetDate = new Date();
+    let classDoc = null;
     let classInfo = {
       courseName: "",
       classImageUrl: "",
       days: [],
       disableCoupon: false,
       classKind: "normal",
-    };
-
-    const applyOffset = (baseDate) => {
-      const d = new Date(baseDate);
-      if (hasDay) d.setDate(d.getDate() + (day - 1));
-      return d;
     };
 
     const buildClassInfo = (klass) => ({
@@ -97,8 +92,10 @@ export async function GET(req) {
           "date days courseName customCourseName classImageUrl disableCoupon classKind",
         )
         .lean();
-      if (klass?.date) targetDate = applyOffset(klass.date);
-      if (klass) classInfo = buildClassInfo(klass);
+      if (klass) {
+        classDoc = klass;
+        classInfo = buildClassInfo(klass);
+      }
     }
     // 2) studentId -> class
     else if (studentId) {
@@ -113,22 +110,27 @@ export async function GET(req) {
             "date days courseName customCourseName classImageUrl disableCoupon classKind",
           )
           .lean();
-        if (klass?.date) targetDate = applyOffset(klass.date);
-        if (klass) classInfo = buildClassInfo(klass);
+        if (klass) {
+          classDoc = klass;
+          classInfo = buildClassInfo(klass);
+        }
       }
     }
-    // 3) only day
-    else if (hasDay) {
-      targetDate = applyOffset(targetDate);
-    }
 
-    const dayStart = normalizeDay(targetDate);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // ✅ P1c: หาวันด้วย Bangkok day key แล้วค้น FoodDaySet ด้วย dayYMD
+    //    (เอกสารที่ถูก supersede ไม่มี dayYMD จึงหาไม่เจอโดยอัตโนมัติ)
+    const dayYMD = classDoc
+      ? resolveClassDayYMD(classDoc, hasDay ? day : 1)
+      : toBkkYMD(new Date());
 
-    const daySet = await FoodDaySet.findOne({
-      date: { $gte: dayStart, $lt: dayEnd },
-    }).lean();
+    const daySet = await getDaySet(dayYMD);
+
+    // ✅ กฎเดียวสำหรับ "วันนี้กด Cash Coupon ได้ไหม"
+    const couponAvail = await getCouponAvailability({
+      classDoc,
+      dayYMD,
+      daySet,
+    });
 
     // ✅ RULE: ถ้าไม่มีการตั้งค่าใน Calendar → ไม่มีร้าน/เมนูวันนี้
     if (
@@ -142,10 +144,20 @@ export async function GET(req) {
         items: [],
         currentFood, // ✅ still return
         classInfo,
+        dayYMD,
+        couponAvailable: couponAvail.available,
+        couponUnavailableReason: couponAvail.reason,
       });
     }
 
-    const restaurantIds = daySet.entries.map((e) => e.restaurant);
+    // ✅ P1c: เฉพาะร้านโหมด "set" เท่านั้นที่เข้ารายการเลือกเมนูแบบเดิม
+    //    ร้านโหมด coupon/closed ไม่โผล่ที่นี่ (คูปองไปทาง couponAvailable)
+    //    entry เก่าที่ยังไม่มี mode ถือเป็น "set" เพื่อความเข้ากันได้
+    const setEntries = (daySet.entries || []).filter(
+      (e) => (e.mode || "set") === "set",
+    );
+
+    const restaurantIds = setEntries.map((e) => e.restaurant);
 
     const restaurants = await Restaurant.find({
       _id: { $in: restaurantIds },
@@ -157,12 +169,12 @@ export async function GET(req) {
     // restaurantId -> allowed menuIds (string) based on set
     const setMenuMap = new Map();
 
-    const setIds = daySet.entries.map((e) => e.set).filter(Boolean);
+    const setIds = setEntries.map((e) => e.set).filter(Boolean);
     if (setIds.length > 0) {
       const sets = await FoodSet.find({ _id: { $in: setIds } }).lean();
       const setsMap = new Map(sets.map((s) => [String(s._id), s]));
 
-      daySet.entries.forEach((entry) => {
+      setEntries.forEach((entry) => {
         if (!entry.set) return;
         const setDoc = setsMap.get(String(entry.set));
         if (!setDoc) return;
@@ -323,6 +335,9 @@ export async function GET(req) {
       items,
       currentFood, // ✅ NEW
       classInfo,
+      dayYMD,
+      couponAvailable: couponAvail.available,
+      couponUnavailableReason: couponAvail.reason,
     });
   } catch (err) {
     console.error("GET /api/food/today error:", err);

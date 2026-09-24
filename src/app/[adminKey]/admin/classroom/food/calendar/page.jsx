@@ -21,6 +21,19 @@ function formatMonthYear(date) {
 
 const WEEKDAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 
+// ✅ P1c: คีย์วันคือ "YYYY-MM-DD" ตามปฏิทินที่แสดงบนจอ (ไม่ต้องแปลง timezone
+// เพราะ Date ที่สร้างในกริดเป็น local ของเครื่องอยู่แล้ว และ admin ใช้เครื่องไทย)
+function toYMD(date) {
+  if (!date) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+const MODE_ORDER = ["set", "coupon", "closed"];
+const MODE_LABELS = { set: "เซ็ตเมนู", coupon: "คูปอง", closed: "ปิด" };
+
 export default function FoodCalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(() =>
     startOfMonth(new Date())
@@ -29,7 +42,7 @@ export default function FoodCalendarPage() {
   const [dayConfigs, setDayConfigs] = useState([]); // [{ date, items: [{ restaurant, set }] }]
   const [selectedDate, setSelectedDate] = useState(null);
 
-  // [{ restaurantId, setId }]
+  // [{ restaurantId, setId, mode }]
   const [selectedItems, setSelectedItems] = useState([]);
 
   const [saving, setSaving] = useState(false);
@@ -107,15 +120,11 @@ export default function FoodCalendarPage() {
     return slots;
   }, [currentMonth]);
 
+  // ✅ P1c: จับคู่ด้วย dayYMD ตรง ๆ ไม่ต้องเทียบ Date ให้เพี้ยนตาม encoding
   function getConfigFor(date) {
     if (!date) return null;
-    const key = new Date(date);
-    key.setHours(0, 0, 0, 0);
-    return dayConfigs.find((c) => {
-      const d = new Date(c.date);
-      d.setHours(0, 0, 0, 0);
-      return d.getTime() === key.getTime();
-    });
+    const key = toYMD(date);
+    return dayConfigs.find((c) => c.dayYMD === key);
   }
 
   function onSelectDate(date) {
@@ -135,6 +144,7 @@ export default function FoodCalendarPage() {
             : item.set?._id
             ? String(item.set._id)
             : "",
+        mode: item.mode || "set",
       }));
       setSelectedItems(mapped);
     } else if (cfg?.restaurants?.length) {
@@ -142,6 +152,7 @@ export default function FoodCalendarPage() {
       const mapped = cfg.restaurants.map((r) => ({
         restaurantId: typeof r === "string" ? r : String(r._id),
         setId: "",
+        mode: "set",
       }));
       setSelectedItems(mapped);
     } else {
@@ -153,14 +164,25 @@ export default function FoodCalendarPage() {
     return selectedItems.some((it) => it.restaurantId === id);
   }
 
+  // 1 ร้านมีได้ครั้งเดียวต่อวัน — toggle จึงเพิ่ม/ลบตรง ๆ ไม่มีทางซ้ำ
   function toggleRestaurant(id) {
     setSelectedItems((prev) => {
       const exists = prev.some((it) => it.restaurantId === id);
       if (exists) {
         return prev.filter((it) => it.restaurantId !== id);
       }
-      return [...prev, { restaurantId: id, setId: "" }];
+      return [...prev, { restaurantId: id, setId: "", mode: "set" }];
     });
+  }
+
+  function changeModeForRestaurant(restId, mode) {
+    setSelectedItems((prev) =>
+      prev.map((it) =>
+        it.restaurantId === restId
+          ? { ...it, mode, setId: mode === "set" ? it.setId : "" }
+          : it,
+      ),
+    );
   }
 
   function changeSetForRestaurant(restId, setId) {
@@ -176,23 +198,26 @@ export default function FoodCalendarPage() {
     setSaving(true);
 
     try {
-      // YYYY-MM-DD แบบ local time
-      const yyyy = selectedDate.getFullYear();
-      const mm = String(selectedDate.getMonth() + 1).padStart(2, "0");
-      const dd = String(selectedDate.getDate()).padStart(2, "0");
-      const iso = `${yyyy}-${mm}-${dd}`;
-
-      await fetch("/api/admin/food/days", {
+      const res0 = await fetch("/api/admin/food/days", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          date: iso,
+          date: toYMD(selectedDate),
           items: selectedItems.map((it) => ({
             restaurantId: it.restaurantId,
-            setId: it.setId || null,
+            setId: it.mode === "set" ? it.setId || null : null,
+            mode: it.mode || "set",
           })),
         }),
       });
+
+      const out0 = await res0.json().catch(() => ({}));
+      if (!res0.ok) {
+        console.error(out0);
+        alert(out0.error || "บันทึกไม่สำเร็จ");
+        setSaving(false);
+        return;
+      }
 
       // reload หลังบันทึก
       const res = await fetch(`/api/admin/food/days?month=${monthKey}`);
@@ -254,10 +279,12 @@ export default function FoodCalendarPage() {
                 selectedDate &&
                 date.toDateString() === selectedDate.toDateString();
 
-              const count =
-                cfg?.items?.length ??
-                cfg?.restaurants?.length ??
-                0;
+              // P1c: สรุปจำนวนแยกตามโหมดในช่องวัน
+              const cells = cfg?.items || [];
+              const nSet = cells.filter((i) => (i.mode || "set") === "set").length;
+              const nCoupon = cells.filter((i) => i.mode === "coupon").length;
+              const nClosed = cells.filter((i) => i.mode === "closed").length;
+              const count = cells.length || cfg?.restaurants?.length || 0;
 
               return (
                 <button
@@ -274,8 +301,22 @@ export default function FoodCalendarPage() {
                     {date.getDate()}
                   </span>
                   {count > 0 && (
-                    <span className="mt-0.5 rounded-full bg-brand-primary/10 px-1 text-[10px] text-brand-primary">
-                      {count} ร้าน
+                    <span className="mt-0.5 flex flex-wrap gap-0.5">
+                      {nSet > 0 && (
+                        <span className="rounded-full bg-brand-primary/10 px-1 text-[10px] text-brand-primary">
+                          เซ็ต {nSet}
+                        </span>
+                      )}
+                      {nCoupon > 0 && (
+                        <span className="rounded-full bg-amber-100 px-1 text-[10px] text-amber-700">
+                          คูปอง {nCoupon}
+                        </span>
+                      )}
+                      {nClosed > 0 && (
+                        <span className="rounded-full bg-admin-surfaceMuted px-1 text-[10px] text-admin-textMuted">
+                          ปิด {nClosed}
+                        </span>
+                      )}
                     </span>
                   )}
                 </button>
@@ -317,47 +358,95 @@ export default function FoodCalendarPage() {
               );
               const setId = selectedItem?.setId || "";
 
+              const mode = selectedItem?.mode || "set";
+
               return (
                 <div
                   key={r._id}
-                  className="flex items-center justify-between rounded-xl border border-admin-border bg-white px-3 py-1.5"
+                  className="rounded-xl border border-admin-border bg-white px-3 py-2"
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      checked={checked}
-                      onChange={() => toggleRestaurant(r._id)}
-                    />
-                    <span>{r.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {checked && sets.length > 0 && (
-                      <select
-                        className="rounded-lg border border-admin-border bg-admin-surfaceMuted px-2 py-1 text-xs"
-                        value={setId}
-                        onChange={(e) =>
-                          changeSetForRestaurant(r._id, e.target.value)
-                        }
-                      >
-                        <option value="">-- เลือก Set --</option>
-                        {sets.map((s) => (
-                          <option key={s._id} value={s._id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex min-w-0 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={checked}
+                        onChange={() => toggleRestaurant(r._id)}
+                      />
+                      <span className="truncate">{r.name}</span>
+                      {r.usesCouponStock && (
+                        <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">
+                          stock
+                        </span>
+                      )}
+                    </label>
+
                     {r.logoUrl && (
                       <Image
                         src={r.logoUrl}
                         alt={r.name}
                         width={24}
                         height={24}
-                        className="h-6 w-6 rounded-full object-cover"
+                        className="h-6 w-6 flex-shrink-0 rounded-full object-cover"
                       />
                     )}
                   </div>
+
+                  {checked && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+                      {/* P1c: 1 ร้าน 1 โหมดต่อวัน */}
+                      <div className="flex overflow-hidden rounded-lg border border-admin-border">
+                        {MODE_ORDER.map((m) => {
+                          const disabled = m === "coupon" && !r.couponEnabled;
+                          const active = mode === m;
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              disabled={disabled}
+                              title={
+                                disabled
+                                  ? "ร้านนี้ยังไม่ได้เปิดให้เลือกเป็นร้านคูปอง"
+                                  : undefined
+                              }
+                              onClick={() => changeModeForRestaurant(r._id, m)}
+                              className={[
+                                "px-2 py-1 text-xs transition",
+                                active
+                                  ? "bg-brand-primary text-white"
+                                  : "bg-white text-admin-text hover:bg-admin-surfaceMuted",
+                                disabled ? "cursor-not-allowed opacity-40" : "",
+                              ].join(" ")}
+                            >
+                              {MODE_LABELS[m]}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {mode === "set" &&
+                        (sets.length > 0 ? (
+                          <select
+                            className="rounded-lg border border-admin-border bg-admin-surfaceMuted px-2 py-1 text-xs"
+                            value={setId}
+                            onChange={(e) =>
+                              changeSetForRestaurant(r._id, e.target.value)
+                            }
+                          >
+                            <option value="">-- เลือก Set --</option>
+                            {sets.map((s) => (
+                              <option key={s._id} value={s._id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-[11px] text-admin-textMuted">
+                            ร้านนี้ยังไม่มีชุดเมนู
+                          </span>
+                        ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

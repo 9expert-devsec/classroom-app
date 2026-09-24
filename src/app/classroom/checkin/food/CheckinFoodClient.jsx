@@ -1,6 +1,8 @@
 // src/app/classroom/checkin/food/CheckinFoodClient.jsx
 "use client";
 
+import { LUNCH_BUDGET_THB } from "@/lib/lunchConfig";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepHeader from "../StepHeader";
 import UserButton from "@/components/ui/UserButton";
@@ -303,6 +305,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [hasFoodSetup, setHasFoodSetup] = useState(true);
+  // P1c: กฎเดียวจาก server (รวม disableCoupon ของคลาส + มีร้านคูปองจริงไหม)
+  const [couponAvailable, setCouponAvailable] = useState(false);
   const [classInfo, setClassInfo] = useState({
     courseName: "",
     classImageUrl: "",
@@ -521,7 +525,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         });
 
         // ✅ อ่านจาก data ตรง ๆ (state อาจยัง commit ไม่ทันตอน prefill)
-        const couponAllowed = !data.classInfo?.disableCoupon;
+        // couponAvailable มาจาก /api/food/today โดยตรง (ไม่คิดเองซ้ำ)
+        const couponAllowed = !!data?.couponAvailable;
+        setCouponAvailable(couponAllowed);
 
         // ✅ POLICY:
         // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
@@ -661,8 +667,9 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setSubmitting(false);
   }
 
-  // ✅ class ที่ปิด Cash Coupon จะไม่แสดงการ์ด Coupon เลย
-  const couponEnabled = !classInfo.disableCoupon;
+  // P1c: เปลี่ยนชื่อจาก couponEnabled เพื่อไม่ให้สับสนกับ Restaurant.couponEnabled
+  // ค่านี้คือ "คลาสนี้ในวันนี้กด Cash Coupon ได้ไหม" ซึ่ง server เป็นคนตัดสิน
+  const couponAllowedForClass = couponAvailable;
 
   const backHref = isEdit ? returnTo : `/classroom/checkin?day=${day}`;
   const primaryLabel = isEdit ? "บันทึกเมนู" : "ไปต่อ → เซ็นชื่อ";
@@ -691,12 +698,12 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   subtitle="เลือกแล้วสามารถบันทึกได้ทันที"
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
-                  className={couponEnabled ? "" : "col-span-2"}
+                  className={couponAllowedForClass ? "" : "col-span-2"}
                 />
-                {couponEnabled && (
+                {couponAllowedForClass && (
                   <QuickChoiceCard
                     title="Cash Coupon"
-                    subtitle="คูปองส่วนลด 180 บาท"
+                    subtitle={`คูปองส่วนลด ${LUNCH_BUDGET_THB} บาท`}
                     icon="/coupon.png"
                     active={choiceType === "coupon"}
                     onClick={chooseCoupon}
@@ -751,10 +758,10 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                   active={choiceType === "noFood"}
                   onClick={chooseNoFood}
                 />
-                {couponEnabled && (
+                {couponAllowedForClass && (
                   <QuickChoiceCard
                     title="Cash Coupon"
-                    subtitle="คูปองส่วนลด 180 บาท"
+                    subtitle={`คูปองส่วนลด ${LUNCH_BUDGET_THB} บาท`}
                     icon="/coupon.png"
                     active={choiceType === "coupon"}
                     onClick={chooseCoupon}
@@ -772,7 +779,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
                 {restaurants.length === 0 && (
                   <p className="col-span-2 text-sm text-front-textMuted">
-                    {couponEnabled
+                    {couponAllowedForClass
                       ? "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” หรือ “Coupon” แล้วบันทึกได้)"
                       : "วันนี้ไม่มีร้าน/เมนูที่เปิดให้เลือก (แต่สามารถเลือก “ไม่รับอาหาร” แล้วบันทึกได้)"}
                   </p>
