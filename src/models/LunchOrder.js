@@ -56,8 +56,12 @@ const LunchOrderSchema = new Schema(
     activeKey: { type: String, unique: true, sparse: true },
 
     /* ---------------- access ---------------- */
-    // ไม่เก็บ token ดิบ
+    // ✅ P3a: เก็บ token ดิบ เพราะ P4 ต้องพิมพ์ QR ใบเดิมซ้ำได้
+    //    (tokenHash ด้านล่างเป็นของเดิมจาก P1a ที่ยังไม่มีใครเขียน — คงไว้เฉย ๆ)
+    //    token เป็นความลับเพียงอย่างเดียวที่ใช้เปิดหน้าสั่งอาหาร
+    token: { type: String, unique: true, sparse: true },
     tokenHash: { type: String, unique: true, sparse: true },
+    // เวลาที่ออก token ใบนี้ (P3a ใช้ field นี้เป็น issuedAt)
     tokenIssuedAt: { type: Date, default: null },
     // หมดเวลาสั่งของออเดอร์นี้ (ปกติ = hard close ของวันนั้น)
     deadlineAt: { type: Date, default: null },

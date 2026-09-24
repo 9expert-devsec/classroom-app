@@ -61,3 +61,62 @@ export function isValidNickname(s) {
   const v = String(s ?? "").trim();
   return NICKNAME_REGEX.test(v);
 }
+
+/* ---------------- P3a: หน้าต่างเวลาสั่งอาหาร ---------------- */
+//
+// ฟังก์ชันด้านล่างเป็น pure ทั้งหมดและรับ `now` เข้ามาได้ เพื่อให้ทดสอบได้
+// โดยไม่ต้องแกล้งนาฬิกาเครื่อง — server เป็นเจ้าของเวลาแต่ผู้เดียว
+// client แค่วาดตามผลลัพธ์ของ orderWindow() ไม่คำนวณเองซ้ำ
+
+// นาทีก่อนหมดเวลาที่เริ่มนับถอยหลัง (ใช้กับ deadline ที่ถูกเลื่อนออกไปด้วย)
+export const CLOSING_SOON_MINUTES = 15;
+
+/** "YYYY-MM-DD" + "HH:MM" (เวลาไทย) -> Date */
+export function bkkAt(dayYMD, hhmm) {
+  return bkkDateTime(dayYMD, hhmm);
+}
+
+/** เส้นตายปกติของวันนั้น = 11:15 เวลาไทย */
+export function defaultDeadline(dayYMD) {
+  return bkkAt(dayYMD, ORDER_HARD_CLOSE_HHMM);
+}
+
+/**
+ * ออก QR ใหม่ให้รายคน: ได้เวลาอย่างน้อย SPECIAL_REOPEN_MINUTES นาทีเสมอ
+ * แต่ถ้ายังไม่ถึงเวลาปิดปกติ ก็ไม่ควรสั้นกว่านั้น
+ */
+export function reissueDeadline(dayYMD, now = new Date()) {
+  return computeReopenDeadline(dayYMD, now);
+}
+
+/**
+ * สถานะหน้าต่างเวลาของออเดอร์หนึ่งใบ
+ *   closed  : เลย deadline แล้ว
+ *   closing : ถึง 11:00 ของวันนั้นแล้ว หรือเหลือ <= 15 นาทีก่อน deadline
+ *   open    : นอกนั้น
+ * deadlineAt ที่ส่งเข้ามาชนะเสมอ (เคสที่ admin เลื่อนให้รายคน)
+ */
+export function orderWindow({ dayYMD, deadlineAt }, now = new Date()) {
+  const nowMs = new Date(now).getTime();
+
+  const deadline = deadlineAt ? new Date(deadlineAt) : defaultDeadline(dayYMD);
+  const countdownFrom = bkkAt(dayYMD, ORDER_SOFT_CLOSE_HHMM);
+
+  const deadlineMs = deadline ? deadline.getTime() : NaN;
+  const msLeft = Number.isNaN(deadlineMs) ? 0 : deadlineMs - nowMs;
+  const secondsLeft = Math.max(0, Math.floor(msLeft / 1000));
+
+  let phase;
+  if (!Number.isNaN(deadlineMs) && nowMs >= deadlineMs) {
+    phase = "closed";
+  } else if (
+    (countdownFrom && nowMs >= countdownFrom.getTime()) ||
+    msLeft <= CLOSING_SOON_MINUTES * 60 * 1000
+  ) {
+    phase = "closing";
+  } else {
+    phase = "open";
+  }
+
+  return { phase, deadlineAt: deadline, countdownFrom, secondsLeft };
+}
