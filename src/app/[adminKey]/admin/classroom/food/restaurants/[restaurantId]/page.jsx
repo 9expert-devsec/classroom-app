@@ -2,12 +2,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsCard from "./_components/CouponSettingsCard";
+import CouponStockCard from "./_components/CouponStockCard";
 import CategoryPanel from "./_components/CategoryPanel";
 import OptionGroupsEditor, {
   toEditorGroups,
@@ -83,6 +84,10 @@ async function safeJson(res) {
 export default function RestaurantDetailPage({ params }) {
   const router = useRouter();
   const restaurantId = params.restaurantId;
+
+  // P1c follow-up: adminKey มาจาก route ไม่ฮาร์ดโค้ดอีกต่อไป
+  const routeParams = useParams();
+  const adminKey = String(routeParams?.adminKey || "");
 
   // data
   const [restaurant, setRestaurant] = useState(null);
@@ -877,7 +882,7 @@ export default function RestaurantDetailPage({ params }) {
           <button
             type="button"
             onClick={() =>
-              router.push("/a1exqwvCqTXP7s0/admin/classroom/food/restaurants")
+              router.push(`/${adminKey}/admin/classroom/food/restaurants`)
             }
             className="text-xs text-admin-textMuted hover:underline"
           >
@@ -918,6 +923,17 @@ export default function RestaurantDetailPage({ params }) {
           onChanged={fetchCategories}
         />
       </div>
+
+      {/* P2: คลังคูปองกระดาษ แสดงเฉพาะร้านที่เปิดใช้ stock */}
+      {restaurant?.usesCouponStock && (
+        <div className="shrink-0">
+          <CouponStockCard
+            restaurant={restaurant}
+            adminKey={adminKey}
+            onSaved={(item) => setRestaurant(item)}
+          />
+        </div>
+      )}
 
       {/* TOP: Set + Menu */}
       {/* ✅ P1b-fix: หน้าเลื่อนเองแล้ว แถวจึงต้องมีความสูงชัดเจน (ไม่ใช่ flex-1)

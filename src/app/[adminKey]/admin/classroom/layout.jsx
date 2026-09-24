@@ -110,6 +110,12 @@ const NAV = [
         icon: Soup,
         perm: PERM.FOOD_REPORT,
       },
+      {
+        label: "คลังคูปอง Stock",
+        href: "/classroom/food/coupon-stock",
+        icon: Ticket,
+        perm: PERM.FOOD_READ,
+      },
     ],
   },
 

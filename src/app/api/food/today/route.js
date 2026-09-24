@@ -147,6 +147,7 @@ export async function GET(req) {
         dayYMD,
         couponAvailable: couponAvail.available,
         couponUnavailableReason: couponAvail.reason,
+        couponRestaurants: couponAvail.couponRestaurants || [],
       });
     }
 
@@ -338,6 +339,7 @@ export async function GET(req) {
       dayYMD,
       couponAvailable: couponAvail.available,
       couponUnavailableReason: couponAvail.reason,
+      couponRestaurants: couponAvail.couponRestaurants || [],
     });
   } catch (err) {
     console.error("GET /api/food/today error:", err);

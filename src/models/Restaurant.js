@@ -11,6 +11,8 @@ const RestaurantSchema = new mongoose.Schema(
     // ✅ ร้านที่ใช้คูปองกระดาษจาก stock ที่ import เข้ามา
     //    (false = ใช้ e-coupon ที่ระบบ generate ให้)
     usesCouponStock: { type: Boolean, default: false },
+    // ✅ P2: เตือนเมื่อคูปองพร้อมใช้เหลือน้อยกว่าหรือเท่ากับค่านี้
+    couponStockLowThreshold: { type: Number, default: 5, min: 0 },
   },
   { timestamps: true }
 );

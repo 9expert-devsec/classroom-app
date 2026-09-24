@@ -79,9 +79,14 @@ export async function PATCH(req, { params }) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { couponEnabled, usesCouponStock } = body || {};
+    const { couponEnabled, usesCouponStock, couponStockLowThreshold } =
+      body || {};
 
-    if (couponEnabled === undefined && usesCouponStock === undefined) {
+    if (
+      couponEnabled === undefined &&
+      usesCouponStock === undefined &&
+      couponStockLowThreshold === undefined
+    ) {
       return jsonError("ไม่มีข้อมูลที่ต้องการแก้ไข", 400);
     }
     if (couponEnabled !== undefined && typeof couponEnabled !== "boolean") {
@@ -105,11 +110,23 @@ export async function PATCH(req, { params }) {
     // บังคับกติกาไว้ที่ server เสมอ ไม่พึ่ง UI
     if (!nextCouponEnabled) nextUsesStock = false;
 
-    const item = await Restaurant.findByIdAndUpdate(
-      id,
-      { couponEnabled: nextCouponEnabled, usesCouponStock: nextUsesStock },
-      { new: true },
-    ).lean();
+    const update = {
+      couponEnabled: nextCouponEnabled,
+      usesCouponStock: nextUsesStock,
+    };
+
+    // ✅ P2: เกณฑ์เตือนคูปองเหลือน้อย
+    if (couponStockLowThreshold !== undefined) {
+      const n = Number(couponStockLowThreshold);
+      if (!Number.isFinite(n) || n < 0) {
+        return jsonError("เกณฑ์เตือนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป", 400);
+      }
+      update.couponStockLowThreshold = Math.floor(n);
+    }
+
+    const item = await Restaurant.findByIdAndUpdate(id, update, {
+      new: true,
+    }).lean();
 
     await safeAudit({
       ctx,
@@ -121,10 +138,12 @@ export async function PATCH(req, { params }) {
       before: {
         couponEnabled: !!before.couponEnabled,
         usesCouponStock: !!before.usesCouponStock,
+        couponStockLowThreshold: before.couponStockLowThreshold ?? 5,
       },
       after: {
         couponEnabled: !!item.couponEnabled,
         usesCouponStock: !!item.usesCouponStock,
+        couponStockLowThreshold: item.couponStockLowThreshold ?? 5,
       },
       meta: { scope: "coupon-settings" },
     });
