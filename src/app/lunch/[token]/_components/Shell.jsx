@@ -2,22 +2,37 @@
 //
 // เปลือกจอมือถือของหน้าสั่งอาหาร + หน้า error/ปิดรับ
 // mobile-first: เต็มความกว้าง เนื้อหาอยู่กลางที่ max-w-[480px]
+//
+// โครงของหน้าที่มีแถบล่าง: คอลัมน์สูงเต็มจอเป็น flex-col
+//   [แถบบน sticky] [เนื้อหา flex-1] [StickyBottom]
+// เนื้อหาสั้นก็ยังดันแถบล่างไปติดขอบล่างของจอ ไม่ลอยอยู่ใต้รายการ
+// (ไม่ใช้ position:fixed เพราะ body ของ root layout เป็น h-screen overflow-hidden)
 import Image from "next/image";
 
 const LOGO = "/logo-9experttraining-color.png";
 
 export function Shell({ children }) {
   return (
-    <div className="min-h-dvh bg-[#f8fafd] text-[#0d1b2a]">
+    <div className="flex min-h-dvh flex-col bg-[#f8fafd] text-[#0d1b2a]">
       <div
-        className="mx-auto w-full max-w-[480px]"
-        style={{
-          paddingTop: "env(safe-area-inset-top, 0px)",
-          paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        }}
+        className="mx-auto flex w-full max-w-[480px] flex-1 flex-col"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         {children}
       </div>
+    </div>
+  );
+}
+
+/** แถบล่างติดขอบจอ — ต้องเป็นลูกตัวสุดท้ายของ Shell และเนื้อหาข้างบนต้องเป็น flex-1 */
+export function StickyBottom({ children, className = "" }) {
+  return (
+    <div
+      data-testid="sticky-bottom"
+      className={`sticky bottom-0 z-10 border-t border-black/5 bg-white px-4 pt-3 ${className}`}
+      style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
+    >
+      {children}
     </div>
   );
 }

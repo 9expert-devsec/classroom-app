@@ -11,8 +11,9 @@ import {
   reconcile,
   cartTotals,
   canQuickAdd,
+  newRequestId,
 } from "@/lib/lunchCart.client";
-import { LogoTile } from "../../_components/Shell";
+import { LogoTile, StickyBottom } from "../../_components/Shell";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
 
@@ -289,17 +290,26 @@ export default function MenuClient({
     setBusy(true);
     setSubmitError("");
     try {
-      const res = await fetch(`/api/lunch/${token}/order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId: crypto.randomUUID(),
-          nickname: cart.nickname,
-          restaurantId: restaurant.id,
-          mode: "at_shop",
-          lines: [],
-        }),
+      const body = JSON.stringify({
+        requestId: newRequestId(),
+        nickname: cart.nickname,
+        restaurantId: restaurant.id,
+        mode: "at_shop",
+        lines: [],
       });
+
+      // ครอบเฉพาะ fetch: "เชื่อมต่อไม่สำเร็จ" ต้องหมายถึงเน็ตมีปัญหาจริง ๆ เท่านั้น
+      let res;
+      try {
+        res = await fetch(`/api/lunch/${token}/order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+      } catch {
+        setSubmitError("เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่");
+        return;
+      }
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
@@ -317,8 +327,9 @@ export default function MenuClient({
         return;
       }
       setSubmitError(data?.error || "ทำรายการไม่สำเร็จ");
-    } catch {
-      setSubmitError("เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่");
+    } catch (err) {
+      console.error("at_shop submit failed:", err);
+      setSubmitError("เกิดข้อผิดพลาด กรุณาลองใหม่");
     } finally {
       setBusy(false);
     }
@@ -396,7 +407,7 @@ export default function MenuClient({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-2.5 px-4 py-4 pb-6">
+      <div className="flex flex-1 flex-col gap-2.5 px-4 py-4 pb-6">
         {removedNotice > 0 ? (
           <p className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
             มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
@@ -426,7 +437,7 @@ export default function MenuClient({
       </div>
 
       {count > 0 ? (
-        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-black/5 bg-white px-4 py-3">
+        <StickyBottom className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[13px] text-slate-500">ตะกร้า {count} รายการ</p>
             <p className="text-[16px] font-bold text-[#0d1b2a]">{total} บาท</p>
@@ -438,7 +449,7 @@ export default function MenuClient({
           >
             ดูสรุป
           </button>
-        </div>
+        </StickyBottom>
       ) : null}
 
       {switchTarget ? (
