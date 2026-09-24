@@ -285,11 +285,11 @@ export default function SummaryClient({
       }
       const data = await res.json().catch(() => ({}));
 
-      // สำเร็จ / replay / สั่งไปแล้ว -> ล้างตะกร้า กลับหน้าแรก
+      // สำเร็จ / replay / สั่งไปแล้ว -> ล้างตะกร้า ไปหน้าขอบคุณ
       if (res.ok || (res.status === 409 && data?.reason === "already_ordered")) {
         clearCartLines(token, readCart(token));
         leaving = true;
-        router.replace(`/lunch/${token}`);
+        router.replace(`/lunch/${token}?done=1`);
         return;
       }
 

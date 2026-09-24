@@ -1,8 +1,7 @@
 // src/app/lunch/[token]/page.jsx
 //
 // หน้า 1: กรอกชื่อเล่น + เลือกร้าน
-// ถ้าสั่งไปแล้ว หน้านี้จะแสดงสรุปออเดอร์ (ของเดิมจาก P3b) — P3f จะเปลี่ยนเป็น
-// หน้าขอบคุณ/สแกนซ้ำ
+// ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
 import dbConnect from "@/lib/mongoose";
 import {
   loadLunchGate,
@@ -13,7 +12,7 @@ import {
 
 import { Shell, NoticeScreen } from "./_components/Shell";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
-import PlacedOrderView from "./_components/PlacedOrderView";
+import { ThankYouView, RescanView } from "./_components/PlacedViews";
 
 export const dynamic = "force-dynamic";
 
@@ -65,11 +64,16 @@ export default async function LunchPage({ params, searchParams }) {
     );
   }
 
-  // สั่งไปแล้ว -> สรุปออเดอร์
+  // สั่งไปแล้ว -> มาจากการ submit (?done=1) = หน้าขอบคุณ, สแกนซ้ำ = ดูอย่างเดียว
   if (gate === LUNCH_GATE.PLACED) {
+    const dateLabel = thaiDateLabel(session.order?.dayYMD);
     return (
       <Shell>
-        <PlacedOrderView session={session} />
+        {String(searchParams?.done || "") === "1" ? (
+          <ThankYouView order={session.order} dateLabel={dateLabel} />
+        ) : (
+          <RescanView order={session.order} dateLabel={dateLabel} />
+        )}
       </Shell>
     );
   }

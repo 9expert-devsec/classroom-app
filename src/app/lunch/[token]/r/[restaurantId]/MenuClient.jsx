@@ -14,6 +14,7 @@ import {
   newRequestId,
   switchRestaurant,
   enterRestaurant,
+  clearCartLines,
 } from "@/lib/lunchCart.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
 import SwitchModal, { Sheet, CartConflictBanner } from "../../_components/SwitchModal";
@@ -291,14 +292,15 @@ export default function MenuClient({
       }
       const data = await res.json().catch(() => ({}));
 
-      if (res.ok) {
-        writeCart(token, { ...cart, lines: [] });
-        router.replace(`/lunch/${token}`);
+      // สำเร็จ / replay / สั่งไปแล้ว -> หน้าขอบคุณ
+      if (res.ok || (res.status === 409 && data?.reason === "already_ordered")) {
+        clearCartLines(token, readCart(token));
+        router.replace(`/lunch/${token}?done=1`);
         return;
       }
       if (res.status === 409 && data?.reason === "sold_out") {
         setNoOrderOpen(false);
-        router.replace(`/lunch/${token}`);
+        router.replace(`/lunch/${token}?notice=sold_out`);
         return;
       }
       if (res.status === 403) {
