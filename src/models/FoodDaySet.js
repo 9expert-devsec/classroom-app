@@ -35,6 +35,10 @@ const FoodDaySetSchema = new mongoose.Schema(
       required: true,
       unique: true, // 1 วันมี 1 config
     },
+    // ✅ P1c: คีย์วันแบบ "YYYY-MM-DD" เวลาไทย — ใช้เป็นตัวหาหลักแทน date
+    //    (date ใน DB มี 2 encoding: 00:00Z กับ 17:00Z การค้นด้วยช่วงเวลาจึงเพี้ยน)
+    //    sparse ไว้ก่อน เพราะเอกสารเก่ายังไม่มีค่าจนกว่าจะ backfill
+    dayYMD: { type: String, unique: true, sparse: true },
     entries: [FoodDayEntrySchema], // [{ restaurant, set, mode, soldOutMenuIds }]
   },
   { timestamps: true }
