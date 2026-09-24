@@ -237,6 +237,59 @@ export async function getLunchSession(token, now = new Date()) {
   };
 }
 
+/* ---------------- เปลี่ยนใจไม่เอาคูปองแล้ว ---------------- */
+
+/**
+ * ผู้เรียนกลับมาแก้ Step 2 แล้วเลือกอย่างอื่นที่ไม่ใช่คูปอง
+ *   pending            -> ยกเลิกออเดอร์ให้อัตโนมัติ (คืน activeKey ให้ว่าง)
+ *   ordered / at_shop   -> ห้ามเปลี่ยนเอง ต้องให้ Counter จัดการ
+ * คืน { ok: true, cancelled } หรือ { ok: false, reason, message }
+ */
+export const ORDER_LOCKED_MESSAGE =
+  "ท่านสั่งอาหารแล้ว หากต้องการเปลี่ยน กรุณาติดต่อเจ้าหน้าที่ที่ Counter";
+
+export async function cancelPendingLunchOrderOnChoiceChange({
+  studentId,
+  classId,
+  dayYMD,
+  now,
+}) {
+  if (!studentId || !classId || !dayYMD) return { ok: true, cancelled: false };
+
+  const order = await LunchOrder.findOne({
+    activeKey: activeKeyOf(classId, studentId, dayYMD),
+  }).lean();
+
+  if (!order) return { ok: true, cancelled: false };
+
+  if (order.status === "ordered" || order.status === "at_shop") {
+    return {
+      ok: false,
+      reason: "order_locked",
+      message: ORDER_LOCKED_MESSAGE,
+      orderId: String(order._id),
+    };
+  }
+
+  if (order.status !== "pending") return { ok: true, cancelled: false };
+
+  // ยกเลิกแบบเดียวกับ cancel ปกติ: ปลด activeKey ออกเพื่อให้ออกใบใหม่ได้
+  await LunchOrder.updateOne(
+    { _id: order._id, status: "pending" },
+    {
+      $set: {
+        status: "cancelled",
+        cancelledAt: now ? new Date(now) : new Date(),
+        cancelledBy: "learner",
+        cancelReason: "choice_changed",
+      },
+      $unset: { activeKey: "" },
+    },
+  );
+
+  return { ok: true, cancelled: true, orderId: String(order._id) };
+}
+
 /** ใช้ร่วมกับ /menu — ต้องรู้ว่าร้านนี้อยู่โหมด coupon ของวันนั้นจริงไหม */
 export async function getOrderByToken(token) {
   const t = String(token || "").trim();

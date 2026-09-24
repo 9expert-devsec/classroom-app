@@ -130,6 +130,8 @@ export default function SignPage({ searchParams = {} }) {
       // 3) ไปหน้า success (ถ้ามี cp ให้ส่งไปด้วย)
       const qp = new URLSearchParams();
       qp.set("sid", studentId);
+      // P3b: หน้า success ต้องใช้ classId ไปขอ QR สั่งอาหาร (server ตรวจซ้ำอยู่แล้ว)
+      if (classId) qp.set("cid", classId);
       if (couponPublicId) qp.set("cp", couponPublicId);
 
       router.push(`/classroom/checkin/success?${qp.toString()}`);

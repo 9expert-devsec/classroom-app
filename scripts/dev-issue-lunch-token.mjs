@@ -4,6 +4,11 @@
 // ออก token สำหรับทดสอบหน้าสั่งอาหารบนมือถือ
 //
 //   node scripts/dev-issue-lunch-token.mjs --student <id> --class <id> --day 2026-09-25
+//   node scripts/dev-issue-lunch-token.mjs --student <id> --class <id> --deadline-minutes 30
+//
+// --deadline-minutes N : ตั้ง deadlineAt = ตอนนี้ + N นาที เพื่อทดสอบหน้า
+// ในเฟส open/closing ได้ทุกเวลา ไม่ต้องรอ 11:00 จริง (dev เท่านั้น — โค้ดแอป
+// ไม่มีที่ไหนอ่าน flag นี้)
 //
 // ป้องกันไว้เฉพาะ classroom_phase2 เท่านั้น ยิงผิด db ไม่ได้
 // idempotent เหมือน issueLunchOrder: เรียกซ้ำได้ token เดิม
@@ -37,6 +42,7 @@ function argOf(name) {
 const studentId = argOf("student");
 const classId = argOf("class");
 const dayArg = argOf("day");
+const deadlineMinutesArg = argOf("deadline-minutes");
 
 /* ---------------- env ---------------- */
 
@@ -182,6 +188,19 @@ try {
     }
   }
 
+  // dev เท่านั้น: เลื่อนเส้นตายเพื่อทดสอบเฟส open/closing ได้ทุกเวลา
+  const mins = Number(deadlineMinutesArg);
+  if (deadlineMinutesArg && Number.isFinite(mins)) {
+    const newDeadline = new Date(Date.now() + mins * 60 * 1000);
+    await Orders.updateOne(
+      { _id: order._id },
+      { $set: { deadlineAt: newDeadline } },
+    );
+    order.deadlineAt = newDeadline;
+    console.log(`
+(dev) deadlineAt -> ${newDeadline.toISOString()}  (+${mins} min)`);
+  }
+
   console.log("");
   console.log(`db        : ${DBNAME}`);
   console.log(`class     : ${klass.title || klass.courseName || classId}`);
@@ -189,6 +208,7 @@ try {
   console.log(`dayYMD    : ${dayYMD}`);
   console.log(`orderId   : ${order._id}`);
   console.log(`status    : ${order.status}`);
+  console.log(`deadline  : ${order.deadlineAt ? new Date(order.deadlineAt).toISOString() : "-"}`);
   console.log("");
   console.log(`/lunch/${order.token}`);
   console.log("");

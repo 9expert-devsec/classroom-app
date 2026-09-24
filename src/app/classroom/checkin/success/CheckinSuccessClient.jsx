@@ -7,6 +7,7 @@ import StepHeader from "../StepHeader";
 import UserButton from "@/components/ui/UserButton";
 import AnimatedCheck from "@/components/icons/check-success";
 import QRCode from "react-qr-code";
+import LunchQrStep from "./LunchQrStep";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -32,6 +33,10 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
   const router = useRouter();
   const sid = pick(searchParams, "sid");
   const cp = pick(searchParams, "cp"); // ✅ coupon publicId (ถ้ามี)
+  const cid = pick(searchParams, "cid"); // ✅ P3b: classId สำหรับขอ QR สั่งอาหาร
+
+  // P3b: ถ้ามี Step 3 (QR สั่งอาหาร) ให้ผู้เรียนกดเองไม่ต้องรีบเด้งกลับ
+  const [hasLunchStep, setHasLunchStep] = useState(false);
 
   const [countdown, setCountdown] = useState(5);
   const [coupon, setCoupon] = useState(null);
@@ -68,6 +73,7 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
 
   // 🔥 Countdown & Auto-Redirect
   useEffect(() => {
+    if (hasLunchStep) return; // มี QR ให้สแกน อย่าเพิ่งเด้งกลับ
     if (countdown <= 0) {
       router.push("/classroom/checkin");
       return;
@@ -163,9 +169,19 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
             </div>
           ) : null}
 
-          <p className="mt-6 sm:text-base lg:text-sm text-front-textMuted">
-            ระบบจะพากลับไปหน้าเช็คอินอัตโนมัติใน {countdown} วินาที...
-          </p>
+          {/* ✅ P3b Step 3: QR สั่งอาหารกลางวัน (โผล่เฉพาะคนที่เลือกคูปองวันนี้) */}
+          <LunchQrStep
+            studentId={sid}
+            classId={cid}
+            onReady={() => setHasLunchStep(true)}
+            onDone={handleBack}
+          />
+
+          {!hasLunchStep && (
+            <p className="mt-6 sm:text-base lg:text-sm text-front-textMuted">
+              ระบบจะพากลับไปหน้าเช็คอินอัตโนมัติใน {countdown} วินาที...
+            </p>
+          )}
         </div>
 
         <div className="mt-4 w-full max-w-sm">

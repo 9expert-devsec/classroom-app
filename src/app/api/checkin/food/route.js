@@ -17,6 +17,8 @@ import {
   getCouponAvailability,
   couponUnavailableMessage,
 } from "@/lib/couponAvailability.server";
+import { toBkkYMD } from "@/lib/lunchConfig";
+import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchOrders.server";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +71,9 @@ function isObjectId(x) {
 // ✅ P1c: กฎเดียวสำหรับคูปอง — รวม disableCoupon ของคลาส เข้ากับ
 //    "วันนั้นมีร้านคูปองที่ใช้ได้จริงไหม" ไว้ที่ couponAvailability.server.js
 //    (best-effort: ถ้าเช็คไม่ได้ = ปล่อยผ่าน ไม่บล็อกการเช็คอิน)
+// P3b: ใช้ "วันนี้" ตามเวลาไทยเป็นหลัก ไม่ใช่ day index ที่ client ส่งมา
+//      (คูปองผูกกับ FoodDaySet ของวันจริง และ client แก้ day ส่งมาได้)
+//      ถ้าวันนี้ไม่ใช่วันเรียนของคลาสนี้ ค่อย fallback ไปที่ day ที่ส่งมา
 async function checkCouponAvailability(classId, day) {
   try {
     if (!isObjectId(classId)) return { available: true, reason: null };
@@ -78,7 +83,11 @@ async function checkCouponAvailability(classId, day) {
       .lean();
     if (!cls) return { available: true, reason: null };
 
-    const dayYMD = resolveClassDayYMD(cls, day);
+    const todayYMD = toBkkYMD(new Date());
+    const isTrainingDay =
+      Array.isArray(cls.days) && cls.days.some((d) => String(d).slice(0, 10) === todayYMD);
+
+    const dayYMD = isTrainingDay ? todayYMD : resolveClassDayYMD(cls, day);
     return await getCouponAvailability({ classDoc: cls, dayYMD });
   } catch (e) {
     console.warn("[food] check coupon availability failed:", e?.message || e);
@@ -332,6 +341,28 @@ export async function POST(req) {
   const prevFood = student.food
     ? JSON.parse(JSON.stringify(student.food))
     : null;
+
+  // ✅ P3b: เคยเลือกคูปองไว้ แล้วกลับมาเปลี่ยนเป็นอย่างอื่น
+  //    pending           -> ยกเลิก LunchOrder ให้อัตโนมัติ
+  //    ordered / at_shop -> ห้ามเปลี่ยนเอง ต้องไปที่ Counter
+  if (prevFood?.choiceType === "coupon" && finalChoiceType !== "coupon") {
+    try {
+      const res = await cancelPendingLunchOrderOnChoiceChange({
+        studentId: String(student._id),
+        classId: safeClassId,
+        dayYMD: toBkkYMD(new Date()),
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, error: res.message, reason: res.reason },
+          { status: 409 },
+        );
+      }
+    } catch (e) {
+      // ไม่ให้เรื่องคูปองไปล้มการเช็คอินทั้งอัน
+      console.warn("[food] cancel lunch order failed:", e?.message || e);
+    }
+  }
 
   /* ---------------- COUPON / NO FOOD ---------------- */
   if (finalChoiceType === "coupon" || finalChoiceType === "noFood") {
