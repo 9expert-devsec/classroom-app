@@ -106,7 +106,9 @@ const LunchOrderSchema = new Schema(
     couponCode: { type: String, default: "" },
     couponSource: {
       type: String,
-      enum: ["", "generated", "stock"],
+      // P3d: "ecoupon" คือชื่อที่ lunchSubmit ใช้จริง — "generated" คงไว้เพราะ
+      // เป็นชื่อเดิมจาก P1a และเป็นการเพิ่มค่า enum เท่านั้น (additive)
+      enum: ["", "generated", "ecoupon", "stock"],
       default: "",
     },
     // เฉพาะรหัสที่ระบบ generate (9XP-XXXX) — ห้ามนำกลับมาใช้ซ้ำ
