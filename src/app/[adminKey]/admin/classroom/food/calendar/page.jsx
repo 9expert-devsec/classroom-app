@@ -232,7 +232,9 @@ export default function FoodCalendarPage() {
   }
 
   return (
-    <div className="space-y-6">
+    // P1c follow-up: <main> ของ layout เป็น overflow-hidden และส่ง slot ที่สูง
+    // คงที่มาให้ หน้านี้จึงต้องสูงเท่า slot แล้วเลื่อนในตัวเอง
+    <div className="h-full space-y-6 overflow-y-auto overscroll-contain pr-1">
       <div>
         <h1 className="text-xl font-semibold">Food Calendar</h1>
         <p className="text-sm text-admin-textMuted">
