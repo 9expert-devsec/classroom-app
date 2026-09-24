@@ -13,14 +13,16 @@ import {
   canQuickAdd,
   newRequestId,
   switchRestaurant,
+  enterRestaurant,
 } from "@/lib/lunchCart.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
+import SwitchModal, { Sheet, CartConflictBanner } from "../../_components/SwitchModal";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
 
 /* ---------------- menu row ---------------- */
 
-function MenuRow({ m, onAdd, onOpen }) {
+function MenuRow({ m, locked, onAdd, onOpen }) {
   const out = m.unavailableToday;
 
   return (
@@ -58,8 +60,8 @@ function MenuRow({ m, onAdd, onOpen }) {
 
       <button
         type="button"
-        disabled={out}
-        onClick={() => !out && onAdd(m)}
+        disabled={out || locked}
+        onClick={() => !out && !locked && onAdd(m)}
         aria-label={`เพิ่ม ${m.name}`}
         data-testid="add-button"
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2486ff] text-white shadow-sm transition hover:bg-[#005cff] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -71,48 +73,6 @@ function MenuRow({ m, onAdd, onOpen }) {
 }
 
 /* ---------------- modals ---------------- */
-
-function Sheet({ children }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 px-4 pb-4">
-      <div className="w-full max-w-[480px] rounded-2xl bg-white p-5 shadow-xl">
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SwitchModal({ current, target, onCancel, onConfirm }) {
-  return (
-    <Sheet>
-      <div className="mb-3 flex items-center gap-3">
-        <LogoTile src={target.logo} alt={target.name} size={44} />
-        <h3 className="text-[17px] font-bold text-[#0d1b2a]">
-          เปลี่ยนไปร้าน {target.name}?
-        </h3>
-      </div>
-      <p className="text-[14px] leading-relaxed text-slate-500">
-        รายการที่เลือกไว้จากร้าน {current.name} จะถูกล้างทั้งหมด
-      </p>
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-11 flex-1 rounded-xl text-[15px] font-medium text-slate-500 transition hover:bg-slate-100 active:scale-[0.98]"
-        >
-          ยกเลิก
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="h-11 flex-1 rounded-xl bg-[#2486ff] text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:scale-[0.98]"
-        >
-          เปลี่ยนร้าน
-        </button>
-      </div>
-    </Sheet>
-  );
-}
 
 function PickShopSheet({ others, onPick, onCancel }) {
   return (
@@ -225,16 +185,22 @@ export default function MenuClient({
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
+  // ตะกร้ามีรายการจากร้านอื่น (มาทางย้อนกลับ / พิมพ์ URL) -> ไม่แตะตะกร้า ถามก่อน
+  const [conflict, setConflict] = useState(false);
+
   // โหลดตะกร้า + ตัดรายการที่ใช้ไม่ได้แล้วทิ้ง
   useEffect(() => {
     const stored = readCart(token);
-    const forThisShop =
-      stored.restaurantId === restaurant.id
-        ? stored
-        : switchRestaurant(stored, restaurant.id);
-
-    const { state, removed } = reconcile(forThisShop, menus);
+    const { state: entered, conflict: other } = enterRestaurant(stored, restaurant.id);
+    if (other) {
+      // เมนูที่มีเป็นของร้านนี้ reconcile ไม่ได้ ไม่งั้นรายการของอีกร้านหายหมด
+      setCart(stored);
+      setConflict(true);
+      return;
+    }
+    const { state, removed } = reconcile(entered, menus);
     setCart(state);
+    setConflict(false);
     setRemovedNotice(removed);
     writeCart(token, state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,6 +210,12 @@ export default function MenuClient({
     setCart(next);
     writeCart(token, next);
   }
+
+  const cartQty = (cart.lines || []).reduce((s, l) => s + (l.qty || 0), 0);
+  const cartShop =
+    cart.restaurantId === restaurant.id
+      ? restaurant
+      : others.find((r) => r.id === cart.restaurantId) || { name: "อื่น" };
 
   const { count, total } = useMemo(
     () => cartTotals(cart, menus),
@@ -284,6 +256,12 @@ export default function MenuClient({
     const next = switchRestaurant(cart, target.id);
     writeCart(token, next);
     setSwitchTarget(null);
+    if (target.id === restaurant.id) {
+      // ยืนยันจากแถบ conflict: อยู่หน้านี้ต่อ
+      setCart(next);
+      setConflict(false);
+      return;
+    }
     router.push(`/lunch/${token}/r/${target.id}`);
   }
 
@@ -341,6 +319,14 @@ export default function MenuClient({
   return (
     <>
       <div className="sticky top-0 z-10">
+        {conflict ? (
+          <CartConflictBanner
+            count={cartQty}
+            cartRestaurantName={cartShop.name}
+            onBack={() => router.replace(`/lunch/${token}/r/${cart.restaurantId}`)}
+            onSwitch={() => setSwitchTarget(restaurant)}
+          />
+        ) : null}
         {/* แถบร้าน + ปุ่มเปลี่ยนร้าน */}
         <div className="flex items-center justify-between gap-2 border-b border-black/5 bg-white px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -416,7 +402,13 @@ export default function MenuClient({
         ) : null}
 
         {shown.map((m) => (
-          <MenuRow key={m.id} m={m} onAdd={quickAdd} onOpen={goDetail} />
+          <MenuRow
+            key={m.id}
+            m={m}
+            locked={conflict}
+            onAdd={quickAdd}
+            onOpen={goDetail}
+          />
         ))}
 
         {shown.length === 0 ? (
@@ -437,7 +429,7 @@ export default function MenuClient({
         </button>
       </div>
 
-      {count > 0 ? (
+      {count > 0 && !conflict ? (
         <StickyBottom className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[13px] text-slate-500">ตะกร้า {count} รายการ</p>
@@ -455,7 +447,7 @@ export default function MenuClient({
 
       {switchTarget ? (
         <SwitchModal
-          current={restaurant}
+          currentName={cartShop.name}
           target={switchTarget}
           onCancel={() => setSwitchTarget(null)}
           onConfirm={() => doSwitch(switchTarget)}
@@ -474,7 +466,7 @@ export default function MenuClient({
         <NoOrderModal
           restaurant={restaurant}
           budget={budget}
-          cartCount={count}
+          cartCount={cartQty}
           busy={busy}
           error={submitError}
           onCancel={() => setNoOrderOpen(false)}

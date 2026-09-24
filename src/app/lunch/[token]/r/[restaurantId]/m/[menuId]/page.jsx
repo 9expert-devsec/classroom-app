@@ -67,6 +67,7 @@ export default async function MenuDetailPage({ params }) {
       <MenuDetailClient
         token={token}
         restaurant={restaurant}
+        restaurants={session.restaurants || []}
         budget={session.budget}
         windowInfo={session.window}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}

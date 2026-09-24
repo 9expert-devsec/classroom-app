@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+
 // src/lib/lunchCart.client.js
 //
 // ตะกร้าของผู้เรียน เก็บใน localStorage ต่อ 1 token
@@ -57,9 +59,21 @@ export function newRequestId() {
 
 export function readCart(token) {
   if (typeof window === "undefined") return emptyState();
+  return parseCart(readRaw(token));
+}
+
+function readRaw(token) {
   try {
-    const raw = window.localStorage.getItem(storageKey(token));
-    if (!raw) return emptyState();
+    return window.localStorage.getItem(storageKey(token)) || "";
+  } catch {
+    return "";
+  }
+}
+
+/** แปลงข้อความใน storage เป็นตะกร้า — พัง/ว่าง = ตะกร้าว่าง */
+export function parseCart(raw) {
+  if (!raw) return emptyState();
+  try {
     const parsed = JSON.parse(raw);
     return {
       nickname: String(parsed?.nickname || ""),
@@ -74,6 +88,8 @@ export function readCart(token) {
   }
 }
 
+const listeners = new Set();
+
 export function writeCart(token, state) {
   if (typeof window === "undefined") return;
   try {
@@ -81,6 +97,29 @@ export function writeCart(token, state) {
   } catch {
     // เขียนไม่ได้ก็ปล่อยไป หน้าจอยังทำงานต่อได้จาก state ใน memory
   }
+  listeners.forEach((fn) => fn());
+}
+
+function subscribeCart(fn) {
+  listeners.add(fn);
+  window.addEventListener("storage", fn);
+  return () => {
+    listeners.delete(fn);
+    window.removeEventListener("storage", fn);
+  };
+}
+
+/**
+ * ข้อความดิบของตะกร้าใน storage แบบ external store
+ * คืน null ตอน render ฝั่ง server / hydration (ยังไม่รู้ค่า) แล้วค่อยเป็นค่าจริง
+ * ใช้คู่กับ parseCart — ไม่ต้อง setState ใน effect
+ */
+export function useCartRaw(token) {
+  return useSyncExternalStore(
+    subscribeCart,
+    () => readRaw(token),
+    () => null,
+  );
 }
 
 export function clearCartLines(token, state) {
@@ -94,9 +133,28 @@ function withContent(state, patch) {
   return { ...state, ...patch, requestId: "" };
 }
 
-/** เปลี่ยนร้าน: ล้างรายการ + requestId */
+/**
+ * เปลี่ยนร้าน: ล้างรายการ + requestId
+ * เรียกได้เฉพาะเมื่อตะกร้าว่าง หรือผู้เรียนกดยืนยันเปลี่ยนร้านแล้วเท่านั้น
+ * — การเปิดดูหน้าเฉย ๆ ต้องผ่าน enterRestaurant
+ */
 export function switchRestaurant(state, restaurantId) {
   return withContent(state, { restaurantId: String(restaurantId || ""), lines: [] });
+}
+
+/**
+ * กติกาเดียวของ "เข้ามาที่ร้านนี้" (หน้า 1 / หน้าเมนู / หน้ารายละเอียด)
+ *   ร้านเดียวกับตะกร้า       -> ไม่แตะอะไร
+ *   ตะกร้าว่าง               -> ตั้งร้านใหม่เงียบ ๆ
+ *   มีรายการจากร้านอื่นอยู่   -> ไม่แตะตะกร้า คืน conflict ให้หน้าจอถามก่อน
+ */
+export function enterRestaurant(state, restaurantId) {
+  const rid = String(restaurantId || "");
+  if (state.restaurantId === rid) return { state, conflict: false };
+  if ((state.lines || []).length === 0) {
+    return { state: switchRestaurant(state, rid), conflict: false };
+  }
+  return { state, conflict: true };
 }
 
 /** requestId ที่จะใช้ submit — มีอยู่แล้วใช้ของเดิม ไม่มีค่อยสร้าง */

@@ -12,6 +12,7 @@ import {
   cartTotals,
   unitPriceOf,
   switchRestaurant,
+  enterRestaurant,
   MAX_NOTE,
   MIN_QTY,
   MAX_QTY,
@@ -20,6 +21,7 @@ import { StickyBottom } from "../../../../_components/Shell";
 import BudgetBar from "../../../../_components/BudgetBar";
 import CountdownBanner from "../../../../_components/CountdownBanner";
 import QtyStepper from "../../../../_components/QtyStepper";
+import SwitchModal, { CartConflictBanner } from "../../../../_components/SwitchModal";
 
 /* ---------------- option rows ---------------- */
 
@@ -88,6 +90,7 @@ function ChoiceRow({ group, choice, on, onToggle }) {
 export default function MenuDetailClient({
   token,
   restaurant,
+  restaurants,
   budget,
   windowInfo,
   deadlineLabel,
@@ -103,17 +106,35 @@ export default function MenuDetailClient({
   const [note, setNote] = useState("");
   const [qty, setQty] = useState(1);
 
+  // ตะกร้ามีรายการจากร้านอื่น -> ไม่แตะตะกร้า ปิดปุ่มเพิ่มจนกว่าจะยืนยันเปลี่ยนร้าน
+  const [conflict, setConflict] = useState(false);
+  const [switchOpen, setSwitchOpen] = useState(false);
+
   useEffect(() => {
     const stored = readCart(token);
-    const forThisShop =
-      stored.restaurantId === restaurant.id
-        ? stored
-        : switchRestaurant(stored, restaurant.id);
-    const { state } = reconcile(forThisShop, menus);
+    const { state: entered, conflict: other } = enterRestaurant(stored, restaurant.id);
+    if (other) {
+      setCart(stored);
+      setConflict(true);
+      return;
+    }
+    const { state } = reconcile(entered, menus);
     setCart(state);
+    setConflict(false);
     writeCart(token, state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, restaurant.id]);
+
+  const cartQty = (cart.lines || []).reduce((s, l) => s + (l.qty || 0), 0);
+  const cartShop = restaurants.find((r) => r.id === cart.restaurantId) || { name: "อื่น" };
+
+  function confirmSwitch() {
+    const next = switchRestaurant(cart, restaurant.id);
+    writeCart(token, next);
+    setCart(next);
+    setConflict(false);
+    setSwitchOpen(false);
+  }
 
   const groups = useMemo(() => menu.optionGroups || [], [menu]);
 
@@ -139,7 +160,7 @@ export default function MenuDetailClient({
   );
 
   const missing = groups.find((g) => g.required && !(picked[g.id] || []).length);
-  const canAdd = !missing;
+  const canAdd = !missing && !conflict;
 
   const unit = unitPriceOf({ choices }, menu);
   const thisTotal = unit * qty;
@@ -159,6 +180,14 @@ export default function MenuDetailClient({
   return (
     <>
       <div className="sticky top-0 z-10">
+        {conflict ? (
+          <CartConflictBanner
+            count={cartQty}
+            cartRestaurantName={cartShop.name}
+            onBack={() => router.replace(`/lunch/${token}/r/${cart.restaurantId}`)}
+            onSwitch={() => setSwitchOpen(true)}
+          />
+        ) : null}
         {closing ? (
           <CountdownBanner
             secondsLeft={windowInfo.secondsLeft}
@@ -278,6 +307,15 @@ export default function MenuDetailClient({
           เพิ่มลงตะกร้า · {thisTotal} บาท
         </button>
       </StickyBottom>
+
+      {switchOpen ? (
+        <SwitchModal
+          currentName={cartShop.name}
+          target={restaurant}
+          onCancel={() => setSwitchOpen(false)}
+          onConfirm={confirmSwitch}
+        />
+      ) : null}
     </>
   );
 }

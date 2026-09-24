@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 
 import { isValidNickname, NICKNAME_MAX } from "@/lib/lunchConfig";
-import { readCart, writeCart } from "@/lib/lunchCart.client";
+import {
+  readCart,
+  writeCart,
+  parseCart,
+  useCartRaw,
+  enterRestaurant,
+  switchRestaurant,
+} from "@/lib/lunchCart.client";
 import { LogoTile } from "./_components/Shell";
 import CountdownBanner from "./_components/CountdownBanner";
+import SwitchModal from "./_components/SwitchModal";
 
 function RestaurantTile({ r, disabled, onPick }) {
   const isClosed = r.state === "closed";
@@ -20,7 +28,7 @@ function RestaurantTile({ r, disabled, onPick }) {
     <button
       type="button"
       disabled={blocked}
-      onClick={() => !blocked && onPick(r.id)}
+      onClick={() => !blocked && onPick(r)}
       className={[
         "relative flex flex-col items-center gap-2 rounded-2xl border p-4 text-center transition",
         blocked
@@ -75,27 +83,28 @@ export default function ChooseRestaurantClient({
 }) {
   const router = useRouter();
 
-  const [value, setValue] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [nickname, setNickname] = useState("");
-  const [error, setError] = useState(false);
-  const [ready, setReady] = useState(false);
+  // ตะกร้าใน storage แบบ external store: null = ยังไม่รู้ (server / hydration)
+  const raw = useCartRaw(token);
+  const ready = raw !== null;
+  const stored = useMemo(() => parseCart(raw), [raw]);
 
   // ชื่อเล่นเอาจาก DTO ก่อน ถ้าไม่มีค่อยดูใน storage
-  useEffect(() => {
-    const stored = readCart(token);
-    const fromSession = session?.learner?.nickname || "";
-    const initial = fromSession || stored.nickname || "";
+  const fromSession = session?.learner?.nickname || "";
+  const nickname =
+    stored.nicknameConfirmed && stored.nickname
+      ? stored.nickname
+      : fromSession || stored.nickname;
+  const [editing, setEditing] = useState(false);
+  const confirmed =
+    !editing && (!!fromSession || (stored.nicknameConfirmed && !!stored.nickname));
 
-    setValue(initial);
-    setNickname(initial);
-    setConfirmed(!!fromSession || (!!stored.nicknameConfirmed && !!stored.nickname));
-    setReady(true);
-  }, [token, session?.learner?.nickname]);
+  const [draft, setDraft] = useState(null); // null = ยังไม่พิมพ์ ใช้ค่าที่เก็บไว้
+  const value = draft ?? nickname;
+  const [error, setError] = useState(false);
+  const [switchTarget, setSwitchTarget] = useState(null);
 
   function persist(next) {
-    const stored = readCart(token);
-    writeCart(token, { ...stored, ...next });
+    writeCart(token, { ...readCart(token), ...next });
   }
 
   function submit() {
@@ -105,20 +114,38 @@ export default function ChooseRestaurantClient({
       return;
     }
     setError(false);
-    setNickname(v);
-    setConfirmed(true);
+    setEditing(false);
+    setDraft(null);
     persist({ nickname: v, nicknameConfirmed: true });
   }
 
   function edit() {
-    setConfirmed(false);
+    setEditing(true);
+    setDraft(nickname);
     persist({ nicknameConfirmed: false });
   }
 
-  function pick(restaurantId) {
-    persist({ restaurantId });
-    router.push(`/lunch/${token}/r/${restaurantId}`);
+  // กติกาเดียวกับทุกหน้า: มีรายการจากร้านอื่น -> ถามก่อนล้าง
+  function pick(r) {
+    const current = readCart(token);
+    const { state, conflict } = enterRestaurant(current, r.id);
+    if (conflict) {
+      setSwitchTarget(r);
+      return;
+    }
+    writeCart(token, state);
+    router.push(`/lunch/${token}/r/${r.id}`);
   }
+
+  function confirmSwitch() {
+    const r = switchTarget;
+    writeCart(token, switchRestaurant(readCart(token), r.id));
+    setSwitchTarget(null);
+    router.push(`/lunch/${token}/r/${r.id}`);
+  }
+
+  const cartShopName =
+    (session.restaurants || []).find((r) => r.id === stored.restaurantId)?.name || "อื่น";
 
   const closing = session?.window?.phase === "closing";
 
@@ -162,7 +189,7 @@ export default function ChooseRestaurantClient({
               value={value}
               maxLength={NICKNAME_MAX}
               onChange={(e) => {
-                setValue(e.target.value);
+                setDraft(e.target.value);
                 if (error) setError(false);
               }}
               placeholder="เช่น Bas"
@@ -242,6 +269,15 @@ export default function ChooseRestaurantClient({
           งบคูปอง {session.budget} บาทต่อคน
         </p>
       </div>
+
+      {switchTarget ? (
+        <SwitchModal
+          currentName={cartShopName}
+          target={switchTarget}
+          onCancel={() => setSwitchTarget(null)}
+          onConfirm={confirmSwitch}
+        />
+      ) : null}
     </>
   );
 }
