@@ -106,33 +106,15 @@ export default function SignPage({ searchParams = {} }) {
         throw new Error(dataComplete.error || "complete checkin failed");
       }
 
-      // ✅ 2.5) ถ้าเลือก coupon -> ออกคูปองหลัง complete สำเร็จ
-      let couponPublicId = "";
-      const choiceType = preview?.food?.choiceType || "";
-      if (choiceType === "coupon") {
-        const resCoupon = await fetch("/api/coupon/issue", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            studentId,
-            classId,
-            day,
-          }),
-        });
-        const dataCoupon = await resCoupon.json().catch(() => ({}));
-        if (!resCoupon.ok || !dataCoupon.ok) {
-          console.error("issue coupon error:", dataCoupon);
-          throw new Error(dataCoupon.error || "issue coupon failed");
-        }
-        couponPublicId = dataCoupon.publicId || "";
-      }
+      // P3c: เลิกออก e-coupon ของระบบ merchant ที่นี่แล้ว
+      // คนที่เลือกคูปองจะได้ QR สั่งอาหารจาก LunchQrStep บนหน้า success แทน
+      // (route /api/coupon/issue ยังอยู่ ยังไม่ลบ — ไปลบรอบ P5)
 
-      // 3) ไปหน้า success (ถ้ามี cp ให้ส่งไปด้วย)
+      // 3) ไปหน้า success
       const qp = new URLSearchParams();
       qp.set("sid", studentId);
       // P3b: หน้า success ต้องใช้ classId ไปขอ QR สั่งอาหาร (server ตรวจซ้ำอยู่แล้ว)
       if (classId) qp.set("cid", classId);
-      if (couponPublicId) qp.set("cp", couponPublicId);
 
       router.push(`/classroom/checkin/success?${qp.toString()}`);
     } catch (err) {

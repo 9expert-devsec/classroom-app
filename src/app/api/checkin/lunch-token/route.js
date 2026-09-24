@@ -89,13 +89,19 @@ export async function POST(req) {
 
     if (!checkin) return bad(reasonMessage("not_checked_in"), 409);
 
-    // 3) ตัวเลือกที่บันทึกไว้ต้องเป็นคูปอง และต้องเป็นของคลาสนี้
+    // 3) ตัวเลือกที่บันทึกไว้ต้องเป็นคูปอง ของคลาสนี้ และของ "วันนี้"
+    //    P3c: Student.food เก็บค่าเดียวทับกันไปเรื่อย ๆ ถ้าไม่เช็ค day ด้วย
+    //    คนที่เลือกคูปองไว้เมื่อวานจะยังขอ QR ของวันนี้ได้
     const food = student.food || {};
     const choiceIsCoupon = String(food.choiceType || "") === "coupon";
     const foodClassMatches =
       !food.classId || String(food.classId) === classId;
+    const foodDayMatches =
+      food.day === null || food.day === undefined
+        ? false
+        : Number(food.day) === dayIndex;
 
-    if (!choiceIsCoupon || !foodClassMatches) {
+    if (!choiceIsCoupon || !foodClassMatches || !foodDayMatches) {
       return bad(reasonMessage("not_coupon_choice"), 409);
     }
 

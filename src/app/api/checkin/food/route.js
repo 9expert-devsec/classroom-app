@@ -13,7 +13,6 @@ import { requireAdmin } from "@/lib/adminAuth.server";
 import { writeAuditLog } from "@/lib/auditLog.server";
 
 import {
-  resolveClassDayYMD,
   getCouponAvailability,
   couponUnavailableMessage,
 } from "@/lib/couponAvailability.server";
@@ -70,11 +69,12 @@ function isObjectId(x) {
 
 // ✅ P1c: กฎเดียวสำหรับคูปอง — รวม disableCoupon ของคลาส เข้ากับ
 //    "วันนั้นมีร้านคูปองที่ใช้ได้จริงไหม" ไว้ที่ couponAvailability.server.js
-//    (best-effort: ถ้าเช็คไม่ได้ = ปล่อยผ่าน ไม่บล็อกการเช็คอิน)
-// P3b: ใช้ "วันนี้" ตามเวลาไทยเป็นหลัก ไม่ใช่ day index ที่ client ส่งมา
-//      (คูปองผูกกับ FoodDaySet ของวันจริง และ client แก้ day ส่งมาได้)
-//      ถ้าวันนี้ไม่ใช่วันเรียนของคลาสนี้ ค่อย fallback ไปที่ day ที่ส่งมา
-async function checkCouponAvailability(classId, day) {
+//
+// P3c: ใช้ "วันนี้" ตามเวลาไทยเท่านั้น ไม่แตะ day ที่ client ส่งมาเลย
+//      คูปองผูกกับ FoodDaySet ของวันจริง ถ้าปล่อยให้ client เลือก day ได้
+//      ก็เท่ากับเลือกได้ว่าจะให้ตรวจวันไหน
+//      วันนี้ไม่ใช่วันเรียนของคลาสนี้ -> เลือกคูปองไม่ได้ (not_class_day)
+async function checkCouponAvailability(classId) {
   try {
     if (!isObjectId(classId)) return { available: true, reason: null };
 
@@ -85,10 +85,14 @@ async function checkCouponAvailability(classId, day) {
 
     const todayYMD = toBkkYMD(new Date());
     const isTrainingDay =
-      Array.isArray(cls.days) && cls.days.some((d) => String(d).slice(0, 10) === todayYMD);
+      Array.isArray(cls.days) &&
+      cls.days.some((d) => String(d).slice(0, 10) === todayYMD);
 
-    const dayYMD = isTrainingDay ? todayYMD : resolveClassDayYMD(cls, day);
-    return await getCouponAvailability({ classDoc: cls, dayYMD });
+    if (!isTrainingDay) {
+      return { available: false, reason: "not_class_day" };
+    }
+
+    return await getCouponAvailability({ classDoc: cls, dayYMD: todayYMD });
   } catch (e) {
     console.warn("[food] check coupon availability failed:", e?.message || e);
     return { available: true, reason: null };
@@ -310,12 +314,15 @@ export async function POST(req) {
   // ✅ กันฝั่ง server: บันทึก choiceType = "coupon" ได้เฉพาะเมื่อกฎกลางอนุญาต
   //    (คลาสไม่ได้ปิดคูปอง และวันนั้นมีร้านคูปองที่ใช้ได้จริง)
   if (finalChoiceType === "coupon") {
-    const avail = await checkCouponAvailability(safeClassId, safeDay);
+    const avail = await checkCouponAvailability(safeClassId);
     if (!avail.available) {
       return NextResponse.json(
         {
           ok: false,
-          error: couponUnavailableMessage(avail.reason),
+          error:
+            avail.reason === "not_class_day"
+              ? "วันนี้ไม่ใช่วันเรียนของคลาสนี้ จึงเลือกรับคูปองไม่ได้"
+              : couponUnavailableMessage(avail.reason),
           reason: avail.reason,
         },
         { status: 409 },
