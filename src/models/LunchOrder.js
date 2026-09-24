@@ -21,6 +21,8 @@ const LunchOrderLineSchema = new Schema(
     menuId: { type: Schema.Types.ObjectId, ref: "FoodMenu", default: null },
     // snapshot ชื่อเมนู ณ เวลาสั่ง เผื่อเมนูถูกแก้/ลบภายหลัง
     name: { type: String, default: "" },
+    // ✅ P3c: snapshot รูปด้วย เพื่อให้หน้าสรุป/ใบสั่งพิมพ์ย้อนหลังได้เหมือนเดิม
+    imageUrl: { type: String, default: "" },
     // ราคาต่อหน่วย = ราคาเมนู + priceDelta ของตัวเลือกที่เลือก
     unitPrice: { type: Number, default: 0 },
     qty: { type: Number, default: 1, min: 1 },
@@ -116,6 +118,9 @@ const LunchOrderSchema = new Schema(
     },
 
     /* ---------------- lifecycle ---------------- */
+    // ✅ P3c: requestId ของการกดยืนยันครั้งที่สำเร็จ ใช้ตัดสินว่าเป็นการยิงซ้ำ
+    //    ของคำขอเดิม (replay) หรือเป็นคำขอใหม่ที่มาช้าไป (already_ordered)
+    submitRequestId: { type: String, default: "" },
     submittedAt: { type: Date, default: null },
     cancelledAt: { type: Date, default: null },
     cancelledBy: { type: String, default: "" },

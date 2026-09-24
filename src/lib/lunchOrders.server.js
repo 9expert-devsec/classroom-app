@@ -190,31 +190,52 @@ export async function getLunchSession(token, now = new Date()) {
 
   const status = computeStatus(order, at);
 
-  // สรุปออเดอร์ที่บันทึกไว้ (P3c จะเติมของจริง)
+  // สรุปออเดอร์ที่บันทึกไว้
   // pending = ยังไม่สั่ง, unassigned = หมดเวลาโดยไม่ได้สั่ง — ทั้งคู่ไม่มีอะไรให้สรุป
   const placed = order.status === "ordered" || order.status === "at_shop";
-  const orderSummary = !placed
-    ? null
-    : {
-          restaurantId: order.restaurantId ? String(order.restaurantId) : null,
-          restaurantName: order.restaurantName || "",
-          lines: (order.lines || []).map((l) => ({
-            menuId: l.menuId ? String(l.menuId) : null,
-            name: l.name || "",
-            unitPrice: l.unitPrice || 0,
-            qty: l.qty || 0,
-            options: (l.options || []).map((o) => ({
-              groupName: o.groupName || "",
-              choiceName: o.choiceName || "",
-              priceDelta: o.priceDelta || 0,
-            })),
-            note: l.note || "",
-            lineTotal: l.lineTotal || 0,
-          })),
-          itemsTotal: order.itemsTotal || 0,
-          overBudget: order.overBudget || 0,
-          couponCode: order.couponCode || "",
-        };
+
+  let orderSummary = null;
+  if (placed) {
+    // โลโก้ร้านเก็บไว้ที่ Restaurant ไม่ได้ snapshot ลงออเดอร์
+    const rid = order.restaurantId ? String(order.restaurantId) : null;
+    const fromList = restaurants.find((r) => r.id === rid);
+
+    orderSummary = {
+      mode: order.status === "at_shop" ? "at_shop" : "order",
+      restaurantId: rid,
+      restaurantName: order.restaurantName || fromList?.name || "",
+      restaurantLogo: fromList?.logo || "",
+      isStock: !!order.usesCouponStock,
+
+      lines: (order.lines || []).map((l) => ({
+        menuId: l.menuId ? String(l.menuId) : null,
+        name: l.name || "",
+        image: l.imageUrl || "",
+        unitPrice: l.unitPrice || 0,
+        qty: l.qty || 0,
+        options: (l.options || []).map((o) => ({
+          groupName: o.groupName || "",
+          choiceName: o.choiceName || "",
+          priceDelta: o.priceDelta || 0,
+        })),
+        note: l.note || "",
+        lineTotal: l.lineTotal || 0,
+      })),
+
+      itemsTotal: order.itemsTotal || 0,
+      budget: order.budget ?? LUNCH_BUDGET_THB,
+      overBudget: order.overBudget || 0,
+
+      couponCode: order.couponCode || "",
+      couponSource: order.couponSource || "",
+
+      holderName: order.holderName || "",
+      nickname: order.nickname || "",
+      roomName: order.roomName || "",
+      dayYMD: ymd,
+      submittedAt: order.submittedAt || null,
+    };
+  }
 
   return {
     learner: {
