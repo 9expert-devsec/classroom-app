@@ -84,12 +84,6 @@ export async function POST(req) {
       return fail("student_not_in_class", 403);
     }
 
-    // 3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
-    const food = student.food || {};
-    if (String(food.choiceType || "") !== "coupon") {
-      return fail("not_coupon_choice", 409);
-    }
-
     const todayYMD = toBkkYMD(new Date());
 
     // 2) ต้องเช็คอินแล้ววันนี้ — ดูจาก Checkin ของวันเรียนที่ตรงกับวันนี้
@@ -98,13 +92,27 @@ export async function POST(req) {
 
     if (dayIndex < 1) return fail("not_class_day", 409);
 
+    // L2b: "เช็คอินแล้ววันนี้" = มี Checkin ของ (ผู้เรียน, คลาส, day ของวันนี้)
+    //      และเวลาเช็คอินล่าสุด (Checkin.time — /api/checkin/complete เขียนทุกครั้ง)
+    //      ตกอยู่ใน "วันนี้" ตามเวลาไทย กันแถว day เดียวกันที่เขียนไว้วันอื่น
+    //      (complete ใช้ day ที่ส่งมาเมื่อวันนั้นไม่ใช่วันเรียน)
+    //      ตรวจก่อนเรื่องคูปอง: ยังไม่เช็คอิน = ไม่ออก token ไม่ว่ากรณีใด
     const checkin = await Checkin.findOne({
       studentId: student._id,
       classId: klass._id,
       day: dayIndex,
     }).lean();
 
-    if (!checkin) return fail("not_checked_in", 409);
+    // (ต้องเช็ค time ก่อน: toBkkYMD(undefined) จะได้ "วันนี้" จากค่า default)
+    if (!checkin?.time || toBkkYMD(checkin.time) !== todayYMD) {
+      return fail("not_checked_in", 403);
+    }
+
+    // 3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
+    const food = student.food || {};
+    if (String(food.choiceType || "") !== "coupon") {
+      return fail("not_coupon_choice", 409);
+    }
 
     // 3b) คูปองที่เลือกไว้ต้องเป็นของคลาสนี้ และของ "วันนี้"
     //    P3c: Student.food เก็บค่าเดียวทับกันไปเรื่อย ๆ ถ้าไม่เช็ค day ด้วย

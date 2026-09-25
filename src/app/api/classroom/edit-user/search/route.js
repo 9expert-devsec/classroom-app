@@ -1,7 +1,7 @@
 // src/app/api/classroom/edit-user/search/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
-import { kioskGuard } from "@/lib/kioskAuth.server";
+import { kioskStaffGuard } from "@/lib/kioskAuth.server";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 
@@ -22,8 +22,8 @@ function escapeRegExp(s) {
 }
 
 export async function POST(req) {
-  // L2a: kiosk session required, before any DB work or body parsing
-  const denied = await kioskGuard(req);
+  // L2b: kiosk session + staff step-up, before any DB work or body parsing
+  const denied = await kioskStaffGuard(req);
   if (denied) return denied;
 
   await dbConnect();

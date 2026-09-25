@@ -1,8 +1,9 @@
 // src/app/classroom/receive/page.jsx
 import Link from "next/link";
-import { FileSignature, Users, ArrowRight, ChevronLeft } from "lucide-react";
+import { FileSignature, Users, ArrowRight, ChevronLeft, Lock } from "lucide-react";
 
-function CardLink({ href, title, desc, Icon }) {
+// staff = needs the staff step-up (L2b)
+function CardLink({ href, title, desc, Icon, staff = false }) {
   return (
     <Link
       href={href}
@@ -18,6 +19,12 @@ function CardLink({ href, title, desc, Icon }) {
             <div className="mt-1 text-xs leading-5 text-admin-textMuted">
               {desc}
             </div>
+            {staff ? (
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                <Lock className="h-3 w-3" />
+                สำหรับเจ้าหน้าที่
+              </div>
+            ) : null}
           </div>
         </div>
         <span className="mt-1 inline-flex h-8 w-8 items-center justify-center rounded-full border border-admin-border bg-white text-admin-text transition group-hover:bg-admin-surfaceMuted">
@@ -64,6 +71,7 @@ export default function ReceiveIndexPage() {
           title="เจ้าหน้าที่รับเอกสารจากลูกค้า"
           desc="โหมด 3.2 (กำลังทำ) — เลือกเอกสารที่ลูกค้าส่ง + เซ็น 2 ฝ่าย"
           Icon={Users}
+          staff
         />
       </div>
 

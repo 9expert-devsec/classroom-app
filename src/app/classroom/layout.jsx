@@ -11,6 +11,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireKiosk } from "@/lib/kioskAuth.server";
 import { safeKioskNext } from "@/lib/kioskToken";
+import NoBackForwardCache from "./NoBackForwardCache";
 
 export const dynamic = "force-dynamic";
 
@@ -33,5 +34,10 @@ export default async function ClassroomLayout({ children }) {
     redirect(`${LOGIN_PATH}?next=${encodeURIComponent(safeKioskNext(path))}`);
   }
 
-  return children;
+  return (
+    <>
+      <NoBackForwardCache />
+      {children}
+    </>
+  );
 }

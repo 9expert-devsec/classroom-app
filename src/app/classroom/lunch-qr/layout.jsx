@@ -2,6 +2,7 @@
 // เปลือกหน้าแท็บเล็ตแบบเดียวกับ /classroom/checkin (iPad-first)
 import localFont from "next/font/local";
 import Image from "next/image";
+import StaffGate from "@/app/classroom/StaffGate";
 
 const googleSans = localFont({
   src: [
@@ -30,7 +31,10 @@ export default function LunchQrLayout({ children }) {
         </div>
 
         <main className="min-h-0 flex-1 overflow-hidden rounded-3xl shadow-md">
-          <div className="h-full min-h-0 rounded-3xl bg-front-surface">{children}</div>
+          <div className="h-full min-h-0 overflow-hidden rounded-3xl bg-front-surface">
+            {/* L2b: staff tool - content only after the staff step-up */}
+            <StaffGate fill>{children}</StaffGate>
+          </div>
         </main>
       </div>
     </div>

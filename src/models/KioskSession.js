@@ -23,6 +23,12 @@ const KioskSessionSchema = new Schema(
     revokedByName: { type: String, default: "" },
     revokeReason: { type: String, default: "" },
 
+    // L2b: staff step-up (edit-user, receive/staff, lunch-qr). Unlocked while
+    // staffUnlockUntil > now; every staff API call slides it forward.
+    staffUnlockBy: { type: Schema.Types.ObjectId, ref: "AdminUser", default: null },
+    staffUnlockByName: { type: String, default: "" },
+    staffUnlockUntil: { type: Date, default: null },
+
     lastSeenAt: { type: Date, default: null },
     ip: { type: String, default: "" },
     userAgent: { type: String, default: "" },

@@ -8,13 +8,16 @@ import {
   GraduationCap,
   QrCode,
   ArrowRight,
+  Lock,
 } from "lucide-react";
 import { requireKiosk } from "@/lib/kioskAuth.server";
 import KioskFooter from "./KioskFooter";
+import StaffAutoLock from "./StaffAutoLock";
 
 export const dynamic = "force-dynamic";
 
-function CardLink({ href, title, desc, Icon }) {
+// staff = needs the staff step-up (L2b)
+function CardLink({ href, title, desc, Icon, staff = false }) {
   return (
     <Link
       href={href}
@@ -31,6 +34,12 @@ function CardLink({ href, title, desc, Icon }) {
             <div className="mt-1 text-xs leading-5 text-admin-textMuted">
               {desc}
             </div>
+            {staff ? (
+              <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                <Lock className="h-3 w-3" />
+                สำหรับเจ้าหน้าที่
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -59,6 +68,7 @@ export default async function ClassroomHomePage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
+      {kiosk ? <StaffAutoLock /> : null}
       <div className="mb-5">
         <div className="text-[11px] uppercase tracking-wide text-admin-textMuted">
           Classroom
@@ -98,6 +108,7 @@ export default async function ClassroomHomePage() {
           title="แก้ไขข้อมูลลงทะเบียนเข้าเรียน"
           desc="ค้นหาผู้ที่เช็กอินแล้ว → แก้ไขข้อมูล (เช่น อาหาร) → ยืนยัน"
           Icon={UserCog}
+          staff
         />
 
         <CardLink
@@ -112,6 +123,7 @@ export default async function ClassroomHomePage() {
           title="แสดง QR สั่งอาหาร"
           desc="ค้นหาชื่อผู้เรียน → แสดง QR สั่งอาหารของวันนี้"
           Icon={QrCode}
+          staff
         />
       </div>
 

@@ -44,6 +44,10 @@ const AuditLogSchema = new mongoose.Schema(
         // ✅ L2a: kiosk /classroom
         "kiosk.open",
         "kiosk.close",
+        // ✅ L2b: staff step-up + admin revoke
+        "kiosk.staff_unlock",
+        "kiosk.staff_lock",
+        "kiosk.revoke",
       ],
       default: "custom",
       index: true,

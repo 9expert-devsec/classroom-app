@@ -22,7 +22,13 @@ async function guardClassroom(req, path, search) {
   // client-sent value), so it can leave the login page unguarded
   const headers = new Headers(req.headers);
   headers.set("x-classroom-path", path);
-  const pass = () => NextResponse.next({ request: { headers } });
+  // L2b: /classroom pages show learner data - never keep them in the HTTP
+  // cache, so Safari's back button cannot show them after a lock or close
+  const pass = () => {
+    const res = NextResponse.next({ request: { headers } });
+    res.headers.set("Cache-Control", "no-store");
+    return res;
+  };
 
   if (path === KIOSK_LOGIN_PATH) return pass();
 
