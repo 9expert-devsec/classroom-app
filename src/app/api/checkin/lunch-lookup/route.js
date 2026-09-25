@@ -15,6 +15,7 @@ import LunchOrder from "@/models/LunchOrder";
 
 import { bangkokYMD, bangkokHM, computeDayIndexToday } from "@/lib/classDates";
 import { computeStatus, activeKeyOf } from "@/lib/lunchOrders.server";
+import { orderWindow } from "@/lib/lunchConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,9 @@ export async function GET(req) {
               status: computeStatus(o, now),
               path: `/lunch/${o.token}`,
               deadlineHM: o.deadlineAt ? bangkokHM(o.deadlineAt) : "",
+              // P4b-0: ให้ QR view ใช้ LunchDeadlineLine ตัวเดียวกับ Step 3
+              deadlineAt: o.deadlineAt ? new Date(o.deadlineAt).toISOString() : null,
+              phase: orderWindow({ dayYMD: todayYMD, deadlineAt: o.deadlineAt }, now).phase,
               restaurantName: o.restaurantName || "",
             }
           : null,

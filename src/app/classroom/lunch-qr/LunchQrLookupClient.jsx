@@ -3,9 +3,10 @@
 // แท็บเล็ต: ค้นหาชื่อ -> แสดง QR สั่งอาหารของวันนี้ (หรือออก QR ถ้าเลือกคูปองแล้วแต่ยังไม่มีใบ)
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, QrCode, Search, AlertTriangle } from "lucide-react";
+import { ChevronLeft, QrCode, Search } from "lucide-react";
 
 import LunchQrCode from "@/components/shared/LunchQrCode";
+import LunchDeadlineLine from "@/components/shared/LunchDeadlineLine";
 import LunchStatusBadge from "@/components/shared/LunchStatusBadge";
 
 const MIN_Q = 2;
@@ -14,7 +15,6 @@ const QR_FAIL = "ออก QR สั่งอาหารไม่สำเร�
 /* ---------------- full-card QR view ---------------- */
 
 function QrView({ view, onClose }) {
-  const late = view.status === "unassigned";
   return (
     <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-8 text-center" data-testid="qr-view">
       <div className="text-2xl font-semibold text-front-text sm:text-3xl lg:text-xl">{view.name}</div>
@@ -33,21 +33,11 @@ function QrView({ view, onClose }) {
       <p className="mt-5 font-semibold text-front-text sm:text-xl lg:text-lg">
         สแกนด้วยมือถือเพื่อสั่งอาหาร / ดูรหัสคูปอง
       </p>
-      {view.deadlineHM && (view.status === "pending" || late) ? (
-        <p className="mt-1 text-front-textMuted sm:text-lg lg:text-base">
-          สั่งได้ถึง {view.deadlineHM} น.
-        </p>
-      ) : null}
-
-      {late ? (
-        <p
-          data-testid="late-note"
-          className="mt-4 flex max-w-md items-start gap-2 rounded-2xl bg-amber-100 px-4 py-3 text-left text-amber-800 sm:text-lg lg:text-sm"
-        >
-          <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
-          เลยเวลาสั่งแล้ว กรุณาแจ้งแอดมินเพื่อเปิดเวลาพิเศษ
-        </p>
-      ) : null}
+      <LunchDeadlineLine
+        deadlineAt={view.deadlineAt}
+        phase={view.phase}
+        status={view.status}
+      />
 
       <button
         type="button"
@@ -180,7 +170,8 @@ export default function LunchQrLookupClient() {
       room: it.room,
       status: it.order.status,
       path: it.order.path,
-      deadlineHM: it.order.deadlineHM,
+      deadlineAt: it.order.deadlineAt,
+      phase: it.order.phase,
     });
   }
 
@@ -199,9 +190,10 @@ export default function LunchQrLookupClient() {
           name: it.name,
           className: it.className,
           room: it.room,
-          status: "pending",
+          status: data.status || "pending",
           path: data.path,
-          deadlineHM: "",
+          deadlineAt: data.deadlineAt,
+          phase: data.phase,
         });
         search(q); // ให้การ์ดขึ้นสถานะใหม่หลังปิด
         return;

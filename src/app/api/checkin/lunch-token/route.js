@@ -14,9 +14,9 @@ import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
 
-import { issueLunchOrder } from "@/lib/lunchOrders.server";
+import { issueLunchOrder, computeStatus } from "@/lib/lunchOrders.server";
 import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
-import { toBkkYMD } from "@/lib/lunchConfig";
+import { toBkkYMD, orderWindow } from "@/lib/lunchConfig";
 import { classDayIndexToday } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
@@ -126,8 +126,19 @@ export async function POST(req) {
       return bad(reasonMessage(res.reason), 409, { reason: res.reason });
     }
 
+    // P4b-0: ส่งเส้นตายจริงของใบนี้ + phase กลับไปด้วย (ใบที่เปิดพิเศษ/ออกใหม่ไม่ใช่ 11:15)
+    //         ไม่ยืดเวลาให้เอง — ถ้าเลยแล้วก็บอกว่า closed ให้แท็บเล็ตแจ้งไปที่ Counter
+    const win = orderWindow({
+      dayYMD: res.order.dayYMD,
+      deadlineAt: res.order.deadlineAt,
+    });
     return NextResponse.json(
-      { path: `/lunch/${res.order.token}` },
+      {
+        path: `/lunch/${res.order.token}`,
+        deadlineAt: win.deadlineAt ? new Date(win.deadlineAt).toISOString() : null,
+        phase: win.phase,
+        status: computeStatus(res.order),
+      },
       { headers: NO_STORE },
     );
   } catch (err) {

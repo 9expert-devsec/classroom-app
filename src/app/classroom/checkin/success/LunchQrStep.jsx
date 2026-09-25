@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react";
 import LunchQrCode from "@/components/shared/LunchQrCode";
-import {
-  LUNCH_BUDGET_THB,
-  ORDER_HARD_CLOSE_HHMM,
-} from "@/lib/lunchConfig";
+import LunchDeadlineLine from "@/components/shared/LunchDeadlineLine";
+import { LUNCH_BUDGET_THB } from "@/lib/lunchConfig";
 
 /**
  * Step 3 บนแท็บเล็ต: QR ให้ผู้เรียนสแกนไปสั่งอาหารบนมือถือ
@@ -18,6 +16,7 @@ import {
 export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
   const [state, setState] = useState("loading"); // loading | ready | hidden | error
   const [path, setPath] = useState("");
+  const [win, setWin] = useState({ deadlineAt: null, phase: "", status: "" });
   const [message, setMessage] = useState("");
 
   // ไม่มี id ครบ = ไม่มี Step 3 (คำนวณเอา ไม่ต้อง setState ใน effect)
@@ -40,6 +39,8 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
 
         if (res.ok && data?.path) {
           setPath(data.path);
+          // P4b-0: เส้นตายจริงของใบนี้ + phase ณ ตอนออก (ไม่ใช่ 11:15 ตายตัว)
+          setWin({ deadlineAt: data.deadlineAt, phase: data.phase, status: data.status });
           setState("ready");
           return;
         }
@@ -90,9 +91,11 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
           <p className="mt-1 sm:text-lg lg:text-base text-front-textMuted">
             งบคูปอง {LUNCH_BUDGET_THB} บาท (ยังไม่รวม VAT ของร้าน)
           </p>
-          <p className="mt-1 sm:text-lg lg:text-base text-front-textMuted">
-            สั่งได้ถึง {ORDER_HARD_CLOSE_HHMM} น.
-          </p>
+          <LunchDeadlineLine
+            deadlineAt={win.deadlineAt}
+            phase={win.phase}
+            status={win.status}
+          />
         </>
       ) : (
         <div data-testid="lunch-qr-error">
