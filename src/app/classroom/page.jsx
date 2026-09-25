@@ -6,6 +6,7 @@ import {
   CalendarPlus,
   UserCog,
   GraduationCap,
+  QrCode,
   ArrowRight,
 } from "lucide-react";
 
@@ -92,6 +93,13 @@ export default function ClassroomHomePage() {
           title="ลงทะเบียนเข้าเรียน Masterclass"
           desc="เลือกคอร์ส Masterclass → ค้นหาชื่อ → เซ็นลายเซ็น"
           Icon={GraduationCap}
+        />
+
+        <CardLink
+          href="/classroom/lunch-qr"
+          title="แสดง QR สั่งอาหาร"
+          desc="ค้นหาชื่อผู้เรียน → แสดง QR สั่งอาหารของวันนี้"
+          Icon={QrCode}
         />
       </div>
 
