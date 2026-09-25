@@ -38,6 +38,9 @@ const AuditLogSchema = new mongoose.Schema(
         "lunch.cancel_choice_changed",
         "lunch.reopen",
         "lunch.special_open",
+        // ✅ P4b: Counter
+        "lunch.handout",
+        "lunch.return",
       ],
       default: "custom",
       index: true,

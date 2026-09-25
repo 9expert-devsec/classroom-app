@@ -130,6 +130,9 @@ const LunchOrderSchema = new Schema(
     // ✅ P4a: e-coupon ของออเดอร์ที่ถูกยกเลิก — รหัสยังเก็บไว้ในออเดอร์
     //    แต่ร้านต้องไม่รับ (null = ยังใช้ได้)
     couponVoidedAt: { type: Date, default: null },
+    // ✅ P4b: Counter ส่งมอบคูปองกระดาษ (stock) ให้ผู้เรียนแล้ว — เวลา + ชื่อเจ้าหน้าที่
+    handedOutAt: { type: Date, default: null },
+    handedOutBy: { type: String, default: "" },
     printedAt: { type: Date, default: null },
     printedCouponCode: { type: String, default: "" },
   },

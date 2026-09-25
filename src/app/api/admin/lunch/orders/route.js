@@ -48,7 +48,7 @@ export async function GET(req) {
     const all = await LunchOrder.find(find)
       .sort({ createdAt: 1 })
       .select(
-        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt cancelledAt cancelReason",
+        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt cancelledAt cancelReason handedOutAt handedOutBy",
       )
       .lean();
 
@@ -114,6 +114,10 @@ export async function GET(req) {
         couponSource: o.couponSource || "",
         usesCouponStock: !!o.usesCouponStock,
         stockStatus: o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "",
+        // P4b: ส่งมอบ / รับคืน
+        stockCodeId: o.stockCodeId ? String(o.stockCodeId) : "",
+        handedOutHM: o.handedOutAt ? bangkokHM(o.handedOutAt) : "",
+        handedOutBy: o.handedOutBy || "",
         couponVoided: !!o.couponVoidedAt,
         itemsTotal: o.itemsTotal || 0,
         overBudget: o.overBudget || 0,

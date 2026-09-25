@@ -85,12 +85,15 @@ export async function assignCode({ restaurantId, dayYMD, orderId, session }) {
   ).lean();
 }
 
-/** assigned -> handed_out (Counter ยื่นคูปองให้ผู้เรียนแล้ว) */
-export async function markHandedOut(codeId) {
+/**
+ * assigned -> handed_out (Counter ยื่นคูปองให้ผู้เรียนแล้ว)
+ * P4b: รับ session/at เพิ่ม (optional) เพื่อให้อยู่ใน transaction เดียวกับออเดอร์
+ */
+export async function markHandedOut(codeId, { session, at } = {}) {
   const doc = await CouponStockCode.findOneAndUpdate(
     { _id: codeId, status: "assigned" },
-    { $set: { status: "handed_out", handedOutAt: new Date() } },
-    { new: true },
+    { $set: { status: "handed_out", handedOutAt: at ? new Date(at) : new Date() } },
+    session ? { new: true, session } : { new: true },
   ).lean();
 
   if (!doc) {

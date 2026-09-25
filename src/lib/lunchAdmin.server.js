@@ -14,26 +14,33 @@ import mongoose from "mongoose";
 
 import LunchOrder from "@/models/LunchOrder";
 import Class from "@/models/Class";
+import CouponStockCode from "@/models/CouponStockCode";
 
 import { issueLunchOrder, activeKeyOf } from "@/lib/lunchOrders.server";
-import { releaseCode, CouponStockError } from "@/lib/couponStock.server";
+import {
+  releaseCode,
+  markHandedOut,
+  confirmReturn,
+  CouponStockError,
+} from "@/lib/couponStock.server";
 import { reissueDeadline, toBkkYMD } from "@/lib/lunchConfig";
-import { classDayIndexToday } from "@/lib/classDates";
+import { classDayIndexToday, bangkokHM } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
 
 /* ---------------- errors ---------------- */
 
 export class LunchAdminError extends Error {
-  constructor(status, reason, message) {
+  constructor(status, reason, message, extra = null) {
     super(message);
     this.name = "LunchAdminError";
     this.status = status;
     this.reason = reason;
+    this.extra = extra;
   }
 }
 
-function fail(status, reason, message) {
-  throw new LunchAdminError(status, reason, message);
+function fail(status, reason, message, extra = null) {
+  throw new LunchAdminError(status, reason, message, extra);
 }
 
 /**
@@ -42,7 +49,10 @@ function fail(status, reason, message) {
  */
 export function lunchAdminErrorBody(err) {
   if (err instanceof LunchAdminError) {
-    return { status: err.status, body: { error: err.message, reason: err.reason } };
+    return {
+      status: err.status,
+      body: { error: err.message, reason: err.reason, ...(err.extra || {}) },
+    };
   }
   if (err?.status === 401) {
     return { status: 401, body: { error: "กรุณาเข้าสู่ระบบ", reason: "unauthorized" } };
@@ -391,4 +401,220 @@ export async function specialOpenLunchOrder({
     reopenCount: updated.reopenCount,
     holderName: updated.holderName || "",
   };
+}
+
+/* ---------------- Counter: handout (P4b) ---------------- */
+
+/** ชื่อเจ้าหน้าที่จาก ctx ของ requirePerm — ไว้แสดง "ส่งมอบแล้ว HH:MM โดย …" */
+export function adminDisplayName(ctx) {
+  return String(ctx?.user?.name || ctx?.user?.username || "").trim();
+}
+
+/**
+ * Counter ส่งมอบคูปองกระดาษ (stock) ให้ผู้เรียน
+ * ออเดอร์ต้อง ordered/at_shop + เป็นร้าน stock + รหัสยังเป็น assigned
+ * code: assigned -> handed_out และ order.handedOutAt/By ใน transaction เดียว
+ */
+export async function handOutLunchCoupon({
+  orderId,
+  adminId = null,
+  adminName = "",
+  ctx = null,
+  req = null,
+  now,
+}) {
+  if (!mongoose.Types.ObjectId.isValid(String(orderId || ""))) {
+    fail(400, "bad_request", "ข้อมูลไม่ครบ");
+  }
+  const at = now ? new Date(now) : new Date();
+  const session = await mongoose.startSession();
+  let result = null;
+
+  try {
+    await session.withTransaction(async () => {
+      const order = await LunchOrder.findById(orderId).session(session).lean();
+      if (!order) fail(404, "not_found", "ไม่พบออเดอร์");
+      if (order.status !== "ordered" && order.status !== "at_shop") {
+        fail(409, "not_placed", "ออเดอร์นี้ยังไม่ได้ยืนยัน หรือถูกยกเลิกแล้ว");
+      }
+      if (!order.usesCouponStock || !order.stockCodeId) {
+        fail(409, "not_stock", "ออเดอร์นี้เป็น e-coupon ไม่ต้องส่งมอบคูปองกระดาษ");
+      }
+
+      const code = await CouponStockCode.findById(order.stockCodeId)
+        .session(session)
+        .lean();
+      if (!code) fail(404, "code_not_found", "ไม่พบรหัสคูปองของออเดอร์นี้");
+      if (code.status === "handed_out") {
+        fail(
+          409,
+          "already_handed_out",
+          `ส่งมอบคูปองไปแล้วเมื่อ ${bangkokHM(code.handedOutAt || order.handedOutAt) || "-"} น.`,
+          { handedOutAt: code.handedOutAt || order.handedOutAt || null },
+        );
+      }
+      if (code.status !== "assigned") {
+        fail(409, "code_not_assigned", "รหัสคูปองนี้ไม่ได้อยู่ในสถานะพร้อมส่งมอบ");
+      }
+
+      await markHandedOut(code._id, { session, at });
+      const upd = await LunchOrder.updateOne(
+        { _id: order._id, status: order.status },
+        { $set: { handedOutAt: at, handedOutBy: adminName || (adminId ? String(adminId) : "") } },
+        { session },
+      );
+      if (upd.modifiedCount !== 1) {
+        fail(409, "conflict", "ออเดอร์เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
+      }
+      result = { order, code };
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  await audit({
+    ctx,
+    req,
+    action: "lunch.handout",
+    order: result.order,
+    before: { stockStatus: "assigned" },
+    after: { stockStatus: "handed_out", handedOutAt: at },
+    meta: {
+      statusBefore: result.order.status,
+      statusAfter: result.order.status,
+      couponEffect: "handed_out",
+      couponCode: result.code.code,
+      adminId: adminId ? String(adminId) : null,
+    },
+  });
+
+  return {
+    orderId: String(result.order._id),
+    code: result.code.code,
+    handedOutAt: at,
+    handedOutBy: adminName,
+  };
+}
+
+/* ---------------- Counter: return (P4b) ---------------- */
+
+/** ได้รับคูปองกระดาษคืนแล้ว: awaiting_return -> available */
+export async function confirmLunchCouponReturn({
+  codeId,
+  adminId = null,
+  ctx = null,
+  req = null,
+}) {
+  if (!mongoose.Types.ObjectId.isValid(String(codeId || ""))) {
+    fail(400, "bad_request", "ข้อมูลไม่ครบ");
+  }
+  const before = await CouponStockCode.findById(codeId).lean();
+  if (!before) fail(404, "code_not_found", "ไม่พบรหัสคูปอง");
+  if (before.status !== "awaiting_return") {
+    fail(409, "not_awaiting_return", "คูปองนี้ไม่ได้อยู่ในสถานะรอรับคืน");
+  }
+
+  // confirmReturn ล้าง orderId ทิ้ง -> อ่านออเดอร์ไว้ก่อนเพื่อลง audit
+  const order = before.orderId ? await LunchOrder.findById(before.orderId).lean() : null;
+
+  let after;
+  try {
+    after = await confirmReturn(before._id);
+  } catch (e) {
+    if (e instanceof CouponStockError) {
+      fail(409, "not_awaiting_return", "คูปองนี้เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
+    }
+    throw e;
+  }
+
+  await audit({
+    ctx,
+    req,
+    action: "lunch.return",
+    order: order || { _id: before.orderId, holderName: "", dayYMD: "" },
+    before: { stockStatus: "awaiting_return" },
+    after: { stockStatus: "available" },
+    meta: {
+      statusBefore: order?.status || "",
+      statusAfter: order?.status || "",
+      couponEffect: "returned",
+      couponCode: before.code,
+      codeId: String(before._id),
+      adminId: adminId ? String(adminId) : null,
+    },
+  });
+
+  return { codeId: String(after._id), code: after.code, status: after.status };
+}
+
+/* ---------------- Counter: search (P4b) ---------------- */
+
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * ค้นหาออเดอร์ของ "วันนี้" ด้วย ชื่อ / ชื่อเล่น / รหัสคูปอง
+ * รหัส: ไม่สนตัวพิมพ์เล็ก-ใหญ่ และไม่สนช่องว่าง (รหัส 20 ตัวที่พิมพ์เป็นกลุ่มละ 4 ก็เจอ)
+ * คืนใบล่าสุดของผู้เรียนแต่ละคนที่ตรง
+ */
+export async function searchCounterOrders({ q, now }) {
+  const at = now ? new Date(now) : new Date();
+  const dayYMD = toBkkYMD(at);
+  const raw = String(q || "").trim().slice(0, 60);
+  if (raw.length < 2) return { dayYMD, orders: [] };
+
+  const nameRe = new RegExp(escapeRegExp(raw), "i");
+  const codeRe = new RegExp(escapeRegExp(raw.replace(/\s+/g, "")), "i");
+
+  const hits = await LunchOrder.find({
+    dayYMD,
+    $or: [{ holderName: nameRe }, { nickname: nameRe }, { couponCode: codeRe }],
+  })
+    .select("classId studentId")
+    .limit(60)
+    .lean();
+  if (!hits.length) return { dayYMD, orders: [] };
+
+  const pairs = [...new Map(hits.map((h) => [`${h.classId}:${h.studentId}`, h])).values()];
+  const all = await LunchOrder.find({
+    dayYMD,
+    $or: pairs.map((p) => ({ classId: p.classId, studentId: p.studentId })),
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const latest = new Map();
+  for (const o of all) latest.set(`${o.classId}:${o.studentId}`, o);
+  return { dayYMD, orders: [...latest.values()].slice(0, 20) };
+}
+
+/** รหัส stock ที่รอรับคืนทั้งหมด (วันนี้และวันก่อนหน้าที่ยังไม่ได้คืน) */
+export async function listAwaitingReturn() {
+  const codes = await CouponStockCode.find({ status: "awaiting_return" })
+    .sort({ updatedAt: 1 })
+    .select("code orderId restaurant updatedAt")
+    .lean();
+  const orderIds = codes.map((c) => c.orderId).filter(Boolean);
+  const orders = orderIds.length
+    ? await LunchOrder.find({ _id: { $in: orderIds } })
+        .select("holderName nickname restaurantName courseName roomName dayYMD cancelledAt")
+        .lean()
+    : [];
+  const byId = new Map(orders.map((o) => [String(o._id), o]));
+
+  return codes.map((c) => {
+    const o = byId.get(String(c.orderId)) || {};
+    return {
+      codeId: String(c._id),
+      code: c.code,
+      name: o.holderName || "",
+      nickname: o.nickname || "",
+      restaurantName: o.restaurantName || "",
+      className: o.courseName || "",
+      room: o.roomName || "",
+      dayYMD: o.dayYMD || "",
+      cancelledAt: o.cancelledAt || c.updatedAt || null,
+    };
+  });
 }

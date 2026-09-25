@@ -3,11 +3,12 @@
 // หน้า "ติดตามการสั่งอาหาร" — ออเดอร์อาหารกลางวันของวันหนึ่ง แยกตามคลาส
 // ยกเลิก / เปิดเวลาพิเศษ (token เดิม) / ออก QR ใหม่ (token ใหม่) ผ่าน /api/admin/lunch/*
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 
 import LunchStatusBadge, { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
-import LunchQrCode from "@/components/shared/LunchQrCode";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
+import { Modal, QrModal, ConfirmModal } from "@/components/admin/lunch/LunchModals";
+import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
 const POLL_MS = 30_000;
 const STATUS_FILTERS = ["all", "pending", "unassigned", "ordered", "at_shop", "cancelled"];
@@ -19,25 +20,6 @@ function todayBkk() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-}
-
-function hmBkk(d) {
-  if (!d) return "";
-  return new Date(d).toLocaleTimeString("th-TH", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Bangkok",
-  });
-}
-
-async function safeJson(res) {
-  const t = await res.text().catch(() => "");
-  try {
-    return t ? JSON.parse(t) : {};
-  } catch {
-    return {};
-  }
 }
 
 /** ผลของการยกเลิกต่อคูปอง (ข้อความในโมดัล) */
@@ -53,27 +35,6 @@ function couponEffectText(row) {
 }
 
 /* ---------------- modals ---------------- */
-
-function Modal({ children, onClose, testId }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div
-        data-testid={testId}
-        className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="ปิด"
-          className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-admin-textMuted hover:bg-admin-surfaceMuted"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 function CancelModal({ row, busy, error, onClose, onConfirm }) {
   const [reason, setReason] = useState("");
@@ -120,36 +81,6 @@ function CancelModal({ row, busy, error, onClose, onConfirm }) {
   );
 }
 
-function QrModal({ qr, onClose }) {
-  return (
-    <Modal onClose={onClose} testId="qr-modal">
-      <h3 className="pr-8 text-base font-semibold text-admin-text">
-        {qr.title}
-      </h3>
-      <p className="mt-1 text-sm text-admin-textMuted">{qr.name}</p>
-      <div className="mt-4">
-        <LunchQrCode path={qr.path} size={260} />
-      </div>
-      <p className="mt-3 text-center text-sm text-admin-text">
-        สแกนด้วยมือถือเพื่อสั่งอาหาร · สั่งได้ถึง{" "}
-        <span className="font-semibold">{hmBkk(qr.deadlineAt)} น.</span>
-      </p>
-      <p className="mt-1 text-center text-xs text-admin-textMuted">
-        หรือให้ผู้เรียนเปิดจากเมนูบน tablet
-      </p>
-      <div className="mt-4 flex justify-end">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-xl border border-admin-border px-4 py-2 text-sm text-admin-text hover:bg-admin-surfaceMuted"
-        >
-          ปิด
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 /* ---------------- table ---------------- */
 
 function CodeCell({ row }) {
@@ -169,11 +100,32 @@ function CodeCell({ row }) {
   return <CouponCode code={row.couponCode} size="table" />;
 }
 
-function ActionButtons({ row, busy, onCancel, onSpecial, onReissue }) {
+function ActionButtons({ row, busy, onCancel, onSpecial, onReissue, onHandout, onReturn }) {
   const btn =
     "rounded-lg px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 whitespace-nowrap";
   return (
     <div className="flex flex-wrap justify-end gap-1.5">
+      {(row.status === "ordered" || row.status === "at_shop") &&
+      row.stockStatus === "assigned" ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onHandout(row)}
+          className={`${btn} bg-brand-primary text-[#0D1B2A] hover:opacity-90`}
+        >
+          ส่งมอบ
+        </button>
+      ) : null}
+      {row.status === "cancelled" && row.stockStatus === "awaiting_return" ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onReturn(row)}
+          className={`${btn} bg-amber-100 text-amber-800 hover:bg-amber-200`}
+        >
+          รับคืน
+        </button>
+      ) : null}
       {row.status === "pending" || row.status === "unassigned" ? (
         <button
           type="button"
@@ -227,6 +179,8 @@ export default function LunchOrdersPage() {
   const [qr, setQr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [stockAction, setStockAction] = useState(null); // { kind: "handout" | "return", row }
+  const [stockError, setStockError] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
@@ -277,15 +231,26 @@ export default function LunchOrdersPage() {
       }));
   }, [data]);
 
-  async function post(path, body) {
-    const res = await fetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await safeJson(res);
-    if (!res.ok) throw new Error(json.error || "ทำรายการไม่สำเร็จ");
-    return json;
+  const post = postLunchAdmin;
+
+  // P4b: ส่งมอบ / รับคืน (ยืนยันก่อนทุกครั้ง)
+  async function confirmStockAction() {
+    const { kind, row } = stockAction;
+    setBusy(true);
+    setStockError("");
+    try {
+      if (kind === "handout") {
+        await post("/api/admin/lunch/handout", { orderId: row.orderId });
+      } else {
+        await post("/api/admin/lunch/return", { codeId: row.stockCodeId });
+      }
+      setStockAction(null);
+      await load();
+    } catch (e) {
+      setStockError(e.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmCancel(reason) {
@@ -474,6 +439,7 @@ export default function LunchOrdersPage() {
                   <th className="px-2 py-2 font-medium">ที่มา</th>
                   <th className="px-2 py-2 text-right font-medium">ยอดรวม</th>
                   <th className="px-2 py-2 font-medium">เส้นตาย</th>
+                  <th className="px-2 py-2 font-medium">ส่งมอบ</th>
                   <th className="px-4 py-2 text-right font-medium">จัดการ</th>
                 </tr>
               </thead>
@@ -518,6 +484,18 @@ export default function LunchOrdersPage() {
                         </span>
                       ) : null}
                     </td>
+                    <td className="px-2 py-2.5 text-xs text-admin-text" data-testid="handout-cell">
+                      {r.handedOutHM ? (
+                        <>
+                          <div className="tabular-nums">{r.handedOutHM}</div>
+                          {r.handedOutBy ? (
+                            <div className="text-admin-textMuted">{r.handedOutBy}</div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-admin-textMuted">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <ActionButtons
                         row={r}
@@ -528,6 +506,14 @@ export default function LunchOrdersPage() {
                         }}
                         onSpecial={specialOpen}
                         onReissue={reissue}
+                        onHandout={(row) => {
+                          setStockError("");
+                          setStockAction({ kind: "handout", row });
+                        }}
+                        onReturn={(row) => {
+                          setStockError("");
+                          setStockAction({ kind: "return", row });
+                        }}
                       />
                     </td>
                   </tr>
@@ -548,6 +534,28 @@ export default function LunchOrdersPage() {
         />
       ) : null}
       {qr ? <QrModal qr={qr} onClose={() => setQr(null)} /> : null}
+      {stockAction ? (
+        <ConfirmModal
+          title={
+            stockAction.kind === "handout"
+              ? "ยืนยันส่งมอบคูปองกระดาษ?"
+              : "ยืนยันได้รับคูปองคืนแล้ว?"
+          }
+          confirmLabel={stockAction.kind === "handout" ? "ส่งมอบแล้ว" : "ได้รับคืนแล้ว"}
+          busy={busy}
+          error={stockError}
+          onClose={() => setStockAction(null)}
+          onConfirm={confirmStockAction}
+        >
+          <p className="text-base font-semibold text-admin-text">
+            {stockAction.row.name}
+            {stockAction.row.nickname ? ` (${stockAction.row.nickname})` : ""}
+          </p>
+          <div className="mt-2">
+            <CouponCode code={stockAction.row.couponCode} size="table" />
+          </div>
+        </ConfirmModal>
+      ) : null}
     </div>
   );
 }
