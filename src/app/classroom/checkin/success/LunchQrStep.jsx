@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QRCode from "react-qr-code";
+import LunchQrCode from "@/components/shared/LunchQrCode";
 import {
   LUNCH_BUDGET_THB,
   ORDER_HARD_CLOSE_HHMM,
@@ -78,17 +78,11 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
 
   if (missingIds || state === "loading" || state === "hidden") return null;
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const url = path ? `${origin}${path}` : "";
-
   return (
     <div className="mt-6 w-full max-w-md rounded-2xl border border-brand-border bg-white p-5 text-center">
       {state === "ready" ? (
         <>
-          {/* ใหญ่พอให้สแกนจากระยะแขนบน iPad */}
-          <div className="mx-auto flex items-center justify-center rounded-xl bg-white p-4">
-            <QRCode value={url} size={280} />
-          </div>
+          <LunchQrCode path={path} size={280} />
 
           <p className="mt-4 sm:text-xl lg:text-lg font-semibold text-front-text">
             สแกนด้วยมือถือเพื่อสั่งอาหารกลางวัน

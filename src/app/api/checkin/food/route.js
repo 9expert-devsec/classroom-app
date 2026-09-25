@@ -18,7 +18,7 @@ import {
 } from "@/lib/couponAvailability.server";
 import { toBkkYMD } from "@/lib/lunchConfig";
 import { classDayIndexToday } from "@/lib/classDates";
-import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchOrders.server";
+import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchAdmin.server";
 
 export const dynamic = "force-dynamic";
 
@@ -384,6 +384,7 @@ export async function POST(req) {
         studentId: String(student._id),
         classId: safeClassId,
         dayYMD: toBkkYMD(new Date()),
+        req,
       });
       if (!res.ok) {
         return NextResponse.json(

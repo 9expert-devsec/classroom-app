@@ -21,14 +21,19 @@ export function codeGroups(code) {
 export default function CouponCode({ code, size = "lg" }) {
   const groups = codeGroups(code);
   const multi = groups.length > 1;
+  // "table" = ตารางหน้าแอดมิน (P4a) — เล็กและชิดซ้าย; หน้าผู้เรียนยังไม่ต่ำกว่า 18px
   const sizeClass =
-    size === "lg" ? "text-[clamp(18px,7.5vw,30px)]" : "text-[clamp(18px,6vw,24px)]";
+    size === "lg"
+      ? "text-[clamp(18px,7.5vw,30px)] text-center"
+      : size === "table"
+        ? "text-[13px] text-left"
+        : "text-[clamp(18px,6vw,24px)] text-center";
 
   return (
     <p
       data-testid="coupon-code"
       title={code}
-      className={`select-all text-center font-mono font-bold tabular-nums leading-snug text-[#0d1b2a] ${sizeClass} ${multi ? "tracking-wide" : "tracking-widest"}`}
+      className={`select-all font-mono font-bold tabular-nums leading-snug text-[#0d1b2a] ${sizeClass} ${multi ? "tracking-wide" : "tracking-widest"}`}
     >
       {groups.map((g, i) => (
         <Fragment key={i}>

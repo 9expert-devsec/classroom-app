@@ -105,8 +105,11 @@ export async function markHandedOut(codeId) {
  * ยกเลิกออเดอร์:
  *   assigned   -> available      (ยังไม่ได้ยื่น คืนเข้าคลังได้เลย)
  *   handed_out -> awaiting_return (ยื่นไปแล้ว ต้องตามเก็บกระดาษคืน)
+ * P4a: รับ session เพิ่ม (optional) เพื่อให้อยู่ใน transaction เดียวกับการยกเลิกออเดอร์
  */
-export async function releaseCode(codeId) {
+export async function releaseCode(codeId, { session } = {}) {
+  const opts = session ? { new: true, session } : { new: true };
+
   const back = await CouponStockCode.findOneAndUpdate(
     { _id: codeId, status: "assigned" },
     {
@@ -116,14 +119,14 @@ export async function releaseCode(codeId) {
         assignedAt: null,
       },
     },
-    { new: true },
+    opts,
   ).lean();
   if (back) return back;
 
   const pending = await CouponStockCode.findOneAndUpdate(
     { _id: codeId, status: "handed_out" },
     { $set: { status: "awaiting_return" } }, // คง orderId ไว้เพื่อตามของ
-    { new: true },
+    opts,
   ).lean();
   if (pending) return pending;
 

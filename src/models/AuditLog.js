@@ -26,7 +26,19 @@ const AuditLogSchema = new mongoose.Schema(
 
     action: {
       type: String,
-      enum: ["create", "update", "delete", "login", "logout", "custom"],
+      enum: [
+        "create",
+        "update",
+        "delete",
+        "login",
+        "logout",
+        "custom",
+        // ✅ P4a: วงจรชีวิตออเดอร์อาหารกลางวัน (additive)
+        "lunch.cancel",
+        "lunch.cancel_choice_changed",
+        "lunch.reopen",
+        "lunch.special_open",
+      ],
       default: "custom",
       index: true,
     },

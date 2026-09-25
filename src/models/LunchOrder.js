@@ -127,6 +127,9 @@ const LunchOrderSchema = new Schema(
     cancelledAt: { type: Date, default: null },
     cancelledBy: { type: String, default: "" },
     cancelReason: { type: String, default: "" },
+    // ✅ P4a: e-coupon ของออเดอร์ที่ถูกยกเลิก — รหัสยังเก็บไว้ในออเดอร์
+    //    แต่ร้านต้องไม่รับ (null = ยังใช้ได้)
+    couponVoidedAt: { type: Date, default: null },
     printedAt: { type: Date, default: null },
     printedCouponCode: { type: String, default: "" },
   },
