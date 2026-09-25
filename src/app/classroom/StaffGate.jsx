@@ -93,7 +93,10 @@ export default function StaffGate({ children, fill = false }) {
     window.location.assign("/classroom");
   }
 
-  const rootCls = fill ? "flex h-full min-h-0 flex-col" : "";
+  // w-full + min-w-0: the gate never grows wider than its container
+  const rootCls = fill
+    ? "flex h-full min-h-0 w-full min-w-0 flex-col"
+    : "w-full min-w-0";
 
   if (state === "loading") {
     return (
@@ -115,17 +118,23 @@ export default function StaffGate({ children, fill = false }) {
 
   return (
     <div className={rootCls}>
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-        <div className="flex min-w-0 items-center gap-2">
-          <ShieldCheck className="h-4 w-4 shrink-0" />
-          <span className="truncate">
-            โหมดเจ้าหน้าที่ · {name || "-"} · ล็อกอัตโนมัติเมื่อไม่ใช้งาน 5 นาที
+      {/* L2c: clamped to its container; the name line truncates on its own,
+          the idle note wraps (shorter text on phones), the button never shrinks */}
+      <div className="flex w-full min-w-0 max-w-full shrink-0 items-center gap-3 overflow-hidden border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <ShieldCheck className="h-4 w-4 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="min-w-0 max-w-full truncate font-semibold">
+            โหมดเจ้าหน้าที่ · {name || "-"}
           </span>
+          <span className="hidden text-amber-800/80 sm:inline">
+            ล็อกอัตโนมัติเมื่อไม่ใช้งาน 5 นาที
+          </span>
+          <span className="text-amber-800/80 sm:hidden">ล็อกเองใน 5 นาที</span>
         </div>
         <button
           type="button"
           onClick={lockNow}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-900 hover:bg-amber-100"
+          className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-900 hover:bg-amber-100"
         >
           <Lock className="h-3.5 w-3.5" />
           ล็อก
