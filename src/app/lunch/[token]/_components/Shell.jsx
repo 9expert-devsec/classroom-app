@@ -9,7 +9,10 @@
 // (ไม่ใช้ position:fixed เพราะ body ของ root layout เป็น h-screen overflow-hidden)
 import Image from "next/image";
 
-const LOGO = "/logo-9experttraining-color.png";
+// โลโก้ 2026 (แนวนอน 900×295 พื้นโปร่ง) — ใช้สูงเท่าเดิม ความกว้างตามสัดส่วน
+export const LOGO = "/signature_logo_9expert2026_01-ninebule.png";
+export const LOGO_W = 900;
+export const LOGO_H = 295;
 
 export function Shell({ children }) {
   return (
@@ -37,22 +40,26 @@ export function StickyBottom({ children, className = "" }) {
   );
 }
 
-/** หน้า error / ปิดรับ — ไอคอนกลาง หัวข้อ เนื้อความ แล้วโลโก้จาง ๆ */
-export function NoticeScreen({ icon, tone = "red", title, body }) {
+/**
+ * หน้า error / ปิดรับ — ไอคอนกลาง หัวข้อ เนื้อความ แล้วโลโก้จาง ๆ
+ * icon = component ของ lucide-react (เช่น X, Clock) ไม่ใช่ emoji
+ */
+export function NoticeScreen({ icon: Icon, tone = "red", title, body }) {
   const ring =
     tone === "red"
-      ? "bg-[#c2453e]/10"
+      ? "bg-[#c2453e]/10 text-[#c2453e]"
       : tone === "amber"
-        ? "bg-[#d98a13]/10"
-        : "bg-slate-200/60";
+        ? "bg-[#d98a13]/10 text-[#d98a13]"
+        : "bg-slate-200/60 text-slate-500";
 
   return (
     <Shell>
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 py-16 text-center">
         <div
-          className={`flex h-16 w-16 items-center justify-center rounded-full text-3xl ${ring}`}
+          data-testid="notice-icon"
+          className={`flex h-16 w-16 items-center justify-center rounded-full ${ring}`}
         >
-          {icon}
+          {Icon ? <Icon aria-hidden="true" className="h-8 w-8" /> : null}
         </div>
         <h1 className="text-[19px] font-bold text-[#0d1b2a]">{title}</h1>
         {body ? (
@@ -61,8 +68,8 @@ export function NoticeScreen({ icon, tone = "red", title, body }) {
         <Image
           src={LOGO}
           alt="9Expert"
-          width={120}
-          height={24}
+          width={LOGO_W}
+          height={LOGO_H}
           className="mt-4 h-6 w-auto opacity-60"
         />
       </div>

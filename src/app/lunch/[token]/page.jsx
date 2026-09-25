@@ -2,6 +2,8 @@
 //
 // หน้า 1: กรอกชื่อเล่น + เลือกร้าน
 // ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
+import { X, RefreshCw, Clock } from "lucide-react";
+
 import dbConnect from "@/lib/mongoose";
 import {
   loadLunchGate,
@@ -19,7 +21,7 @@ export const dynamic = "force-dynamic";
 export function InvalidScreen() {
   return (
     <NoticeScreen
-      icon="✕"
+      icon={X}
       tone="red"
       title="QR ไม่ถูกต้อง"
       body="กรุณาตรวจสอบ QR อีกครั้ง หรือติดต่อเจ้าหน้าที่"
@@ -44,7 +46,7 @@ export default async function LunchPage({ params, searchParams }) {
   if (gate === LUNCH_GATE.REPLACED) {
     return (
       <NoticeScreen
-        icon="⟳"
+        icon={RefreshCw}
         tone="amber"
         title="QR นี้ถูกแทนที่แล้ว"
         body="กรุณาติดต่อเจ้าหน้าที่"
@@ -56,7 +58,7 @@ export default async function LunchPage({ params, searchParams }) {
     const label = deadlineLabel(session.window?.deadlineAt);
     return (
       <NoticeScreen
-        icon="🕚"
+        icon={Clock}
         tone="red"
         title={`ปิดรับออเดอร์แล้ว (${label} น.)`}
         body="หากยังต้องการสั่งอาหาร กรุณาติดต่อเจ้าหน้าที่ที่ Counter"

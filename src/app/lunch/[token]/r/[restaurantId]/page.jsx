@@ -3,6 +3,7 @@
 // หน้า 2: เมนูของร้านที่เลือก
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { X, Ban } from "lucide-react";
 
 import dbConnect from "@/lib/mongoose";
 
@@ -38,7 +39,7 @@ export default async function RestaurantMenuPage({ params }) {
   if (!restaurant) {
     return (
       <NoticeScreen
-        icon="✕"
+        icon={X}
         tone="red"
         title="QR ไม่ถูกต้อง"
         body="ไม่พบร้านนี้ในรายการของวันนี้"
@@ -51,8 +52,8 @@ export default async function RestaurantMenuPage({ params }) {
     return (
       <Shell>
         <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-3xl">
-            🚫
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
+            <Ban aria-hidden="true" className="h-8 w-8" />
           </div>
           <h1 className="text-[19px] font-bold text-[#0d1b2a]">
             {restaurant.state === "closed"

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageOff, Info, Trash2 } from "lucide-react";
+import { ImageOff, Info, ShoppingCart, Trash2 } from "lucide-react";
 
 import {
   readCart,
@@ -359,8 +359,8 @@ export default function SummaryClient({
               มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
             </p>
           ) : null}
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-3xl">
-            🛒
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
+            <ShoppingCart aria-hidden="true" className="h-8 w-8" />
           </div>
           <h1 className="text-[18px] font-bold text-[#0d1b2a]">ยังไม่มีรายการในตะกร้า</h1>
           <button

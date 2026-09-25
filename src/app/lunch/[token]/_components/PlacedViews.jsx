@@ -4,19 +4,17 @@
 //   ThankYouView : มาจากการ submit (?done=1) — 4 แบบ: stock/e-coupon × order/at_shop
 //   RescanView   : สแกน QR เดิมซ้ำ — ดูอย่างเดียว ไม่มีปุ่มพาไปสั่ง
 import Image from "next/image";
-import { ImageOff, Info, Lock } from "lucide-react";
+import { Check, ImageOff, Info, Lock } from "lucide-react";
 
-import { LogoTile } from "./Shell";
+import { LogoTile, LOGO, LOGO_W, LOGO_H } from "./Shell";
 import CouponCard from "./CouponCards";
 import CollapsibleOrder from "./CollapsibleOrder";
-
-const LOGO = "/logo-9experttraining-color.png";
 
 function SuccessIcon() {
   return (
     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#2486ff]/10">
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#2486ff] text-2xl text-white">
-        ✓
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#2486ff] text-white">
+        <Check aria-hidden="true" className="h-6 w-6" strokeWidth={3} />
       </div>
     </div>
   );
@@ -48,7 +46,7 @@ export function ThankYouView({ order, dateLabel }) {
       </div>
 
       <div className="flex items-center justify-center gap-4">
-        <Image src={LOGO} alt="9Expert" width={120} height={24} className="h-6 w-auto" />
+        <Image src={LOGO} alt="9Expert" width={LOGO_W} height={LOGO_H} className="h-6 w-auto" />
         <span className="text-slate-300">|</span>
         <LogoTile src={order.restaurantLogo} alt={order.restaurantName} size={40} />
       </div>

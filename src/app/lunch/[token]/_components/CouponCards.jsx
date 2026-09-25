@@ -4,6 +4,7 @@
 //   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter)
 //   ร้านอื่น      -> ECouponCard (แสดงรหัสที่ร้าน)
 // ข้อมูลทั้งหมดมาจาก session.order — ไม่มีชื่อสำรอง
+import { Ticket } from "lucide-react";
 import CouponCode from "./CouponCode";
 
 function ECouponCard({ order, dateLabel }) {
@@ -48,7 +49,7 @@ function CounterCard({ order }) {
       className="rounded-2xl bg-[#2486ff]/[0.08] p-4 ring-1 ring-[#2486ff]/20"
     >
       <div className="flex gap-2.5">
-        <span className="text-[18px] leading-none">🎫</span>
+        <Ticket aria-hidden="true" className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#2486ff]" />
         <p className="text-[14px] leading-relaxed text-[#0d1b2a]">
           เมื่อถึงช่วงพักเบรค กรุณารับคูปองร้าน {order.restaurantName} กับเจ้าหน้าที่ที่ Counter
         </p>
