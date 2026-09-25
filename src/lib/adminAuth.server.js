@@ -4,6 +4,7 @@ import dbConnect from "@/lib/mongoose";
 import AdminUser from "@/models/AdminUser";
 import { verifyAdminToken } from "@/utils/auth";
 import { buildPermSet, ROLE_LABELS } from "@/lib/acl";
+import { verifyPassword } from "@/lib/password.server";
 
 const TOKEN_NAME = process.env.ADMIN_TOKEN_NAME || "admin_token";
 
@@ -57,6 +58,25 @@ export async function requireAdmin() {
       isActive: !!user.isActive,
     },
   };
+}
+
+/**
+ * Username/password check against AdminUser. Returns the (non-lean) user
+ * document when the account exists, is active and the password matches;
+ * null otherwise. No bootstrap path and no side effects - /api/login keeps its
+ * own first-run bootstrap and its own lastLoginAt update.
+ */
+export async function verifyAdminCredentials(username, password) {
+  const u = String(username || "").trim().toLowerCase();
+  const p = String(password || "").trim();
+  if (!u || !p) return null;
+
+  await dbConnect();
+  const user = await AdminUser.findOne({ username: u });
+  if (!user || !user.isActive) return null;
+
+  const ok = await verifyPassword(p, user.passwordHash);
+  return ok ? user : null;
 }
 
 export async function requirePerm(perm) {

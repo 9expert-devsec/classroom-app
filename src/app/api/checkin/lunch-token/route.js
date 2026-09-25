@@ -9,6 +9,7 @@
 //   - ตัวเลือกอาหารที่บันทึกไว้ของวันนี้คือ "coupon" จริง
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 
 import Student from "@/models/Student";
 import Class from "@/models/Class";
@@ -51,6 +52,10 @@ function reasonMessage(reason) {
 
 // POST { classId, studentId } -> { path: "/lunch/<token>" }
 export async function POST(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

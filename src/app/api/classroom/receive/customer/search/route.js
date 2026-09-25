@@ -1,5 +1,6 @@
 // src/app/api/classroom/receive/customer/search/route.js
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import ClassModel from "@/models/Class";
 import Student from "@/models/Student";
 import DocumentReceipt from "@/models/DocumentReceipt";
@@ -201,6 +202,10 @@ function formatDaysRangeTH(days) {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   await dbConnect();
 
   const { searchParams } = new URL(req.url);

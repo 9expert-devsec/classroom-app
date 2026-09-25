@@ -8,6 +8,7 @@
 // ไม่ส่งรหัสคูปองออกไปในรายการ — มีแค่ path ของ QR ซึ่งเปิดดูรหัสได้ทีละคน
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 
 import Student from "@/models/Student";
 import Class from "@/models/Class";
@@ -29,6 +30,10 @@ function escapeRegExp(s) {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

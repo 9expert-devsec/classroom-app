@@ -1,6 +1,7 @@
 // /api/food/today/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import Restaurant from "@/models/Restaurant";
 import FoodMenu from "@/models/FoodMenu";
 import FoodDaySet from "@/models/FoodDaySet";
@@ -48,6 +49,10 @@ function buildCurrentFood(studentDoc) {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

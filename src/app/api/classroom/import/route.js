@@ -1,6 +1,9 @@
 // src/app/api/classroom/import/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { requirePerm } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
+import { authErrorResponse } from "@/lib/kioskAuth.server";
 import Student from "@/models/Student";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +108,13 @@ function defaultFood(classId) {
 /* ---------------- handler ---------------- */
 
 export async function POST(req) {
+  // L2a: admin console only (CLASSES_IMPORT); no kiosk access
+  try {
+    await requirePerm(PERM.CLASSES_IMPORT);
+  } catch (e) {
+    return authErrorResponse(e);
+  }
+
   await dbConnect();
 
   const body = await req.json().catch(() => ({}));

@@ -1,6 +1,7 @@
 // src/app/api/checkin/search/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
@@ -27,6 +28,10 @@ function escapeRegExp(s) {
 }
 
 export async function POST(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   await dbConnect();
 
   let body;

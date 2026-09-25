@@ -1,5 +1,6 @@
 // src/app/api/classroom/receive/customer/confirm/route.js
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import DocumentReceipt from "@/models/DocumentReceipt";
 import Student from "@/models/Student";
 import { uploadSignatureDataUrl } from "@/lib/cloudinaryUpload.server";
@@ -39,6 +40,10 @@ function isDupKey(err) {
 }
 
 export async function POST(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   await dbConnect();
 
   const body = await req.json().catch(() => ({}));

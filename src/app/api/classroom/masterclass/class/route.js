@@ -5,6 +5,7 @@
 
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import Class from "@/models/Class";
 import MasterclassCourse from "@/models/MasterclassCourse";
 import { bangkokYMD, computeDayIndexToday } from "@/lib/classDates";
@@ -29,6 +30,10 @@ function notFound() {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

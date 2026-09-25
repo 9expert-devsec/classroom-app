@@ -10,6 +10,11 @@ import FoodEditLog from "@/models/FoodEditLog";
 
 // ✅ audit (best-effort)
 import { requireAdmin } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
+import {
+  authErrorResponse,
+  requireKioskOrAdmin,
+} from "@/lib/kioskAuth.server";
 import { writeAuditLog } from "@/lib/auditLog.server";
 
 import {
@@ -248,14 +253,25 @@ async function writeFoodAuditLog({
 /* ---------------- route ---------------- */
 
 export async function POST(req) {
+  // L2a: kiosk session, or admin console with FOOD_WRITE (food report page)
+  let auth;
+  try {
+    auth = await requireKioskOrAdmin(req, PERM.FOOD_WRITE);
+  } catch (e) {
+    return authErrorResponse(e);
+  }
+
   await dbConnect();
 
   // ✅ optional admin context (มี cookie ก็จะ track ผู้แก้ไขได้)
-  let adminCtx = null;
-  try {
-    adminCtx = await requireAdmin();
-  } catch {
-    adminCtx = null; // public flow ก็ยังทำงานต่อ
+  // audit ยังเหมือนเดิม: มี admin cookie เมื่อไหร่ก็บันทึกชื่อผู้แก้ไข
+  let adminCtx = auth.kind === "admin" ? auth.ctx : null;
+  if (!adminCtx) {
+    try {
+      adminCtx = await requireAdmin();
+    } catch {
+      adminCtx = null; // kiosk flow ก็ยังทำงานต่อ
+    }
   }
 
   let body;

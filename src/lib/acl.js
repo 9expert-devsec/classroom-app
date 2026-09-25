@@ -40,6 +40,10 @@ export const PERM = {
   // External (partner) API keys. SA only - granted implicitly through
   // ROLE_PERMS[SA] = Object.values(PERM); deliberately absent from OPS/EVT.
   API_KEYS_MANAGE: "apikeys.manage",
+
+  // L2a: open a /classroom kiosk on a device, and call classroom APIs with an
+  // admin session instead of a kiosk session.
+  CLASSROOM_OPERATE: "classroom.operate",
 };
 
 export const ROLE_PERMS = {
@@ -67,6 +71,8 @@ export const ROLE_PERMS = {
 
     PERM.AUDIT_READ,
     PERM.MY_ACCOUNT,
+
+    PERM.CLASSROOM_OPERATE,
   ],
 
   [ROLE.EVT]: [
@@ -85,6 +91,8 @@ export const ROLE_PERMS = {
 
     PERM.AUDIT_READ,
     PERM.MY_ACCOUNT,
+
+    PERM.CLASSROOM_OPERATE,
   ],
 };
 

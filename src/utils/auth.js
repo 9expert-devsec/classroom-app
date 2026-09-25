@@ -1,6 +1,12 @@
 // src/utils/auth.js
 import { SignJWT, jwtVerify } from "jose";
 
+// Raw JWT_SECRET bytes. Also the input the kiosk token key is derived from
+// (src/lib/kioskToken.js), so both keys follow the same fallback rules.
+export function getJwtSecretBytes() {
+  return getSecret();
+}
+
 function getSecret() {
   const raw = String(process.env.JWT_SECRET || "").trim();
   if (!raw && process.env.NODE_ENV === "production") {
@@ -20,7 +26,8 @@ export async function signAdminToken(payload) {
   const secret = getSecret();
   const exp = getExpires();
 
-  return new SignJWT({ ...payload })
+  // typ: "admin" keeps admin and kiosk tokens from being mistaken for each other
+  return new SignJWT({ ...payload, typ: "admin" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(exp)
@@ -30,5 +37,9 @@ export async function signAdminToken(payload) {
 export async function verifyAdminToken(token) {
   const secret = getSecret();
   const { payload } = await jwtVerify(token, secret);
+  // tokens issued before typ existed have none and are still admin tokens
+  if (payload?.typ !== undefined && payload.typ !== "admin") {
+    throw new Error("Not an admin token");
+  }
   return payload;
 }

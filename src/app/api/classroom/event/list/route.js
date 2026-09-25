@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import Event from "@/models/Event";
 import EventAttendee from "@/models/EventAttendee";
 
@@ -33,6 +34,10 @@ function buildNotEndedQuery(now = new Date()) {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

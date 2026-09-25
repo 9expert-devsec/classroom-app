@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import AdminUser from "@/models/AdminUser";
 import { signAdminToken } from "@/utils/auth";
-import { hashPassword, verifyPassword } from "@/lib/password.server";
+import { hashPassword } from "@/lib/password.server";
+import { verifyAdminCredentials } from "@/lib/adminAuth.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,16 +83,8 @@ export async function POST(req) {
   }
 
   // ✅ Login ปกติ: ใช้ DB user
-  const user = await AdminUser.findOne({ username: u });
-  if (!user || !user.isActive) {
-    return NextResponse.json(
-      { ok: false, error: "Username หรือ Password ไม่ถูกต้อง" },
-      { status: 401 },
-    );
-  }
-
-  const ok = await verifyPassword(p, user.passwordHash);
-  if (!ok) {
+  const user = await verifyAdminCredentials(u, p);
+  if (!user) {
     return NextResponse.json(
       { ok: false, error: "Username หรือ Password ไม่ถูกต้อง" },
       { status: 401 },

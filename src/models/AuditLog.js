@@ -41,6 +41,9 @@ const AuditLogSchema = new mongoose.Schema(
         // ✅ P4b: Counter
         "lunch.handout",
         "lunch.return",
+        // ✅ L2a: kiosk /classroom
+        "kiosk.open",
+        "kiosk.close",
       ],
       default: "custom",
       index: true,

@@ -1,4 +1,5 @@
 import dbConnect from "@/lib/mongoose";
+import { kioskGuard } from "@/lib/kioskAuth.server";
 import ClassModel from "@/models/Class";
 import Student from "@/models/Student";
 import DocumentReceipt from "@/models/DocumentReceipt";
@@ -135,6 +136,10 @@ function buildDateTextFromClass(cls) {
 }
 
 export async function GET(req) {
+  // L2a: kiosk session required, before any DB work or body parsing
+  const denied = await kioskGuard(req);
+  if (denied) return denied;
+
   await dbConnect();
 
   const { searchParams } = new URL(req.url);
