@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -44,7 +45,7 @@ export default function ReceiveStaffSearchPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(
+      const res = await kioskFetch(
         `/api/classroom/receive/staff/search?q=${encodeURIComponent(qq)}`,
         { cache: "no-store" },
       );

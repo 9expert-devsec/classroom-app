@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import LunchQrCode from "@/components/shared/LunchQrCode";
 import LunchDeadlineLine from "@/components/shared/LunchDeadlineLine";
 import { LUNCH_BUDGET_THB } from "@/lib/lunchConfig";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 /**
  * Step 3 บนแท็บเล็ต: QR ให้ผู้เรียนสแกนไปสั่งอาหารบนมือถือ
@@ -29,7 +30,7 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
 
     (async () => {
       try {
-        const res = await fetch("/api/checkin/lunch-token", {
+        const res = await kioskFetch("/api/checkin/lunch-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ studentId, classId }),

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad from "@/components/shared/SignaturePad";
 import UserButton from "@/components/ui/UserButton";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -63,7 +64,7 @@ export default function EventCheckinClient({ searchParams }) {
       url.searchParams.set("q", query);
       url.searchParams.set("eventId", eventId);
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await kioskFetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
 
       if (!res.ok || !data?.ok) {
@@ -107,7 +108,7 @@ export default function EventCheckinClient({ searchParams }) {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/classroom/event/confirm", {
+      const res = await kioskFetch("/api/classroom/event/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -12,6 +12,7 @@ import Image from "next/image";
 import RestaurantCard from "./RestaurantCard";
 import MenuCard from "./MenuCard";
 import { Ban } from "lucide-react";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -490,7 +491,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       if (classId) params.set("classId", classId);
 
       try {
-        const res = await fetch(`/api/food/today?${params.toString()}`);
+        const res = await kioskFetch(`/api/food/today?${params.toString()}`);
         if (!res.ok) {
           const text = await res.text();
           console.error("food/today error:", res.status, text);
@@ -640,7 +641,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 note: note || "",
               };
 
-      const res = await fetch("/api/checkin/food", {
+      const res = await kioskFetch("/api/checkin/food", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

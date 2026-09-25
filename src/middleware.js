@@ -1,10 +1,47 @@
 // src/middleware.js
 import { NextResponse } from "next/server";
+import {
+  KIOSK_COOKIE_NAME,
+  safeKioskNext,
+  verifyKioskToken,
+} from "@/lib/kioskToken";
 
 const TOKEN_NAME = process.env.ADMIN_TOKEN_NAME || "admin_token";
 const ADMIN_KEY = process.env.ADMIN_KEY || "a1exqwvCqTXP7s0";
 
-export function middleware(req) {
+// L2a: /classroom pages need a valid kiosk token (signature + expiry + typ).
+// Revocation is checked by src/app/classroom/layout.jsx, which needs the DB.
+const KIOSK_LOGIN_PATH = "/classroom/login";
+
+function isClassroomPath(path) {
+  return path === "/classroom" || path.startsWith("/classroom/");
+}
+
+async function guardClassroom(req, path, search) {
+  // tells the classroom layout which page it is wrapping (overwrites any
+  // client-sent value), so it can leave the login page unguarded
+  const headers = new Headers(req.headers);
+  headers.set("x-classroom-path", path);
+  const pass = () => NextResponse.next({ request: { headers } });
+
+  if (path === KIOSK_LOGIN_PATH) return pass();
+
+  const token = req.cookies.get(KIOSK_COOKIE_NAME)?.value;
+  if (token) {
+    try {
+      await verifyKioskToken(token);
+      return pass();
+    } catch {
+      // fall through to login
+    }
+  }
+
+  const loginUrl = new URL(KIOSK_LOGIN_PATH, req.url);
+  loginUrl.searchParams.set("next", safeKioskNext(path + search));
+  return NextResponse.redirect(loginUrl);
+}
+
+export async function middleware(req) {
   const { pathname, search } = req.nextUrl;
   const path = pathname || "/";
 
@@ -25,7 +62,10 @@ export function middleware(req) {
 
   // ✅ ตรวจรูปแบบ /:adminKey/admin/...
   const m = path.match(/^\/([^/]+)\/admin(\/.*)?$/);
-  if (!m) return NextResponse.next();
+  if (!m) {
+    if (isClassroomPath(path)) return guardClassroom(req, path, search);
+    return NextResponse.next();
+  }
 
   const keyFromPath = m[1];
 
@@ -51,5 +91,11 @@ export function middleware(req) {
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/:adminKey/admin/:path*"],
+  matcher: [
+    "/",
+    "/admin/:path*",
+    "/:adminKey/admin/:path*",
+    "/classroom",
+    "/classroom/:path*",
+  ],
 };

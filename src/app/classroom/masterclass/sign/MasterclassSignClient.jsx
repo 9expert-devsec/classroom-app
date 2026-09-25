@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import MasterclassStepHeader from "../MasterclassStepHeader";
 import UserButton from "@/components/ui/UserButton";
 import SignaturePad from "@/components/shared/SignaturePad";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -43,7 +44,7 @@ export default function MasterclassSignClient({ searchParams = {} }) {
         if (classId) params.set("classId", classId);
         params.set("day", String(day));
 
-        const res = await fetch(`/api/checkin/preview?${params.toString()}`);
+        const res = await kioskFetch(`/api/checkin/preview?${params.toString()}`);
         if (!res.ok) {
           console.error("preview error", res.status);
           setPreview(null);
@@ -76,7 +77,7 @@ export default function MasterclassSignClient({ searchParams = {} }) {
 
     try {
       // 1) บันทึกลายเซ็นเข้า Student
-      const resSign = await fetch("/api/checkin/sign", {
+      const resSign = await kioskFetch("/api/checkin/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -91,7 +92,7 @@ export default function MasterclassSignClient({ searchParams = {} }) {
       }
 
       // 2) สร้าง / อัปเดต Checkin (ตัวเดียวกับ flow ปกติ → admin ได้ notification)
-      const resComplete = await fetch("/api/checkin/complete", {
+      const resComplete = await kioskFetch("/api/checkin/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

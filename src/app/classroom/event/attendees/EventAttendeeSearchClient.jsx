@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { ChevronLeft } from "lucide-react";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -58,7 +59,7 @@ export default function EventAttendeeSearchClient({ searchParams }) {
       url.searchParams.set("eventId", eventId);
       url.searchParams.set("q", "");
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await kioskFetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
 
       if (!res.ok || !data?.ok) {
@@ -99,7 +100,7 @@ export default function EventAttendeeSearchClient({ searchParams }) {
       url.searchParams.set("q", query);
       url.searchParams.set("eventId", eventId);
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await kioskFetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
 
       if (!res.ok || !data?.ok) {

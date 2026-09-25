@@ -7,6 +7,7 @@ import MasterclassStepHeader from "../MasterclassStepHeader";
 import TextInput from "@/components/ui/TextInput";
 import UserButton from "@/components/ui/UserButton";
 import SearchResultCard from "../../checkin/SearchResultCard";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -95,7 +96,7 @@ export default function MasterclassCheckinClient({ searchParams = {} }) {
     async function loadClass() {
       try {
         const qs = new URLSearchParams({ classId: classIdQS }).toString();
-        const res = await fetch(`/api/classroom/masterclass/class?${qs}`, {
+        const res = await kioskFetch(`/api/classroom/masterclass/class?${qs}`, {
           cache: "no-store",
         });
         const data = await res.json().catch(() => ({}));
@@ -135,7 +136,7 @@ export default function MasterclassCheckinClient({ searchParams = {} }) {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/checkin/search", {
+      const res = await kioskFetch("/api/checkin/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

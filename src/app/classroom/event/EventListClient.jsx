@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -30,7 +31,7 @@ export default function EventListClient() {
     setErr("");
     setLoading(true);
     try {
-      const res = await fetch("/api/classroom/event/list", {
+      const res = await kioskFetch("/api/classroom/event/list", {
         cache: "no-store",
       });
       const data = await res.json();

@@ -9,6 +9,10 @@ import {
   QrCode,
   ArrowRight,
 } from "lucide-react";
+import { requireKiosk } from "@/lib/kioskAuth.server";
+import KioskFooter from "./KioskFooter";
+
+export const dynamic = "force-dynamic";
 
 function CardLink({ href, title, desc, Icon }) {
   return (
@@ -44,7 +48,15 @@ function CardLink({ href, title, desc, Icon }) {
   );
 }
 
-export default function ClassroomHomePage() {
+export default async function ClassroomHomePage() {
+  // the layout has already required a live kiosk; this is only for the footer
+  let kiosk = null;
+  try {
+    ({ session: kiosk } = await requireKiosk());
+  } catch {
+    kiosk = null;
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl p-6">
       <div className="mb-5">
@@ -107,6 +119,10 @@ export default function ClassroomHomePage() {
         Tips: หน้านี้ไว้เป็น “ทางเข้าเดียว” ให้ทีมหน้างานใช้งานได้เร็ว
         ลดการพิมพ์ URL ผิด
       </div>
+
+      {kiosk ? (
+        <KioskFooter label={kiosk.label} openedByName={kiosk.openedByName} />
+      ) : null}
     </div>
   );
 }

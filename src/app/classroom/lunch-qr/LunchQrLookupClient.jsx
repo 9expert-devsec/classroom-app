@@ -8,6 +8,7 @@ import { ChevronLeft, QrCode, Search } from "lucide-react";
 import LunchQrCode from "@/components/shared/LunchQrCode";
 import LunchDeadlineLine from "@/components/shared/LunchDeadlineLine";
 import LunchStatusBadge from "@/components/shared/LunchStatusBadge";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 const MIN_Q = 2;
 const QR_FAIL = "ออก QR สั่งอาหารไม่สำเร็จ กรุณาแจ้งเจ้าหน้าที่ที่ Counter";
@@ -137,7 +138,7 @@ export default function LunchQrLookupClient() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/checkin/lunch-lookup?q=${encodeURIComponent(k)}`, {
+      const res = await kioskFetch(`/api/checkin/lunch-lookup?q=${encodeURIComponent(k)}`, {
         cache: "no-store",
       });
       const data = await res.json().catch(() => ({}));
@@ -179,7 +180,7 @@ export default function LunchQrLookupClient() {
     setIssuingId(it.studentId);
     setIssueErrors((m) => ({ ...m, [it.studentId]: "" }));
     try {
-      const res = await fetch("/api/checkin/lunch-token", {
+      const res = await kioskFetch("/api/checkin/lunch-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: it.studentId, classId: it.classId }),

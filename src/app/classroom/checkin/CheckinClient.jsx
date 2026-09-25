@@ -7,6 +7,7 @@ import StepHeader from "./StepHeader";
 import TextInput from "@/components/ui/TextInput";
 import UserButton from "@/components/ui/UserButton";
 import SearchResultCard from "./SearchResultCard";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -54,7 +55,7 @@ export default function CheckinClient({ searchParams = {} }) {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/checkin/search", {
+      const res = await kioskFetch("/api/checkin/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

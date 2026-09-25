@@ -13,6 +13,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function clean(x) {
   return String(x || "").trim();
@@ -60,7 +61,7 @@ export default function ReceiveCustomerSignClient() {
 
       setLoading(true);
       try {
-        const res = await fetch(
+        const res = await kioskFetch(
           `/api/classroom/receive/customer/search?q=${encodeURIComponent(docId)}`,
           { cache: "no-store" },
         );
@@ -127,7 +128,7 @@ export default function ReceiveCustomerSignClient() {
     setErr("");
 
     try {
-      const res = await fetch("/api/classroom/receive/customer/confirm", {
+      const res = await kioskFetch("/api/classroom/receive/customer/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

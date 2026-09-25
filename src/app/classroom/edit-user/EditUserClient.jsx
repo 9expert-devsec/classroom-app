@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -40,7 +41,7 @@ export default function EditUserPage() {
 
     setLoading(true);
     try {
-      const res = await fetch("/api/classroom/edit-user/search", {
+      const res = await kioskFetch("/api/classroom/edit-user/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ keyword: k, day }),

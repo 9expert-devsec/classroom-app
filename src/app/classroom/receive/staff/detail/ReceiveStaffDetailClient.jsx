@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Eye, X } from "lucide-react";
 import SignaturePad from "@/components/shared/SignaturePad";
+import { kioskFetch } from "@/lib/kioskFetch";
 
 function clean(x) {
   return String(x || "").trim();
@@ -83,7 +84,7 @@ export default function ReceiveStaffDetailClient() {
 
       setLoading(true);
       try {
-        const res = await fetch(
+        const res = await kioskFetch(
           `/api/classroom/receive/staff/search?q=${encodeURIComponent(docId)}`,
           { cache: "no-store" },
         );
@@ -171,7 +172,7 @@ export default function ReceiveStaffDetailClient() {
     setSaving(true);
 
     try {
-      const res = await fetch("/api/classroom/receive/staff/confirm", {
+      const res = await kioskFetch("/api/classroom/receive/staff/confirm", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
