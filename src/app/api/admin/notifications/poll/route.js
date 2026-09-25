@@ -9,6 +9,8 @@ import Class from "@/models/Class";
 
 import FoodEditLog from "@/models/FoodEditLog";
 import DocumentReceipt from "@/models/DocumentReceipt";
+import LunchNotification from "@/models/LunchNotification";
+import { ensureUnorderedNotifications } from "@/lib/lunchNotify.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,7 +214,7 @@ function pickLatestSendEvent(doc, studentByDocKey) {
 /* ---------------- prime cursor (composite) ---------------- */
 
 async function getPrimeCursorKey() {
-  const [latestCheckin, latestFoodEdit, latestReceiptDoc, latestSendDoc] =
+  const [latestCheckin, latestFoodEdit, latestReceiptDoc, latestSendDoc, latestLunch] =
     await Promise.all([
       Checkin.findOne({})
         .sort({ time: -1, updatedAt: -1, createdAt: -1 })
@@ -234,9 +236,20 @@ async function getPrimeCursorKey() {
         .sort({ updatedAt: -1 })
         .limit(1)
         .lean(),
+      // P4b: lunch events (ล้มได้โดยไม่ล้ม prime)
+      LunchNotification.findOne({})
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .lean()
+        .catch(() => null),
     ]);
 
   const candidates = [];
+
+  if (latestLunch?.createdAt) {
+    const iso = new Date(latestLunch.createdAt).toISOString();
+    candidates.push(cursorKeyOf(iso, "lunch", latestLunch._id));
+  }
 
   if (latestCheckin) {
     const d = pickCursorDateFromCheckin(latestCheckin);
@@ -385,6 +398,39 @@ async function buildFoodEdits(querySinceDate, sinceKey, limit = 20) {
   return items;
 }
 
+/* ---------------- builder: lunch (P4b) ---------------- */
+
+// ข้อความสร้างไว้แล้วตอนเกิดเหตุการณ์ (lunchNotify.server) — ที่นี่แค่อ่านตาม cursor
+// ล้มแล้วคืน [] เสมอ: แจ้งเตือน lunch ห้ามทำให้ poll ทั้งอันพัง
+async function buildLunchEvents(querySinceDate, sinceKey, limit = 20) {
+  try {
+    const rows = await LunchNotification.find({ createdAt: { $gt: querySinceDate } })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    const items = [];
+    for (const r of rows.slice().reverse()) {
+      const cursorIso = new Date(r.createdAt).toISOString();
+      const cKey = cursorKeyOf(cursorIso, "lunch", r._id);
+      if (cKey.localeCompare(sinceKey) <= 0) continue;
+      items.push({
+        type: "lunch",
+        kind: r.kind,
+        id: String(r._id),
+        eventId: `lunch:${r.dedupeKey}`,
+        cursor: cursorIso,
+        cursorKey: cKey,
+        message: r.message,
+      });
+    }
+    return items;
+  } catch (e) {
+    console.error("[poll] lunch events failed:", e?.message || e);
+    return [];
+  }
+}
+
 /* ---------------- builder: receipts + sends (DocumentReceipt union) ---------------- */
 
 async function buildReceiptAndSendEvents(
@@ -514,10 +560,14 @@ export async function GET(req) {
     // overlap 2s ใช้เพื่อ query เท่านั้น (กันพลาด event ที่ timestamp ชนกัน)
     const querySince = new Date(sinceTs.getTime() - 2000);
 
-    const [checkins, foodEdits, docPack] = await Promise.all([
+    // P4b: 11:00 ยังไม่สั่ง (ไม่มี cron) — catch เองภายใน ไม่ทำให้ poll ล้ม
+    await ensureUnorderedNotifications(new Date());
+
+    const [checkins, foodEdits, docPack, lunchItems] = await Promise.all([
       buildCheckins(querySince, sinceKey, 20),
       buildFoodEdits(querySince, sinceKey, 20),
       buildReceiptAndSendEvents(querySince, sinceKey, 60),
+      buildLunchEvents(querySince, sinceKey, 20),
     ]);
 
     const { receiptEvents, sendEvents } = docPack;
@@ -594,7 +644,7 @@ export async function GET(req) {
       };
     });
 
-    const items = [...checkins, ...receiptItems, ...sendItems, ...foodItems]
+    const items = [...checkins, ...receiptItems, ...sendItems, ...foodItems, ...lunchItems]
       .filter(Boolean)
       .sort((a, b) => String(a.cursorKey).localeCompare(String(b.cursorKey)));
 

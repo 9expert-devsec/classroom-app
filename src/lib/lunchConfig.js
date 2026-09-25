@@ -11,6 +11,10 @@ export const ORDER_HARD_CLOSE_HHMM = "11:15";
 // admin เปิดให้เป็นรายคนได้อีก 10 นาที
 export const SPECIAL_REOPEN_MINUTES = 10;
 
+// P4b: แจ้งเตือน "คูปองร้าน X เหลือ N ใบ" เมื่อเหลือไม่เกินค่านี้
+// (ใช้เมื่อ Restaurant.couponStockLowThreshold ไม่ได้ตั้งไว้)
+export const LUNCH_STOCK_LOW_DEFAULT = 5;
+
 // ชื่อเล่นบนคูปอง: อังกฤษล้วน ไม่เกิน 20 ตัวอักษร
 export const NICKNAME_MAX = 20;
 export const NICKNAME_REGEX = /^[A-Za-z][A-Za-z ]{0,19}$/;

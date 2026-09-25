@@ -4,9 +4,11 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-function toastByType(type, message) {
+function toastByType(type, message, kind) {
   const msg = message || "มีแจ้งเตือนใหม่";
   if (type === "checkin") return toast.success(msg);
+  // P4b: คูปองใกล้หมด/หมด และ 11:00 ยังไม่สั่ง = ต้องมีคนจัดการ
+  if (type === "lunch" && kind !== "submit") return toast.warning(msg);
   if (type === "receipt") return toast.message(msg);
   if (type === "send") return toast.message(msg);
   if (type === "foodEdit") return toast.message(msg);
@@ -72,7 +74,7 @@ export default function useAdminNotifications({ pollMs = 4000 } = {}) {
           const key = it?.eventId || it?.id;
           if (!key || seenRef.current.has(key)) continue;
           seenRef.current.add(key);
-          toastByType(it.type, it.message);
+          toastByType(it.type, it.message, it.kind);
         }
       } catch {
         // เงียบไว้

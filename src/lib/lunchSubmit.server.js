@@ -19,6 +19,7 @@ import Restaurant from "@/models/Restaurant";
 import { LUNCH_BUDGET_THB, isValidNickname } from "@/lib/lunchConfig";
 import { getDaySet, getCouponAvailability } from "@/lib/couponAvailability.server";
 import { assignCode } from "@/lib/couponStock.server";
+import { notifyAfterSubmit } from "@/lib/lunchNotify.server";
 
 /* ---------------- limits ---------------- */
 
@@ -404,6 +405,10 @@ export async function submitLunchOrder({ order, body, now = new Date() }) {
   } finally {
     await session.endSession();
   }
+
+  // P4b: แจ้งเตือนแอดมิน (หลัง commit แล้วเท่านั้น) — notifyAfterSubmit catch เองทั้งหมด
+  // จึงไม่มีทางทำให้ submit ที่สำเร็จแล้วกลายเป็น error
+  await notifyAfterSubmit(updated);
 
   return { order: updated };
 }
