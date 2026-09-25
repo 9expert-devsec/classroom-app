@@ -18,7 +18,7 @@ import Checkin from "@/models/Checkin";
 import { issueLunchOrder, computeStatus } from "@/lib/lunchOrders.server";
 import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
 import { toBkkYMD, orderWindow } from "@/lib/lunchConfig";
-import { classDayIndexToday } from "@/lib/classDates";
+import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -93,9 +93,7 @@ export async function POST(req) {
     if (dayIndex < 1) return fail("not_class_day", 409);
 
     // L2b: "เช็คอินแล้ววันนี้" = มี Checkin ของ (ผู้เรียน, คลาส, day ของวันนี้)
-    //      และเวลาเช็คอินล่าสุด (Checkin.time — /api/checkin/complete เขียนทุกครั้ง)
-    //      ตกอยู่ใน "วันนี้" ตามเวลาไทย กันแถว day เดียวกันที่เขียนไว้วันอื่น
-    //      (complete ใช้ day ที่ส่งมาเมื่อวันนั้นไม่ใช่วันเรียน)
+    //      และ isCheckinToday (เวลาเช็คอินตกวันนี้ตามเวลาไทย) — กฎเดียวกับ edit-user
     //      ตรวจก่อนเรื่องคูปอง: ยังไม่เช็คอิน = ไม่ออก token ไม่ว่ากรณีใด
     const checkin = await Checkin.findOne({
       studentId: student._id,
@@ -103,8 +101,7 @@ export async function POST(req) {
       day: dayIndex,
     }).lean();
 
-    // (ต้องเช็ค time ก่อน: toBkkYMD(undefined) จะได้ "วันนี้" จากค่า default)
-    if (!checkin?.time || toBkkYMD(checkin.time) !== todayYMD) {
+    if (!isCheckinToday(checkin)) {
       return fail("not_checked_in", 403);
     }
 

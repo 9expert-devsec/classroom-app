@@ -264,6 +264,20 @@ export function classDayIndexToday(c, now = new Date()) {
   return computeDayIndexToday(c, bangkokYMD(now));
 }
 
+/**
+ * "Checked in today" for a Checkin row already matched on (student, class,
+ * classDayIndexToday): its time - rewritten by /api/checkin/complete on every
+ * check-in - must fall on today's Bangkok date. Guards against a row with the
+ * same day index written on another date (complete falls back to the posted
+ * day when today is not a class day). A row without time never counts.
+ * Shared by the lunch-token check and the edit-user search (L2b/L2c).
+ */
+export function isCheckinToday(checkin, now = new Date()) {
+  if (!checkin?.time) return false;
+  const at = bangkokYMD(checkin.time);
+  return !!at && at === bangkokYMD(now);
+}
+
 /** "YYYY-MM-DD" of training day N (1-based): days[] first, else date + (N-1) in Bangkok. */
 export function classDayYMD(c, day) {
   const n = Math.max(1, Number(day) || 1);

@@ -3,33 +3,25 @@
 
 import Link from "next/link";
 import { ChevronLeft, Search } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { kioskFetch } from "@/lib/kioskFetch";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
 }
 
-function pick(sp, key) {
-  const v = sp?.get?.(key);
-  return v || "";
-}
-
 export default function EditUserPage() {
   const router = useRouter();
-  const sp = useSearchParams();
 
-  const day = Number(pick(sp, "day") || 1);
-
+  // L2c: no global "day" here any more - each result carries the training day
+  // of its own class, resolved on the server (classDayIndexToday, Bangkok)
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const [err, setErr] = useState("");
 
-  const returnTo = useMemo(() => {
-    return `/classroom/edit-user?day=${day}`;
-  }, [day]);
+  const returnTo = "/classroom/edit-user";
 
   async function doSearch() {
     const k = String(keyword || "").trim();
@@ -44,7 +36,7 @@ export default function EditUserPage() {
       const res = await kioskFetch("/api/classroom/edit-user/search", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ keyword: k, day }),
+        body: JSON.stringify({ keyword: k }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -65,7 +57,8 @@ export default function EditUserPage() {
   function openFoodEdit(row) {
     const sid = String(row?._id || "");
     const cid = String(row?.classId || row?.classInfo?._id || "");
-    if (!sid || !cid) return;
+    const day = Number(row?.day);
+    if (!sid || !cid || !Number.isFinite(day) || day < 1) return;
 
     router.push(
       `/classroom/checkin/food?studentId=${encodeURIComponent(
@@ -95,12 +88,8 @@ export default function EditUserPage() {
             แก้ไขข้อมูลผู้ที่เช็กอินแล้ว (อาหาร)
           </h1>
           <div className="text-sm text-admin-textMuted">
-            ค้นหาได้เฉพาะ “ผู้ที่เช็คอินแล้วในวันนี้” ของ Day {day}
+            ค้นหาได้เฉพาะ “ผู้ที่เช็คอินแล้ววันนี้” ของคลาสที่มีอบรมวันนี้
           </div>
-        </div>
-
-        <div className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm">
-          Day:&nbsp;<b>{day}</b>
         </div>
       </div>
 
@@ -167,9 +156,14 @@ export default function EditUserPage() {
                     <div className="text-xs text-admin-textMuted">
                       {company}
                     </div>
-                    <div className="mt-2 text-xs text-admin-textMuted">
-                      Class: <span className="text-admin-text">{title}</span>
-                      {room}
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-admin-textMuted">
+                      <span>
+                        Class: <span className="text-admin-text">{title}</span>
+                        {room}
+                      </span>
+                      <span className="rounded-lg border border-admin-border bg-admin-surfaceMuted px-2 py-0.5 font-semibold text-admin-text">
+                        Day {row?.day ?? "-"}
+                      </span>
                     </div>
                   </div>
 
@@ -181,8 +175,8 @@ export default function EditUserPage() {
 
           {!loading && items.length === 0 && (
             <div className="rounded-2xl border border-admin-border bg-admin-surfaceMuted p-4 text-sm text-admin-textMuted">
-              พิมพ์คำค้นแล้วกดค้นหา (ระบบจะแสดงเฉพาะคนที่เช็คอินแล้วใน Day {day}
-              ของ “คลาสที่มีอบรมวันนี้”)
+              พิมพ์คำค้นแล้วกดค้นหา (ระบบจะแสดงเฉพาะคนที่เช็คอินแล้ววันนี้
+              ของ “คลาสที่มีอบรมวันนี้” ตาม Day ของแต่ละคลาส)
             </div>
           )}
         </div>
