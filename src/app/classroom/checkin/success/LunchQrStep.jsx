@@ -11,19 +11,20 @@ import {
  * Step 3 บนแท็บเล็ต: QR ให้ผู้เรียนสแกนไปสั่งอาหารบนมือถือ
  *
  * เกณฑ์ว่าจะโชว์หรือไม่ ตัดสินที่ server ล้วน ๆ — ถ้าวันนี้ไม่ได้เลือกคูปอง
- * endpoint จะตอบ not_coupon_choice แล้ว component นี้จะไม่ render อะไรเลย
- * (หน้าจอเดิมของตัวเลือกอื่นจึงไม่เปลี่ยน)
+ * endpoint จะตอบ reason not_coupon_choice แล้ว component นี้จะไม่ render อะไรเลย
+ * (หน้าจอเดิมของตัวเลือกอื่นจึงไม่เปลี่ยน) ความล้มเหลวอื่นทุกแบบแสดงข้อความให้แจ้ง
+ * Counter พร้อมเหตุผลจาก server และหยุดการเด้งกลับอัตโนมัติไว้
  */
 export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
   const [state, setState] = useState("loading"); // loading | ready | hidden | error
   const [path, setPath] = useState("");
   const [message, setMessage] = useState("");
 
+  // ไม่มี id ครบ = ไม่มี Step 3 (คำนวณเอา ไม่ต้อง setState ใน effect)
+  const missingIds = !studentId || !classId;
+
   useEffect(() => {
-    if (!studentId || !classId) {
-      setState("hidden");
-      return;
-    }
+    if (missingIds) return;
 
     let cancelled = false;
 
@@ -43,20 +44,24 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
           return;
         }
 
-        // ไม่ได้เลือกคูปองวันนี้ = ไม่ต้องมี Step 3 เลย
-        if (data?.reason === "not_coupon_choice" || res.status === 409) {
-          if (data?.reason === "not_coupon_choice") {
-            setState("hidden");
-            return;
-          }
+        // ไม่ได้เลือกคูปองวันนี้ = ไม่ต้องมี Step 3 เลย (ไม่ใช่ความผิดพลาด)
+        if (data?.reason === "not_coupon_choice") {
+          setState("hidden");
+          return;
         }
 
-        setMessage(data?.error || "ออก QR ไม่สำเร็จ");
+        // อย่างอื่นทั้งหมดคือระบบออก QR ไม่ได้ — ไม่โทษผู้เรียน ให้ไปแจ้ง Counter
+        // พร้อมเหตุผลจาก server ตัวเล็ก ๆ ให้เจ้าหน้าที่ดูต่อ
+        setMessage(
+          [data?.error, data?.reason ? `(${data.reason})` : `(HTTP ${res.status})`]
+            .filter(Boolean)
+            .join(" "),
+        );
         setState("error");
       } catch (err) {
         console.error(err);
         if (cancelled) return;
-        setMessage("เชื่อมต่อไม่สำเร็จ กรุณาติดต่อเจ้าหน้าที่");
+        setMessage("เชื่อมต่อไม่สำเร็จ (network)");
         setState("error");
       }
     })();
@@ -64,14 +69,14 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
     return () => {
       cancelled = true;
     };
-  }, [studentId, classId]);
+  }, [studentId, classId, missingIds]);
 
   // แจ้ง parent ให้หยุดนับถอยหลังกลับหน้าแรก เมื่อมี Step 3 จริง
   useEffect(() => {
     if (state === "ready" || state === "error") onReady?.();
   }, [state, onReady]);
 
-  if (state === "loading" || state === "hidden") return null;
+  if (missingIds || state === "loading" || state === "hidden") return null;
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const url = path ? `${origin}${path}` : "";
@@ -96,7 +101,14 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
           </p>
         </>
       ) : (
-        <p className="sm:text-lg lg:text-base text-red-600">{message}</p>
+        <div data-testid="lunch-qr-error">
+          <p className="sm:text-xl lg:text-base font-semibold text-red-600">
+            ออก QR สั่งอาหารไม่สำเร็จ กรุณาแจ้งเจ้าหน้าที่ที่ Counter
+          </p>
+          {message ? (
+            <p className="mt-2 sm:text-sm lg:text-xs text-slate-400">{message}</p>
+          ) : null}
+        </div>
       )}
 
       <button

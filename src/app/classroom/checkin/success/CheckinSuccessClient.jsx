@@ -40,7 +40,7 @@ export default function CheckinSuccessPage({ searchParams = {} }) {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [countdown, router]);
+  }, [countdown, router, hasLunchStep]);
 
   function handleBack() {
     router.push("/classroom/checkin");

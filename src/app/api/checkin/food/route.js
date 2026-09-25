@@ -17,6 +17,7 @@ import {
   couponUnavailableMessage,
 } from "@/lib/couponAvailability.server";
 import { toBkkYMD } from "@/lib/lunchConfig";
+import { classDayIndexToday } from "@/lib/classDates";
 import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchOrders.server";
 
 export const dynamic = "force-dynamic";
@@ -74,28 +75,44 @@ function isObjectId(x) {
 //      คูปองผูกกับ FoodDaySet ของวันจริง ถ้าปล่อยให้ client เลือก day ได้
 //      ก็เท่ากับเลือกได้ว่าจะให้ตรวจวันไหน
 //      วันนี้ไม่ใช่วันเรียนของคลาสนี้ -> เลือกคูปองไม่ได้ (not_class_day)
-async function checkCouponAvailability(classId) {
+//
+// P3g: "วันนี้คือ Day ไหน" มาจาก classDayIndexToday (helper เดียวกับเช็คอิน/lunch-token)
+//      และคูปองรับได้เฉพาะเมื่อ day ที่กำลังบันทึก = วันนี้จริง (ไม่งั้น not_today)
+async function checkCouponAvailability(classId, recordDay) {
   try {
     if (!isObjectId(classId)) return { available: true, reason: null };
 
     const cls = await Class.findById(classId)
-      .select("date days disableCoupon")
+      .select("date days dayCount duration.dayCount disableCoupon")
       .lean();
     if (!cls) return { available: true, reason: null };
 
-    const todayYMD = toBkkYMD(new Date());
-    const isTrainingDay =
-      Array.isArray(cls.days) &&
-      cls.days.some((d) => String(d).slice(0, 10) === todayYMD);
-
-    if (!isTrainingDay) {
+    const todayDay = classDayIndexToday(cls);
+    if (!todayDay) {
       return { available: false, reason: "not_class_day" };
     }
+    if (Number(recordDay) !== todayDay) {
+      return { available: false, reason: "not_today", todayDay };
+    }
 
+    const todayYMD = toBkkYMD(new Date());
     return await getCouponAvailability({ classDoc: cls, dayYMD: todayYMD });
   } catch (e) {
     console.warn("[food] check coupon availability failed:", e?.message || e);
     return { available: true, reason: null };
+  }
+}
+
+// วันเรียนของวันนี้ของคลาส (null = ไม่ใช่วันเรียน / หาไม่ได้)
+async function todayDayOfClass(classId) {
+  try {
+    if (!isObjectId(classId)) return null;
+    const cls = await Class.findById(classId)
+      .select("date days dayCount duration.dayCount")
+      .lean();
+    return cls ? classDayIndexToday(cls) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -290,9 +307,13 @@ export async function POST(req) {
   }
 
   const safeClassId = clean(classId) || clean(student.food?.classId);
-  const safeDay = Number.isFinite(Number(day))
+  // P3g: ไม่ส่ง day มา -> ใช้วันเรียนของวันนี้จาก helper กลาง (เดิมใช้ค่าเก่าใน student.food)
+  // ส่งมา -> เก็บตามนั้น (หน้าแก้ไขของเจ้าหน้าที่แก้ย้อนวันได้) แต่คูปองต้องเป็นวันนี้เท่านั้น
+  const hasDay =
+    day !== undefined && day !== null && day !== "" && Number.isFinite(Number(day));
+  const safeDay = hasDay
     ? Number(day)
-    : student.food?.day;
+    : ((await todayDayOfClass(safeClassId)) ?? student.food?.day);
 
   // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
   // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
@@ -314,7 +335,7 @@ export async function POST(req) {
   // ✅ กันฝั่ง server: บันทึก choiceType = "coupon" ได้เฉพาะเมื่อกฎกลางอนุญาต
   //    (คลาสไม่ได้ปิดคูปอง และวันนั้นมีร้านคูปองที่ใช้ได้จริง)
   if (finalChoiceType === "coupon") {
-    const avail = await checkCouponAvailability(safeClassId);
+    const avail = await checkCouponAvailability(safeClassId, safeDay);
     if (!avail.available) {
       return NextResponse.json(
         {
@@ -322,8 +343,13 @@ export async function POST(req) {
           error:
             avail.reason === "not_class_day"
               ? "วันนี้ไม่ใช่วันเรียนของคลาสนี้ จึงเลือกรับคูปองไม่ได้"
-              : couponUnavailableMessage(avail.reason),
+              : avail.reason === "not_today"
+                ? "เลือกรับคูปองได้เฉพาะวันเรียนของวันนี้เท่านั้น"
+                : couponUnavailableMessage(avail.reason),
           reason: avail.reason,
+          ...(avail.reason === "not_today"
+            ? { day: safeDay, todayDay: avail.todayDay }
+            : {}),
         },
         { status: 409 },
       );

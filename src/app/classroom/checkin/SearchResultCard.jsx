@@ -22,25 +22,10 @@ export default function SearchResultCard({ student, onClick }) {
   // ---------------------------
   //   ⚡ คำนวณว่า "วันนี้เป็น Day อะไร"
   // ---------------------------
-  let dayLabel = "";
-  let dayNumber = null;
-
-  if (startDate && !Number.isNaN(startDate.getTime())) {
-    const today = new Date();
-
-    const d0 = new Date(
-      startDate.getFullYear(),
-      startDate.getMonth(),
-      startDate.getDate(),
-    );
-    const d1 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    const diffDays = Math.floor((d1 - d0) / (1000 * 60 * 60 * 24));
-    if (diffDays >= 0) {
-      dayNumber = diffDays + 1;
-      dayLabel = `วันนี้คือ Day ${dayNumber}`;
-    }
-  }
+  // P3g: ใช้ค่าที่ server คำนวณ (เวลาไทย, days[] ก่อน) ไม่คิดจากนาฬิกาเครื่อง
+  const todayDay = Number(classInfo?.todayDay);
+  const dayNumber = Number.isInteger(todayDay) && todayDay > 0 ? todayDay : null;
+  const dayLabel = dayNumber ? `วันนี้คือ Day ${dayNumber}` : "";
 
   const dateLabel =
     startDate && !Number.isNaN(startDate.getTime())

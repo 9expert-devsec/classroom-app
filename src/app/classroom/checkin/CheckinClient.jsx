@@ -13,32 +13,13 @@ function pick(sp, key) {
   return Array.isArray(v) ? (v[0] || "") : (v || "");
 }
 
-function toYMD(d) {
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "";
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
+// P3g: "วันนี้คือ Day ไหน" ตัดสินที่ server (/api/checkin/search -> classInfo.todayDay)
+// เดิมคำนวณจากนาฬิกาเครื่องกับ date + dayCount ซึ่งไม่ดู days[] และถ้าคลาสไม่มี
+// dayCount จะตกไป Day 1 เงียบ ๆ (บันทึกอาหาร/คูปองผิดวัน)
+// วันนี้ไม่ใช่วันเรียน (null) -> Day 1 แบบเดิม ให้ server ปฏิเสธคูปองเอง
 function resolveTodayDay(classInfo) {
-  if (!classInfo?.date) return 1;
-
-  const start = new Date(classInfo.date);
-  const today = new Date();
-
-  start.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-
-  const diff = Math.floor((today - start) / (24 * 60 * 60 * 1000)) + 1;
-  const maxDay = classInfo.dayCount || 1;
-
-  if (diff < 1 || diff > maxDay) {
-    // วันนี้ไม่อยู่ในช่วงอบรม → default ให้เป็น Day 1
-    return 1;
-  }
-  return diff;
+  const d = Number(classInfo?.todayDay);
+  return Number.isInteger(d) && d > 0 ? d : 1;
 }
 
 export default function CheckinClient({ searchParams = {} }) {

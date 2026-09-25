@@ -252,3 +252,24 @@ export function computeDayIndexToday(c, todayYMD) {
   const dayToday = diffDaysYMD_BKK(startYMD, todayYMD) + 1;
   return Math.min(Math.max(dayToday, 1), dayCount);
 }
+
+/**
+ * The ONE answer to "which training day of this class is today?" for the
+ * check-in flow, the food/check-in APIs and the lunch-token check.
+ * Today is read in Asia/Bangkok on the server, never from a device clock.
+ * Returns a 1-based index, or null when today is not a training day.
+ * The class doc needs date, days and dayCount/duration.dayCount.
+ */
+export function classDayIndexToday(c, now = new Date()) {
+  return computeDayIndexToday(c, bangkokYMD(now));
+}
+
+/** "YYYY-MM-DD" of training day N (1-based): days[] first, else date + (N-1) in Bangkok. */
+export function classDayYMD(c, day) {
+  const n = Math.max(1, Number(day) || 1);
+  if (Array.isArray(c?.days) && c.days[n - 1]) {
+    return String(c.days[n - 1]).slice(0, 10);
+  }
+  const startYMD = bangkokYMD(c?.date);
+  return startYMD ? addDaysYMD_BKK(startYMD, n - 1) : "";
+}

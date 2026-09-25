@@ -17,6 +17,7 @@ import Checkin from "@/models/Checkin";
 import { issueLunchOrder } from "@/lib/lunchOrders.server";
 import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
 import { toBkkYMD } from "@/lib/lunchConfig";
+import { classDayIndexToday } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,8 @@ function reasonMessage(reason) {
   }
   if (reason === "not_checked_in") return "ยังไม่พบการเช็คอินของวันนี้";
   if (reason === "not_coupon_choice") return "วันนี้ไม่ได้เลือกรับคูปอง";
+  if (reason === "coupon_not_today") return "ตัวเลือกคูปองที่บันทึกไว้ไม่ใช่ของวันนี้";
+  if (reason === "not_class_day") return "วันนี้ไม่ใช่วันเรียนของคลาสนี้";
   if (reason === "student_not_in_class") return "ผู้เรียนไม่ได้อยู่ในคลาสนี้";
   if (reason === "student_not_found") return "ไม่พบผู้เรียน";
   if (reason === "class_not_found") return "ไม่พบคลาส";
@@ -56,30 +59,39 @@ export async function POST(req) {
     const studentId = String(body?.studentId || "").trim();
 
     if (!isObjectId(classId) || !isObjectId(studentId)) {
-      return bad("ข้อมูลไม่ครบ", 400);
+      return bad("ข้อมูลไม่ครบ", 400, { reason: "bad_request" });
     }
 
     const [student, klass] = await Promise.all([
       Student.findById(studentId).select("classId food").lean(),
-      Class.findById(classId).select("days").lean(),
+      Class.findById(classId).select("date days dayCount duration.dayCount").lean(),
     ]);
 
-    if (!student) return bad(reasonMessage("student_not_found"), 404);
-    if (!klass) return bad(reasonMessage("class_not_found"), 404);
+    // ทุกคำตอบที่ไม่สำเร็จแนบ reason ไปด้วย — แท็บเล็ตใช้แยกว่า "ไม่ได้เลือกคูปอง"
+    // (ไม่ต้องแสดงอะไร) ออกจากความผิดพลาดที่ต้องแจ้งเจ้าหน้าที่
+    const fail = (reason, status) => bad(reasonMessage(reason), status, { reason });
+
+    if (!student) return fail("student_not_found", 404);
+    if (!klass) return fail("class_not_found", 404);
 
     // 1) ผู้เรียนต้องอยู่คลาสนี้จริง
     if (String(student.classId || "") !== classId) {
-      return bad(reasonMessage("student_not_in_class"), 403);
+      return fail("student_not_in_class", 403);
+    }
+
+    // 3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
+    const food = student.food || {};
+    if (String(food.choiceType || "") !== "coupon") {
+      return fail("not_coupon_choice", 409);
     }
 
     const todayYMD = toBkkYMD(new Date());
 
     // 2) ต้องเช็คอินแล้ววันนี้ — ดูจาก Checkin ของวันเรียนที่ตรงกับวันนี้
-    const dayIndex = Array.isArray(klass.days)
-      ? klass.days.findIndex((d) => String(d).slice(0, 10) === todayYMD) + 1
-      : 0;
+    //    P3g: วันเรียนของวันนี้มาจาก helper กลาง (เวลาไทย, days[] ก่อน)
+    const dayIndex = classDayIndexToday(klass) || 0;
 
-    if (dayIndex < 1) return bad(reasonMessage("not_checked_in"), 409);
+    if (dayIndex < 1) return fail("not_class_day", 409);
 
     const checkin = await Checkin.findOne({
       studentId: student._id,
@@ -87,13 +99,11 @@ export async function POST(req) {
       day: dayIndex,
     }).lean();
 
-    if (!checkin) return bad(reasonMessage("not_checked_in"), 409);
+    if (!checkin) return fail("not_checked_in", 409);
 
-    // 3) ตัวเลือกที่บันทึกไว้ต้องเป็นคูปอง ของคลาสนี้ และของ "วันนี้"
+    // 3b) คูปองที่เลือกไว้ต้องเป็นของคลาสนี้ และของ "วันนี้"
     //    P3c: Student.food เก็บค่าเดียวทับกันไปเรื่อย ๆ ถ้าไม่เช็ค day ด้วย
     //    คนที่เลือกคูปองไว้เมื่อวานจะยังขอ QR ของวันนี้ได้
-    const food = student.food || {};
-    const choiceIsCoupon = String(food.choiceType || "") === "coupon";
     const foodClassMatches =
       !food.classId || String(food.classId) === classId;
     const foodDayMatches =
@@ -101,8 +111,8 @@ export async function POST(req) {
         ? false
         : Number(food.day) === dayIndex;
 
-    if (!choiceIsCoupon || !foodClassMatches || !foodDayMatches) {
-      return bad(reasonMessage("not_coupon_choice"), 409);
+    if (!foodClassMatches || !foodDayMatches) {
+      return fail("coupon_not_today", 409);
     }
 
     // 4) ออกออเดอร์ (idempotent — กด Step 3 ซ้ำได้ token เดิม)
@@ -122,6 +132,6 @@ export async function POST(req) {
     );
   } catch (err) {
     console.error("POST /api/checkin/lunch-token error:", err);
-    return bad("เกิดข้อผิดพลาดในระบบ", 500);
+    return bad("เกิดข้อผิดพลาดในระบบ", 500, { reason: "internal_error" });
   }
 }

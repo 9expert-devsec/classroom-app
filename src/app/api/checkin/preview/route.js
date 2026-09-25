@@ -7,23 +7,13 @@ import Restaurant from "@/models/Restaurant";
 import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
+import {
+  classDayIndexToday,
+  classDayYMD,
+  bangkokDayStartUTC,
+} from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
-
-function normalizeDay(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function applyDayOffset(baseDate, day) {
-  // day 1 = baseDate, day 2 = baseDate+1, ...
-  const d = new Date(baseDate);
-  if (Number.isFinite(day) && day > 0) {
-    d.setDate(d.getDate() + (day - 1));
-  }
-  return d;
-}
 
 export async function GET(req) {
   await dbConnect();
@@ -58,11 +48,11 @@ export async function GET(req) {
 
   let classInfo = null;
   if (klass) {
-    const baseDate = klass.date ? new Date(klass.date) : null;
-    let dayDate = null;
-    if (baseDate) {
-      dayDate = applyDayOffset(baseDate, day);
-    }
+    // P3g: "วันนี้คือ" มาจาก helper เดียวกับที่บันทึกเช็คอิน/คูปอง (เวลาไทย ฝั่ง server)
+    // วันนี้ไม่ใช่วันเรียน -> ใช้ day ที่ส่งมาแบบเดิม
+    const shownDay = classDayIndexToday(klass) || day;
+    const ymd = classDayYMD(klass, shownDay);
+    const dayDate = ymd ? bangkokDayStartUTC(ymd) : null;
 
     classInfo = {
       // พยายามรองรับหลายชื่อ field เผื่อ schema ต่างจากนี้
@@ -70,12 +60,14 @@ export async function GET(req) {
       courseName:
         klass.courseName || klass.className || klass.title || klass.name || "",
       room: klass.roomName || klass.room || klass.roomTitle || "",
-      dayLabel: `Day ${day}`,
+      dayLabel: `Day ${shownDay}`,
+      dayIndex: shownDay,
       dayDate: dayDate
         ? dayDate.toLocaleDateString("th-TH", {
             day: "numeric",
             month: "short",
             year: "numeric",
+            timeZone: "Asia/Bangkok",
           })
         : "",
     };
@@ -83,8 +75,8 @@ export async function GET(req) {
 
   // ----- ข้อมูล User -----
   const userInfo = {
-    // ใช้ thaiName / engName ตาม schema ที่ส่งมา
-    studentName: student.thaiName || student.engName || "",
+    // P3g: name คือฟิลด์หลักตัวใหม่ (thaiName/engName เป็น legacy) — ลำดับเดียวกับทั้งแอป
+    studentName: student.name || student.thaiName || student.engName || "",
     engName: student.engName || "",
     company: student.company || "",
   };

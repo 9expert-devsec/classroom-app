@@ -41,7 +41,11 @@ export async function POST(req) {
 
   const keyword = clean(body?.keyword);
   const classId = body?.classId ? String(body.classId) : "";
-  const dayFromClient = safeNum(body?.day, 1);
+  // day ที่ client ส่งมาเอง (Masterclass ส่ง) — ไม่ส่ง = null ให้ใช้ "วันนี้" ของคลาส
+  const dayFromClient =
+    body?.day === undefined || body?.day === null || body?.day === ""
+      ? null
+      : safeNum(body.day, 1);
 
   if (!keyword) return NextResponse.json({ ok: true, items: [] });
 
@@ -71,7 +75,9 @@ export async function POST(req) {
 
     // ✅ compat: ถ้าฝั่ง UI ส่ง day มา (เช่น admin เลือก day เอง) ให้ใช้ day นั้นได้
     // แต่ถ้าไม่ได้ส่งจริง ๆ (หรือส่งมั่ว) → fallback ไปใช้ day ของวันนี้ที่คำนวณได้
-    let useDay = dayFromClient;
+    // P3g: เดิมไม่ส่ง = Day 1 เสมอ ทำให้ตัดคนที่เช็คอินผิดวัน — ตอนนี้ไม่ส่ง = วันนี้
+    //      (วันนี้ไม่ใช่วันเรียน -> คง Day 1 ไว้แบบเดิม)
+    let useDay = dayFromClient ?? computeDayIndexToday(c, todayYMD) ?? 1;
 
     if (useDay > dayCount) {
       // fallback หา dayToday
@@ -195,6 +201,9 @@ export async function POST(req) {
         room: c.room || "",
         date: c.date || null,
         dayCount,
+        // P3g: วันเรียนของ "วันนี้" ตัดสินที่ server (เวลาไทย, days[] ก่อน)
+        // แท็บเล็ตใช้ค่านี้ตรง ๆ ไม่คำนวณจากนาฬิกาเครื่องเองอีก — null = วันนี้ไม่ใช่วันเรียน
+        todayDay: computeDayIndexToday(c, todayYMD),
       },
     };
   });

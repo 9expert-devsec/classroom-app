@@ -4,7 +4,7 @@ import dbConnect from "@/lib/mongoose";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
-import { addDaysYMD_BKK } from "@/lib/classDates";
+import { addDaysYMD_BKK, classDayIndexToday } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -105,8 +105,8 @@ export async function POST(req) {
   // ---------------------------------------------------
   const todayYMD = todayYMD_BKK();
   const dayList = buildTrainingDaysYMD(klass);
-  const idxToday = dayList.findIndex((x) => x === todayYMD);
-  const computedDay = idxToday >= 0 ? idxToday + 1 : null;
+  // P3g: helper กลางตัวเดียวกับ food / preview / lunch-token
+  const computedDay = classDayIndexToday(klass);
 
   const fallbackDay = Math.max(1, Number(day || 1));
   const effectiveDay = computedDay || fallbackDay;
