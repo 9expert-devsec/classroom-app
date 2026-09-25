@@ -22,6 +22,7 @@ import {
   PenLine,
   KeyRound,
   GraduationCap,
+  Tablet,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import AdminNotifications from "@/components/admin/AdminNotifications";
@@ -201,6 +202,13 @@ const NAV = [
         perm: PERM.ACCOUNTS_MANAGE,
       },
     ],
+  },
+
+  {
+    label: "Kiosk / Tablet",
+    href: "/classroom/kiosks",
+    icon: Tablet,
+    perm: PERM.CLASSROOM_OPERATE,
   },
 
   {
