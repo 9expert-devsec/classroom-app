@@ -158,5 +158,8 @@ const LunchOrderSchema = new Schema(
 // หน้า admin: ดูออเดอร์ของคลาสในวันนั้นแยกตามสถานะ
 LunchOrderSchema.index({ classId: 1, dayYMD: 1, status: 1 });
 
+// C3c: Merchant "Recent redemptions" + รายงานการใช้ (C4) ของร้านต่อวัน
+LunchOrderSchema.index({ restaurantId: 1, dayYMD: 1, redeemedAt: -1 });
+
 export default mongoose.models.LunchOrder ||
   mongoose.model("LunchOrder", LunchOrderSchema);
