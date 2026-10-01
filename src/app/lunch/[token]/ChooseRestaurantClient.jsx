@@ -80,6 +80,8 @@ export default function ChooseRestaurantClient({
   headerLine,
   deadlineLabel,
   notice = "",
+  // C1: เลยเส้นตายแล้วแต่ยังไม่ถึง 15:00 — เลือกร้านแล้วไปหน้าสรุปแบบย่อ (ไม่มีเมนู)
+  short = false,
 }) {
   const router = useRouter();
 
@@ -127,6 +129,11 @@ export default function ChooseRestaurantClient({
 
   // กติกาเดียวกับทุกหน้า: มีรายการจากร้านอื่น -> ถามก่อนล้าง
   function pick(r) {
+    // แบบย่อไม่มีตะกร้าเมนู — ไม่ต้องถามเรื่องรายการจากร้านอื่น
+    if (short) {
+      router.push(`/lunch/${token}/short/${r.id}`);
+      return;
+    }
     const current = readCart(token);
     const { state, conflict } = enterRestaurant(current, r.id);
     if (conflict) {
@@ -165,6 +172,15 @@ export default function ChooseRestaurantClient({
           </h1>
           <p className="mt-1 text-[13px] text-slate-500">{headerLine}</p>
         </div>
+
+        {short ? (
+          <p
+            data-testid="short-flow-note"
+            className="rounded-xl bg-[#48b0ff]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#005cff]"
+          >
+            สั่งแบบย่อได้ถึง 15:00 น. · รับคูปองแล้วไปสั่งที่ร้าน
+          </p>
+        ) : null}
 
         {notice ? (
           <p

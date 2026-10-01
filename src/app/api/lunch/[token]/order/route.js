@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 
 import { getOrderByToken, getLunchSession } from "@/lib/lunchOrders.server";
+import { lunchNow } from "@/lib/lunchClock.server";
 import { submitLunchOrder, SubmitError } from "@/lib/lunchSubmit.server";
 
 export const dynamic = "force-dynamic";
@@ -44,12 +45,12 @@ export async function POST(req, { params }) {
 
     let result;
     try {
-      result = await submitLunchOrder({ order, body, now: new Date() });
+      result = await submitLunchOrder({ order, body, now: lunchNow() });
     } catch (err) {
       if (err instanceof SubmitError) {
         // already_ordered ควรแนบสรุปของเดิมกลับไปให้ client แสดงได้ทันที
         if (err.reason === "already_ordered") {
-          const session = await getLunchSession(token, new Date());
+          const session = await getLunchSession(token, lunchNow());
           return NextResponse.json(
             {
               ...errBody(err.reason, err.message, err),
@@ -67,7 +68,7 @@ export async function POST(req, { params }) {
     }
 
     // 9) ตอบด้วย DTO ก้อนเดียวกับ GET เพื่อให้ client refresh หน้าได้เลย
-    const session = await getLunchSession(token, new Date());
+    const session = await getLunchSession(token, lunchNow());
     return NextResponse.json(
       { ...session, replay: !!result.replay },
       { headers: NO_STORE },

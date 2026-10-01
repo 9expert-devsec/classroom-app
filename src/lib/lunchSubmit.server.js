@@ -16,7 +16,8 @@ import LunchOrder from "@/models/LunchOrder";
 import FoodMenu from "@/models/FoodMenu";
 import Restaurant from "@/models/Restaurant";
 
-import { LUNCH_BUDGET_THB, isValidNickname } from "@/lib/lunchConfig";
+import { LUNCH_BUDGET_THB, isValidNickname, finalCloseAt } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 import { getDaySet, getCouponAvailability } from "@/lib/couponAvailability.server";
 import { assignCode } from "@/lib/couponStock.server";
 import { notifyAfterSubmit } from "@/lib/lunchNotify.server";
@@ -205,7 +206,7 @@ export async function buildLines({ rawLines, restaurantId, daySet }) {
  * หรือ { order } เมื่อสำเร็จ
  * ปัญหาอื่น ๆ โยน SubmitError ออกไปให้ route แปลงเป็น response
  */
-export async function submitLunchOrder({ order, body, now = new Date() }) {
+export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   const requestId = String(body?.requestId || "").trim();
   if (!requestId) {
     fail(422, "request_id", "ข้อมูลไม่ครบ (requestId)", { field: "requestId" });
@@ -220,9 +221,25 @@ export async function submitLunchOrder({ order, body, now = new Date() }) {
   }
 
   // --- 3) window (server clock only) ---
+  // C1: 15:00 ปิดทุกโหมด / เลย deadlineAt แล้วสั่งได้เฉพาะ at_shop (แบบย่อ)
+  const nowMs = new Date(now).getTime();
+  const finalClose = finalCloseAt(order.dayYMD);
+  if (finalClose && nowMs >= finalClose.getTime()) {
+    fail(403, "expired", "หมดเวลาการใช้งานตามเงื่อนไขของระบบ");
+  }
+
+  const mode = String(body?.mode || "").trim();
+  if (mode !== "order" && mode !== "at_shop") {
+    fail(422, "mode", "โหมดการสั่งไม่ถูกต้อง", { field: "mode" });
+  }
+
   const deadline = order.deadlineAt ? new Date(order.deadlineAt) : null;
-  if (deadline && new Date(now).getTime() >= deadline.getTime()) {
-    fail(403, "closed", "ปิดรับออเดอร์แล้ว กรุณาติดต่อเจ้าหน้าที่ที่ Counter");
+  if (mode === "order" && deadline && nowMs >= deadline.getTime()) {
+    fail(
+      403,
+      "closed",
+      "หมดเวลาสั่งอาหารแบบเลือกเมนูแล้ว ยังรับคูปองไปสั่งที่ร้านได้ถึง 15:00 น.",
+    );
   }
 
   // --- 4) nickname ---
@@ -234,11 +251,6 @@ export async function submitLunchOrder({ order, body, now = new Date() }) {
       "ชื่อเล่นต้องเป็นภาษาอังกฤษ 1-20 ตัวอักษร",
       { field: "nickname" },
     );
-  }
-
-  const mode = String(body?.mode || "").trim();
-  if (mode !== "order" && mode !== "at_shop") {
-    fail(422, "mode", "โหมดการสั่งไม่ถูกต้อง", { field: "mode" });
   }
 
   // --- 5) restaurant must be coupon mode that day, and usable ---

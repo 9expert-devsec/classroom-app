@@ -20,6 +20,7 @@ import { LogoTile, StickyBottom } from "../../_components/Shell";
 import SwitchModal, { Sheet, CartConflictBanner } from "../../_components/SwitchModal";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
+import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
 
 /* ---------------- menu row ---------------- */
 
@@ -116,48 +117,6 @@ function PickShopSheet({ others, onPick, onCancel }) {
       >
         ยกเลิก
       </button>
-    </Sheet>
-  );
-}
-
-function NoOrderModal({ restaurant, budget, cartCount, busy, error, onCancel, onConfirm }) {
-  return (
-    <Sheet>
-      <h3 className="text-[18px] font-bold text-[#0d1b2a]">
-        ไปสั่งอาหารที่ร้านเอง?
-      </h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-slate-500">
-        ท่านจะใช้คูปองมูลค่า {budget} บาทสั่งอาหารที่ร้าน {restaurant.name}{" "}
-        ด้วยตัวเอง เมื่อยืนยันแล้วจะแก้ไขเองไม่ได้
-      </p>
-      {cartCount > 0 ? (
-        <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#b8720a]">
-          รายการในตะกร้า {cartCount} รายการจะถูกล้าง
-        </p>
-      ) : null}
-      {error ? (
-        <p className="mt-3 rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]">
-          {error}
-        </p>
-      ) : null}
-      <div className="mt-5 flex gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={busy}
-          className="h-11 flex-1 rounded-xl text-[15px] font-medium text-slate-500 transition hover:bg-slate-100 active:scale-[0.98] disabled:opacity-50"
-        >
-          ยกเลิก
-        </button>
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={busy}
-          className="h-11 flex-1 rounded-xl bg-[#2486ff] text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:scale-[0.98] disabled:opacity-60"
-        >
-          {busy ? "กำลังบันทึก..." : "ยืนยัน"}
-        </button>
-      </div>
     </Sheet>
   );
 }
@@ -270,44 +229,29 @@ export default function MenuClient({
     setBusy(true);
     setSubmitError("");
     try {
-      const body = JSON.stringify({
+      const r = await postAtShop({
+        token,
         requestId: newRequestId(),
         nickname: cart.nickname,
         restaurantId: restaurant.id,
-        mode: "at_shop",
-        lines: [],
       });
 
-      // ครอบเฉพาะ fetch: "เชื่อมต่อไม่สำเร็จ" ต้องหมายถึงเน็ตมีปัญหาจริง ๆ เท่านั้น
-      let res;
-      try {
-        res = await fetch(`/api/lunch/${token}/order`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
-      } catch {
-        setSubmitError("เชื่อมต่อไม่สำเร็จ กรุณาลองใหม่");
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-
       // สำเร็จ / replay / สั่งไปแล้ว -> หน้าขอบคุณ
-      if (res.ok || (res.status === 409 && data?.reason === "already_ordered")) {
+      if (r.next === "done") {
         clearCartLines(token, readCart(token));
         router.replace(`/lunch/${token}?done=1`);
         return;
       }
-      if (res.status === 409 && data?.reason === "sold_out") {
+      if (r.next === "sold_out") {
         setNoOrderOpen(false);
         router.replace(`/lunch/${token}?notice=sold_out`);
         return;
       }
-      if (res.status === 403) {
+      if (r.next === "refresh") {
         router.refresh();
         return;
       }
-      setSubmitError(data?.error || "ทำรายการไม่สำเร็จ");
+      setSubmitError(r.message);
     } catch (err) {
       console.error("at_shop submit failed:", err);
       setSubmitError("เกิดข้อผิดพลาด กรุณาลองใหม่");
