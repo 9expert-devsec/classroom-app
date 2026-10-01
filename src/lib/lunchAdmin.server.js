@@ -1,6 +1,7 @@
 // src/lib/lunchAdmin.server.js
 //
-// ยกเลิก / ออก QR ใหม่ / เปิดเวลาพิเศษ ของออเดอร์อาหารกลางวัน — ทางเดียวของทุกหน้า
+// ยกเลิก / ออก QR ใหม่ ของออเดอร์อาหารกลางวัน — ทางเดียวของทุกหน้า
+// C1: "เปิดเวลาพิเศษ" (token เดิม) ของใบ pending ถูกถอดออกแล้ว — ใบ pending สั่งแบบย่อเองได้ถึง 15:00
 //   - หน้าแอดมิน "ติดตามการสั่งอาหาร" (/api/admin/lunch/*)
 //   - ผู้เรียนเปลี่ยนใจจากคูปองตอนเช็คอิน (choice_changed)
 //
@@ -23,7 +24,8 @@ import {
   confirmReturn,
   CouponStockError,
 } from "@/lib/couponStock.server";
-import { reissueDeadline, toBkkYMD } from "@/lib/lunchConfig";
+import { reissueDeadline, finalCloseAt, toBkkYMD } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, bangkokHM } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
 
@@ -107,6 +109,42 @@ async function assertToday(classId, dayYMD, now) {
   }
 }
 
+/* ---------------- C1: กติกายกเลิก / ออก QR ใหม่ ---------------- */
+
+// ใบที่เคยยืนยันสั่งแล้ว (ordered / at_shop) — submittedAt ไม่ถูกล้างตอนยกเลิก
+// จึงใช้บอกได้ว่าใบที่ยกเลิกไปแล้วเคยสั่งหรือไม่
+export function wasPlaced(order) {
+  return !!order?.submittedAt;
+}
+
+function isAfterFinalClose(order, now) {
+  const fc = finalCloseAt(order?.dayYMD);
+  return !!fc && new Date(now).getTime() >= fc.getTime();
+}
+
+export const AFTER_FINAL_CLOSE_MESSAGE = "หลัง 15:00 น. ยกเลิก/ออก QR ใหม่ไม่ได้";
+export const NEVER_PLACED_MESSAGE = "ออก QR ใหม่ได้เฉพาะผู้เรียนที่เคยสั่งอาหารแล้ว";
+
+/**
+ * เหตุผลที่ออก QR ใหม่ไม่ได้ ("" = ได้) — ใช้ทั้ง reopenLunchOrder และหน้าแอดมิน
+ * ได้เฉพาะก่อน 15:00 ของวันนั้น และใบก่อนหน้าต้องเคย ordered / at_shop
+ */
+export function reopenBlockedReason(prevOrder, now = lunchNow()) {
+  if (isAfterFinalClose(prevOrder, now)) return AFTER_FINAL_CLOSE_MESSAGE;
+  if (!wasPlaced(prevOrder)) return NEVER_PLACED_MESSAGE;
+  return "";
+}
+
+/**
+ * เหตุผลที่ปุ่มยกเลิก (ขั้นแรกของ "เปลี่ยนร้าน/เมนู") ใช้ไม่ได้ ("" = ได้)
+ * null = ไม่แสดงปุ่มเลย (ใบที่ยังไม่เคยสั่ง / ยกเลิกไปแล้ว)
+ */
+export function cancelBlockedReason(order, now = lunchNow()) {
+  if (order?.status !== "ordered" && order?.status !== "at_shop") return null;
+  if (isAfterFinalClose(order, now)) return AFTER_FINAL_CLOSE_MESSAGE;
+  return "";
+}
+
 /* ---------------- cancel ---------------- */
 
 /**
@@ -130,7 +168,7 @@ export async function cancelLunchOrder({
     fail(400, "bad_request", "ข้อมูลไม่ครบ");
   }
 
-  const at = now ? new Date(now) : new Date();
+  const at = now ? new Date(now) : lunchNow();
   const session = await mongoose.startSession();
   let result = null;
 
@@ -278,7 +316,7 @@ export async function reopenLunchOrder({
   ctx = null,
   req = null,
 }) {
-  const at = now ? new Date(now) : new Date();
+  const at = now ? new Date(now) : lunchNow();
   if (
     !mongoose.Types.ObjectId.isValid(String(classId || "")) ||
     !mongoose.Types.ObjectId.isValid(String(studentId || ""))
@@ -299,8 +337,16 @@ export async function reopenLunchOrder({
 
   const prev = await LunchOrder.findOne({ classId, studentId, dayYMD })
     .sort({ createdAt: -1 })
-    .select("reopenCount")
+    .select("reopenCount dayYMD submittedAt")
     .lean();
+
+  // C1: ก่อน 15:00 และต้องเป็นคนที่เคยสั่งแล้วเท่านั้น
+  if (isAfterFinalClose({ dayYMD }, at)) {
+    fail(409, "after_final_close", AFTER_FINAL_CLOSE_MESSAGE);
+  }
+  if (!wasPlaced(prev)) {
+    fail(409, "never_placed", NEVER_PLACED_MESSAGE);
+  }
 
   const deadlineAt = reissueDeadline(dayYMD, at);
   const res = await issueLunchOrder({
@@ -348,60 +394,8 @@ export async function reopenLunchOrder({
 
 /* ---------------- special open (same token) ---------------- */
 
-/**
- * เปิดเวลาพิเศษให้ใบเดิม (token เดิม) — เฉพาะ pending (รวม unassigned) ของวันนี้
- */
-export async function specialOpenLunchOrder({
-  orderId,
-  adminId = null,
-  now,
-  ctx = null,
-  req = null,
-}) {
-  const at = now ? new Date(now) : new Date();
-  if (!mongoose.Types.ObjectId.isValid(String(orderId || ""))) {
-    fail(400, "bad_request", "ข้อมูลไม่ครบ");
-  }
-
-  const order = await LunchOrder.findById(orderId).lean();
-  if (!order) fail(404, "not_found", "ไม่พบออเดอร์");
-  if (order.status !== "pending") {
-    fail(409, "not_pending", "เปิดเวลาพิเศษได้เฉพาะออเดอร์ที่ยังไม่ได้สั่ง");
-  }
-  await assertToday(order.classId, order.dayYMD, at);
-
-  const deadlineAt = reissueDeadline(order.dayYMD, at);
-  const updated = await LunchOrder.findOneAndUpdate(
-    { _id: order._id, status: "pending" },
-    { $set: { deadlineAt }, $inc: { reopenCount: 1 } },
-    { new: true },
-  ).lean();
-  if (!updated) fail(409, "conflict", "ออเดอร์เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
-
-  await audit({
-    ctx,
-    req,
-    action: "lunch.special_open",
-    order: updated,
-    before: { status: "pending", deadlineAt: order.deadlineAt },
-    after: { status: "pending", deadlineAt: updated.deadlineAt },
-    meta: {
-      statusBefore: "pending",
-      statusAfter: "pending",
-      couponEffect: "none",
-      reopenCount: updated.reopenCount,
-      adminId: adminId ? String(adminId) : null,
-    },
-  });
-
-  return {
-    orderId: String(updated._id),
-    path: `/lunch/${updated.token}`,
-    deadlineAt: updated.deadlineAt,
-    reopenCount: updated.reopenCount,
-    holderName: updated.holderName || "",
-  };
-}
+// C1: ถอดออกแล้ว — ใบ pending สั่งแบบย่อเองได้ถึง 15:00 จึงไม่ต้องเปิดเวลาพิเศษ
+//     route /api/admin/lunch/special-open ตอบ 410 gone
 
 /* ---------------- Counter: handout (P4b) ---------------- */
 
@@ -426,7 +420,7 @@ export async function handOutLunchCoupon({
   if (!mongoose.Types.ObjectId.isValid(String(orderId || ""))) {
     fail(400, "bad_request", "ข้อมูลไม่ครบ");
   }
-  const at = now ? new Date(now) : new Date();
+  const at = now ? new Date(now) : lunchNow();
   const session = await mongoose.startSession();
   let result = null;
 
@@ -559,7 +553,7 @@ function escapeRegExp(s) {
  * คืนใบล่าสุดของผู้เรียนแต่ละคนที่ตรง
  */
 export async function searchCounterOrders({ q, now }) {
-  const at = now ? new Date(now) : new Date();
+  const at = now ? new Date(now) : lunchNow();
   const dayYMD = toBkkYMD(at);
   const raw = String(q || "").trim().slice(0, 60);
   if (raw.length < 2) return { dayYMD, orders: [] };

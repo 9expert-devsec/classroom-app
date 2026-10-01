@@ -13,6 +13,7 @@ import {
   listAwaitingReturn,
   lunchAdminErrorBody,
 } from "@/lib/lunchAdmin.server";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export async function GET(req) {
     await dbConnect();
 
     const { searchParams } = new URL(req.url);
-    const now = new Date();
+    const now = lunchNow();
     const [{ dayYMD, orders }, awaitingReturn] = await Promise.all([
       searchCounterOrders({ q: searchParams.get("q"), now }),
       listAwaitingReturn(),

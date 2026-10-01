@@ -16,14 +16,19 @@ import CouponStockCode from "@/models/CouponStockCode";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import { computeStatus } from "@/lib/lunchOrders.server";
-import { lunchAdminErrorBody } from "@/lib/lunchAdmin.server";
+import {
+  lunchAdminErrorBody,
+  reopenBlockedReason,
+  cancelBlockedReason,
+} from "@/lib/lunchAdmin.server";
+import { lunchNow } from "@/lib/lunchClock.server";
 import { toBkkYMD } from "@/lib/lunchConfig";
 import { bangkokHM, isYMD } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store" };
-const STATUSES = ["pending", "unassigned", "ordered", "at_shop", "cancelled"];
+const STATUSES = ["pending", "forfeited", "ordered", "at_shop", "cancelled"];
 
 function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -34,7 +39,7 @@ export async function GET(req) {
     await requirePerm(PERM.FOOD_READ);
     await dbConnect();
     const { searchParams } = new URL(req.url);
-    const now = new Date();
+    const now = lunchNow();
 
     const dateQ = String(searchParams.get("date") || "").trim();
     const dayYMD = isYMD(dateQ) ? dateQ : toBkkYMD(now);
@@ -48,7 +53,7 @@ export async function GET(req) {
     const all = await LunchOrder.find(find)
       .sort({ createdAt: 1 })
       .select(
-        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt cancelledAt cancelReason handedOutAt handedOutBy",
+        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt cancelledAt cancelReason handedOutAt handedOutBy",
       )
       .lean();
 
@@ -98,9 +103,14 @@ export async function GET(req) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
+    const today = toBkkYMD(now);
     const items = rows.map((o) => {
       const status = computeStatus(o, now);
       const isLatest = latestIds.has(String(o._id));
+      // C1: ยกเลิก / ออก QR ใหม่ ได้เฉพาะใบที่เคยสั่งแล้ว และก่อน 15:00
+      const reissueable = status === "cancelled" && isLatest && dayYMD === today;
+      const reissueBlocked = reissueable ? reopenBlockedReason(o, now) : "";
+      const cancelBlocked = cancelBlockedReason(o, now);
       return {
         orderId: String(o._id),
         classId: String(o.classId),
@@ -125,13 +135,17 @@ export async function GET(req) {
         reopenCount: o.reopenCount || 0,
         cancelReason: o.cancelReason || "",
         isLatest,
-        // ใบล่าสุดของวันนี้ถูกยกเลิก -> ออก QR ใหม่ได้
-        canReissue: status === "cancelled" && isLatest && dayYMD === toBkkYMD(now),
+        // ใบล่าสุดของวันนี้ถูกยกเลิก + เคยสั่งแล้ว + ก่อน 15:00 -> ออก QR ใหม่ได้
+        canReissue: reissueable && !reissueBlocked,
+        reissueBlockedReason: reissueBlocked,
+        // null = ไม่แสดงปุ่มยกเลิก, "" = กดได้, ข้อความ = แสดงแต่กดไม่ได้
+        canCancel: cancelBlocked === "",
+        cancelBlockedReason: cancelBlocked || "",
       };
     });
 
     return NextResponse.json(
-      { dayYMD, today: toBkkYMD(now), classes, counts, items },
+      { dayYMD, today, classes, counts, items },
       { headers: NO_STORE },
     );
   } catch (err) {

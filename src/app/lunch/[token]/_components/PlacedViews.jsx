@@ -163,7 +163,7 @@ export function RescanView({ order, dateLabel }) {
             ) : null}
           </div>
           <p className="-mt-2 px-1 text-[12px] leading-relaxed text-slate-400">
-            ยังไม่รวม VAT ของร้าน ส่วนที่เกินงบ {order.budget} บาท (รวม VAT) ชำระเองที่ร้าน
+            ราคาดังกล่าว ยังไม่ใช่ราคาสุทธิ ส่วนที่เกินงบ {order.budget} บาทชำระเองที่ร้าน
           </p>
         </>
       )}

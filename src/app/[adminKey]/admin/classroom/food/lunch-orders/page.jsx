@@ -1,7 +1,8 @@
 "use client";
 
 // หน้า "ติดตามการสั่งอาหาร" — ออเดอร์อาหารกลางวันของวันหนึ่ง แยกตามคลาส
-// ยกเลิก / เปิดเวลาพิเศษ (token เดิม) / ออก QR ใหม่ (token ใหม่) ผ่าน /api/admin/lunch/*
+// ยกเลิก / ออก QR ใหม่ (token ใหม่) ผ่าน /api/admin/lunch/*
+// C1: ไม่มี "เปิดพิเศษ" แล้ว — ยกเลิก + ออก QR ใหม่ ได้เฉพาะคนที่เคยสั่งแล้ว และก่อน 15:00
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 
@@ -11,7 +12,7 @@ import { Modal, QrModal, ConfirmModal } from "@/components/admin/lunch/LunchModa
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
 const POLL_MS = 30_000;
-const STATUS_FILTERS = ["all", "pending", "unassigned", "ordered", "at_shop", "cancelled"];
+const STATUS_FILTERS = ["all", "pending", "forfeited", "ordered", "at_shop", "cancelled"];
 
 function todayBkk() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -100,7 +101,7 @@ function CodeCell({ row }) {
   return <CouponCode code={row.couponCode} size="table" />;
 }
 
-function ActionButtons({ row, busy, onCancel, onSpecial, onReissue, onHandout, onReturn }) {
+function ActionButtons({ row, busy, onCancel, onReissue, onHandout, onReturn }) {
   const btn =
     "rounded-lg px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 whitespace-nowrap";
   return (
@@ -126,35 +127,36 @@ function ActionButtons({ row, busy, onCancel, onSpecial, onReissue, onHandout, o
           รับคืน
         </button>
       ) : null}
-      {row.status === "pending" || row.status === "unassigned" ? (
+      {row.canCancel || row.cancelBlockedReason ? (
         <button
           type="button"
-          disabled={busy}
-          onClick={() => onSpecial(row)}
-          className={`${btn} bg-brand-primary/15 text-brand-primary hover:bg-brand-primary/25`}
-        >
-          เปิดพิเศษ 10 นาที
-        </button>
-      ) : null}
-      {["pending", "unassigned", "ordered", "at_shop"].includes(row.status) ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onCancel(row)}
-          className={`${btn} border border-red-200 text-red-600 hover:bg-red-50`}
+          disabled={busy || !row.canCancel}
+          title={row.cancelBlockedReason || undefined}
+          onClick={() => row.canCancel && onCancel(row)}
+          className={`${btn} border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed`}
         >
           ยกเลิก
         </button>
       ) : null}
-      {row.canReissue ? (
+      {row.canReissue || row.reissueBlockedReason ? (
         <button
           type="button"
-          disabled={busy}
-          onClick={() => onReissue(row)}
-          className={`${btn} bg-green-100 text-green-700 hover:bg-green-200`}
+          disabled={busy || !row.canReissue}
+          title={row.reissueBlockedReason || undefined}
+          onClick={() => row.canReissue && onReissue(row)}
+          className={`${btn} bg-green-100 text-green-700 hover:bg-green-200 disabled:cursor-not-allowed`}
         >
           ออก QR ใหม่
         </button>
+      ) : null}
+      {!row.canCancel && row.cancelBlockedReason ? (
+        <span className="w-full text-right text-[11px] text-admin-textMuted">
+          {row.cancelBlockedReason}
+        </span>
+      ) : !row.canReissue && row.reissueBlockedReason ? (
+        <span className="w-full text-right text-[11px] text-admin-textMuted">
+          {row.reissueBlockedReason}
+        </span>
       ) : null}
     </div>
   );
@@ -262,20 +264,6 @@ export default function LunchOrdersPage() {
       await load();
     } catch (e) {
       setCancelError(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function specialOpen(row) {
-    setBusy(true);
-    setActionError("");
-    try {
-      const r = await post("/api/admin/lunch/special-open", { orderId: row.orderId });
-      setQr({ title: "เปิดเวลาพิเศษแล้ว", name: row.name, path: r.path, deadlineAt: r.deadlineAt });
-      await load();
-    } catch (e) {
-      setActionError(`${row.name}: ${e.message}`);
     } finally {
       setBusy(false);
     }
@@ -504,7 +492,6 @@ export default function LunchOrdersPage() {
                           setCancelError("");
                           setCancelRow(row);
                         }}
-                        onSpecial={specialOpen}
                         onReissue={reissue}
                         onHandout={(row) => {
                           setStockError("");

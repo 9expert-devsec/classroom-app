@@ -1,13 +1,14 @@
 "use client";
 
 // หน้า "Counter คูปองอาหาร" (iPad-first) — ค้นหาออเดอร์วันนี้ด้วยชื่อ/ชื่อเล่น/รหัสคูปอง
-// ส่งมอบคูปองกระดาษ (stock), เปิดเวลาพิเศษ, และรับคูปองคืนจากออเดอร์ที่ถูกยกเลิก
+// ส่งมอบคูปองกระดาษ (stock) และรับคูปองคืนจากออเดอร์ที่ถูกยกเลิก
+// C1: ปุ่ม "เปิดพิเศษ 10 นาที" ถูกถอดออก — ใบ pending สั่งแบบย่อเองได้ถึง 15:00
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, Search, PackageCheck, Undo2 } from "lucide-react";
 
 import LunchStatusBadge from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
-import { QrModal, ConfirmModal, hmBkk } from "@/components/admin/lunch/LunchModals";
+import { ConfirmModal, hmBkk } from "@/components/admin/lunch/LunchModals";
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
 const POLL_MS = 30_000;
@@ -21,7 +22,7 @@ function sourceLabel(s) {
 
 /* ---------------- result card ---------------- */
 
-function OrderCard({ it, busy, onHandout, onSpecial }) {
+function OrderCard({ it, busy, onHandout }) {
   const placed = it.status === "ordered" || it.status === "at_shop";
   const isStock = it.couponSource === "stock";
 
@@ -80,17 +81,6 @@ function OrderCard({ it, busy, onHandout, onSpecial }) {
         {placed && it.couponSource === "ecoupon" ? (
           <p className="text-base text-slate-400">e-coupon — ไม่ต้องส่งมอบคูปองกระดาษ</p>
         ) : null}
-
-        {it.status === "pending" || it.status === "unassigned" ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => onSpecial(it)}
-            className="inline-flex items-center justify-center rounded-2xl bg-brand-primary/15 px-6 py-4 text-xl font-semibold text-brand-primary hover:bg-brand-primary/25 disabled:opacity-50"
-          >
-            เปิดพิเศษ 10 นาที
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -108,9 +98,7 @@ export default function LunchCounterPage() {
 
   const [confirm, setConfirm] = useState(null); // { kind: "handout" | "return", item }
   const [confirmError, setConfirmError] = useState("");
-  const [qr, setQr] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState("");
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -163,20 +151,6 @@ export default function LunchCounterPage() {
     }
   }
 
-  async function specialOpen(it) {
-    setBusy(true);
-    setActionError("");
-    try {
-      const r = await postLunchAdmin("/api/admin/lunch/special-open", { orderId: it.orderId });
-      setQr({ title: "เปิดเวลาพิเศษแล้ว", name: it.name, path: r.path, deadlineAt: r.deadlineAt });
-      await load();
-    } catch (e) {
-      setActionError(`${it.name}: ${e.message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const items = data?.items || [];
   const awaiting = data?.awaitingReturn || [];
 
@@ -223,9 +197,6 @@ export default function LunchCounterPage() {
       {loadError ? (
         <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-base text-red-700">{loadError}</p>
       ) : null}
-      {actionError ? (
-        <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-base text-red-700">{actionError}</p>
-      ) : null}
 
       <div className="mt-5 flex flex-col gap-4">
         {qDebounced.length >= MIN_Q && data && items.length === 0 ? (
@@ -242,7 +213,6 @@ export default function LunchCounterPage() {
               setConfirmError("");
               setConfirm({ kind: "handout", item });
             }}
-            onSpecial={specialOpen}
           />
         ))}
       </div>
@@ -321,7 +291,6 @@ export default function LunchCounterPage() {
           </div>
         </ConfirmModal>
       ) : null}
-      {qr ? <QrModal qr={qr} onClose={() => setQr(null)} /> : null}
     </div>
   );
 }

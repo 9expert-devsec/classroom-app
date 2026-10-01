@@ -90,7 +90,7 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
             สแกนด้วยมือถือเพื่อสั่งอาหารกลางวัน
           </p>
           <p className="mt-1 sm:text-lg lg:text-base text-front-textMuted">
-            งบคูปอง {LUNCH_BUDGET_THB} บาท (ยังไม่รวม VAT ของร้าน)
+            งบคูปอง {LUNCH_BUDGET_THB} บาท
           </p>
           <LunchDeadlineLine
             deadlineAt={win.deadlineAt}

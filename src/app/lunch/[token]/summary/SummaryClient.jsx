@@ -48,7 +48,7 @@ function FinalConfirmModal({ restaurant, count, total, budget, busy, error, onEd
           ) : null}
         </div>
         <p className="mt-2 text-[12px] leading-relaxed text-slate-400">
-          ยังไม่รวม VAT ของร้าน ส่วนที่เกินงบ {budget} บาท (รวม VAT) ชำระเองที่ร้าน
+          ราคาดังกล่าว ยังไม่ใช่ราคาสุทธิ ส่วนที่เกินงบ {budget} บาทชำระเองที่ร้าน
         </p>
         {error ? (
           <p className="mt-3 rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]">
@@ -465,8 +465,8 @@ export default function SummaryClient({
               <div className="flex gap-2.5 rounded-2xl bg-[#48b0ff]/10 p-3.5">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#005cff]" />
                 <p className="text-[13px] leading-relaxed text-[#0d1b2a]">
-                  ราคานี้ยังไม่รวม VAT ของทางร้าน แม้ยอดไม่เกิน {budget} บาท
-                  หากร้านคิด VAT เพิ่ม ส่วนที่เกิน {budget} บาทท่านต้องชำระเองที่ร้าน
+                  ราคาดังกล่าว ยังไม่ใช่ราคาสุทธิ ส่วนที่เกินงบ {budget} บาท
+                  ท่านต้องชำระเองที่ร้าน
                 </p>
               </div>
             </>
