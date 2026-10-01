@@ -302,7 +302,18 @@ export default function LunchOrdersPage() {
     <div className="mx-auto w-full max-w-7xl p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-admin-text">ติดตามการสั่งอาหาร</h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-admin-text">
+            ติดตามการสั่งอาหาร
+            {/* C2d: preview/dev ที่เลื่อนเวลาปิดไว้ */}
+            {data?.testTimes ? (
+              <span
+                data-testid="lunch-test-times"
+                className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800"
+              >
+                {data.testTimes}
+              </span>
+            ) : null}
+          </h1>
           <p className="mt-1 text-sm text-admin-textMuted">
             ออเดอร์อาหารกลางวันของผู้เรียน · อัปเดตอัตโนมัติทุก 30 วินาที
           </p>

@@ -44,6 +44,76 @@ export function isValidNickname(s) {
   return NICKNAME_REGEX.test(v);
 }
 
+/* ---------------- C2d: เวลาปิดสำหรับทดสอบ (preview / dev เท่านั้น) ---------------- */
+//
+// ทีมทดสอบช่วงบ่ายบน Vercel Preview / เครื่อง dev ได้โดยเลื่อนเวลาปิดผ่าน env:
+//   LUNCH_TEST_SOFT_CLOSE (11:00) / LUNCH_TEST_HARD_CLOSE (11:15) / LUNCH_TEST_FINAL_CLOSE (15:00)
+// อ่านเฉพาะเมื่อ VERCEL_ENV === "preview" หรือ NODE_ENV === "development"
+// production (VERCEL_ENV === "production" หรือ NODE_ENV อื่น) ไม่อ่านเลยแม้ตั้งไว้
+// ค่าไม่ถูกต้อง (ไม่ใช่ HH:MM หรือไม่เรียง soft < hard < final) -> warn ครั้งเดียว
+// แล้วใช้ค่าปกติทั้ง 3 ตัว ไม่ผสมกัน
+//
+// ทุกการตัดสินเรื่องเวลาปิดต้องผ่าน lunchTimes() ตัวเดียว — ห้ามอ่าน env หรือค่าคงที่ข้างบนตรง ๆ
+// ฝั่ง browser ไม่มี env เหล่านี้ (ไม่ใช่ NEXT_PUBLIC_) จึงได้ค่าปกติเสมอ — client วาดตามผลของ server
+
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const hhmmToMin = (s) => Number(s.slice(0, 2)) * 60 + Number(s.slice(3, 5));
+let warnedInvalidKey = "";
+
+export function lunchTimes() {
+  const defaults = {
+    soft: ORDER_SOFT_CLOSE_HHMM,
+    hard: ORDER_HARD_CLOSE_HHMM,
+    final: FINAL_CLOSE_HHMM,
+    overridden: false,
+  };
+  if (typeof process === "undefined" || !process.env) return defaults;
+
+  const vercelEnv = process.env.VERCEL_ENV;
+  const allowed =
+    vercelEnv !== "production" &&
+    (vercelEnv === "preview" || process.env.NODE_ENV === "development");
+  if (!allowed) return defaults;
+
+  const raw = {
+    soft: String(process.env.LUNCH_TEST_SOFT_CLOSE || "").trim(),
+    hard: String(process.env.LUNCH_TEST_HARD_CLOSE || "").trim(),
+    final: String(process.env.LUNCH_TEST_FINAL_CLOSE || "").trim(),
+  };
+  if (!raw.soft && !raw.hard && !raw.final) return defaults;
+
+  const t = {
+    soft: raw.soft || defaults.soft,
+    hard: raw.hard || defaults.hard,
+    final: raw.final || defaults.final,
+  };
+  const valid =
+    HHMM_RE.test(t.soft) &&
+    HHMM_RE.test(t.hard) &&
+    HHMM_RE.test(t.final) &&
+    hhmmToMin(t.soft) < hhmmToMin(t.hard) &&
+    hhmmToMin(t.hard) < hhmmToMin(t.final);
+
+  if (!valid) {
+    const key = `${raw.soft}|${raw.hard}|${raw.final}`;
+    if (warnedInvalidKey !== key) {
+      warnedInvalidKey = key;
+      console.warn(
+        `[lunchConfig] LUNCH_TEST_* ไม่ถูกต้อง (soft=${raw.soft || "-"} hard=${raw.hard || "-"} final=${raw.final || "-"}) — ใช้ค่าปกติ ${defaults.soft}/${defaults.hard}/${defaults.final}`,
+      );
+    }
+    return defaults;
+  }
+
+  return { ...t, overridden: true };
+}
+
+/** "TEST TIMES: 16:45–17:00–23:00" เมื่อมีการ override, "" เมื่อไม่มี */
+export function lunchTestTimesLabel() {
+  const t = lunchTimes();
+  return t.overridden ? `TEST TIMES: ${t.soft}–${t.hard}–${t.final}` : "";
+}
+
 /* ---------------- หน้าต่างเวลาสั่งอาหาร ---------------- */
 //
 // ฟังก์ชันด้านล่างเป็น pure ทั้งหมดและรับ `now` เข้ามาได้ เพื่อให้ทดสอบได้
@@ -72,14 +142,19 @@ export function bkkDateTime(ymd, hhmm) {
   return bkkAt(ymd, hhmm);
 }
 
-/** เส้นตายปกติของวันนั้น = 11:15 เวลาไทย */
+/** เส้นตายปกติของวันนั้น = 11:15 เวลาไทย (C2d: ผ่าน lunchTimes) */
 export function defaultDeadline(dayYMD) {
-  return bkkAt(dayYMD, ORDER_HARD_CLOSE_HHMM);
+  return bkkAt(dayYMD, lunchTimes().hard);
+}
+
+/** C2d: จุดเริ่มนับถอยหลัง = 11:00 เวลาไทย (ผ่าน lunchTimes) */
+export function softCloseAt(dayYMD) {
+  return bkkAt(dayYMD, lunchTimes().soft);
 }
 
 /** C1: ปิดทุกสถานะของวันนั้น = 15:00 เวลาไทย */
 export function finalCloseAt(dayYMD) {
-  return bkkAt(dayYMD, FINAL_CLOSE_HHMM);
+  return bkkAt(dayYMD, lunchTimes().final);
 }
 
 /**
@@ -114,7 +189,7 @@ export function computeReopenDeadline(ymd, now = new Date()) {
 /** alias เดิมจาก P1a — คืนแค่จุดเริ่มนับถอยหลังกับเส้นตายปกติ */
 export function getOrderWindow(ymd) {
   return {
-    softCloseAt: bkkAt(ymd, ORDER_SOFT_CLOSE_HHMM),
+    softCloseAt: softCloseAt(ymd),
     hardCloseAt: defaultDeadline(ymd),
   };
 }
@@ -131,7 +206,7 @@ export function orderWindow({ dayYMD, deadlineAt }, now = new Date()) {
   const nowMs = new Date(now).getTime();
 
   const deadline = deadlineAt ? new Date(deadlineAt) : defaultDeadline(dayYMD);
-  const countdownFrom = bkkAt(dayYMD, ORDER_SOFT_CLOSE_HHMM);
+  const countdownFrom = softCloseAt(dayYMD);
   const finalClose = finalCloseAt(dayYMD);
 
   const deadlineMs = deadline ? deadline.getTime() : NaN;

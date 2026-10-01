@@ -22,7 +22,7 @@ import {
   cancelBlockedReason,
 } from "@/lib/lunchAdmin.server";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { toBkkYMD } from "@/lib/lunchConfig";
+import { toBkkYMD, lunchTestTimesLabel } from "@/lib/lunchConfig";
 import { bangkokHM, isYMD } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
@@ -147,7 +147,7 @@ export async function GET(req) {
     });
 
     return NextResponse.json(
-      { dayYMD, today, classes, counts, items },
+      { dayYMD, today, classes, counts, items, testTimes: lunchTestTimesLabel() },
       { headers: NO_STORE },
     );
   } catch (err) {

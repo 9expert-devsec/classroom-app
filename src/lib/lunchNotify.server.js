@@ -13,8 +13,8 @@ import Restaurant from "@/models/Restaurant";
 import { countAvailable } from "@/lib/couponStock.server";
 import {
   LUNCH_STOCK_LOW_DEFAULT,
-  ORDER_SOFT_CLOSE_HHMM,
-  bkkAt,
+  lunchTimes,
+  softCloseAt,
   toBkkYMD,
 } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
@@ -121,7 +121,7 @@ export async function ensureUnorderedNotifications(now = lunchNow()) {
     const dayYMD = toBkkYMD(at);
     if (unorderedDoneFor === dayYMD) return 0;
 
-    const softClose = bkkAt(dayYMD, ORDER_SOFT_CLOSE_HHMM);
+    const softClose = softCloseAt(dayYMD);
     if (!softClose || at < softClose) return 0;
 
     const groups = await LunchOrder.aggregate([
@@ -143,7 +143,7 @@ export async function ensureUnorderedNotifications(now = lunchNow()) {
       const r = await notifyLunch({
         kind: "unordered",
         dedupeKey: `lunch.unordered:${g._id}:${dayYMD}`,
-        message: `ถึง 11:00 แล้ว ${g.courseName || "-"} ห้อง ${g.roomName || "-"} ยังไม่สั่ง ${g.n} คน`,
+        message: `ถึง ${lunchTimes().soft} แล้ว ${g.courseName || "-"} ห้อง ${g.roomName || "-"} ยังไม่สั่ง ${g.n} คน`,
         dayYMD,
         classId: g._id,
       });
