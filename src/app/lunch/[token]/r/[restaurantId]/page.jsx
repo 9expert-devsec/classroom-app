@@ -32,6 +32,8 @@ export default async function RestaurantMenuPage({ params }) {
   if (notice) return notice;
   // สั่งไปแล้ว -> กลับหน้าแรก
   if (gate === LUNCH_GATE.PLACED) redirect(`/lunch/${token}`);
+  // C1: เลยเส้นตายแล้ว -> สั่งแบบย่อของร้านนี้ (ไม่มีเมนู)
+  if (gate === LUNCH_GATE.SHORT) redirect(`/lunch/${token}/short/${restaurantId}`);
 
   const restaurant = (session.restaurants || []).find((r) => r.id === restaurantId);
 

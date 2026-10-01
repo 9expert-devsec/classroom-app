@@ -2,7 +2,9 @@
 //
 // หน้า 1: กรอกชื่อเล่น + เลือกร้าน
 // ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
-import { X, RefreshCw, Clock } from "lucide-react";
+// C1: เลยเส้นตายแต่ยังไม่ถึง 15:00 = สั่งแบบย่อ (เลือกร้านแล้วไปหน้าสรุปแบบย่อ)
+//     ถึง 15:00 แล้ว = หน้าหมดเวลา ไม่ว่าสถานะใด
+import { X, RefreshCw } from "lucide-react";
 
 import dbConnect from "@/lib/mongoose";
 import {
@@ -13,6 +15,7 @@ import {
 } from "@/lib/lunchGuards.server";
 
 import { Shell, NoticeScreen } from "./_components/Shell";
+import { ExpiredScreen } from "./_components/GateNotice";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
 import { ThankYouView, RescanView } from "./_components/PlacedViews";
 
@@ -39,7 +42,7 @@ export default async function LunchPage({ params, searchParams }) {
   await dbConnect();
 
   const token = String(params?.token || "");
-  const { gate, session } = await loadLunchGate(token);
+  const { gate, session, expiredKind } = await loadLunchGate(token);
 
   if (gate === LUNCH_GATE.INVALID) return <InvalidScreen />;
 
@@ -54,17 +57,7 @@ export default async function LunchPage({ params, searchParams }) {
     );
   }
 
-  if (gate === LUNCH_GATE.CLOSED) {
-    const label = deadlineLabel(session.window?.deadlineAt);
-    return (
-      <NoticeScreen
-        icon={Clock}
-        tone="red"
-        title={`ปิดรับออเดอร์แล้ว (${label} น.)`}
-        body="หากยังต้องการสั่งอาหาร กรุณาติดต่อเจ้าหน้าที่ที่ Counter"
-      />
-    );
-  }
+  if (gate === LUNCH_GATE.EXPIRED) return <ExpiredScreen kind={expiredKind} />;
 
   // สั่งไปแล้ว -> มาจากการ submit (?done=1) = หน้าขอบคุณ, สแกนซ้ำ = ดูอย่างเดียว
   if (gate === LUNCH_GATE.PLACED) {
@@ -97,6 +90,7 @@ export default async function LunchPage({ params, searchParams }) {
         headerLine={headerLine}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
         notice={NOTICES[String(searchParams?.notice || "")] || ""}
+        short={gate === LUNCH_GATE.SHORT}
       />
     </Shell>
   );

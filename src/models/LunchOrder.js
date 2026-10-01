@@ -70,7 +70,7 @@ const LunchOrderSchema = new Schema(
     reopenCount: { type: Number, default: 0 },
 
     /* ---------------- status ---------------- */
-    // "unassigned" ไม่ได้เก็บใน DB — derive เอาจาก pending + เลย deadlineAt
+    // C1: "forfeited" ไม่ได้เก็บใน DB — derive เอาจาก pending + ถึง 15:00 ของวันนั้น
     status: {
       type: String,
       enum: ["pending", "ordered", "at_shop", "cancelled"],

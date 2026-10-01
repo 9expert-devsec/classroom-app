@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import { getLunchSession } from "@/lib/lunchOrders.server";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function GET(_req, { params }) {
     await dbConnect();
 
     const token = String(params?.token || "");
-    const session = await getLunchSession(token, new Date());
+    const session = await getLunchSession(token, lunchNow());
 
     if (!session) {
       return NextResponse.json(

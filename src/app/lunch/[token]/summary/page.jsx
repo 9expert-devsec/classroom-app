@@ -27,6 +27,8 @@ export default async function SummaryPage({ params }) {
   const notice = GateNotice({ gate, session });
   if (notice) return notice;
   if (gate === LUNCH_GATE.PLACED) redirect(`/lunch/${token}`);
+  // C1: เลยเส้นตายแล้ว -> กลับไปเลือกร้านแบบย่อ (ตะกร้าเมนูใช้ไม่ได้แล้ว)
+  if (gate === LUNCH_GATE.SHORT) redirect(`/lunch/${token}`);
 
   return (
     <Shell>

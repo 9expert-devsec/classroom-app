@@ -1,12 +1,27 @@
 // บรรทัดเส้นตายใต้ QR สั่งอาหาร — ตัวเดียวของแท็บเล็ต Step 3 และหน้า "แสดง QR สั่งอาหาร"
-//   ยังเปิดอยู่   -> "สั่งได้ถึง HH:MM น." จากเส้นตายจริงของใบนั้น (เปิดพิเศษ/ออกใหม่ไม่ใช่ 11:15)
-//   เลยเวลาแล้ว  -> โน้ตสีเหลืองให้ไปที่ Counter (QR ยังแสดงอยู่ เพราะใช้ดูรหัสคูปองได้)
-//   สั่งแล้ว       -> ไม่ต้องบอกเส้นตาย
-// ไม่ยืดเวลาให้เองเด็ดขาด — ทำได้เฉพาะ admin/Counter เปิดพิเศษ
+//   ยังเปิดอยู่        -> "สั่งได้ถึง HH:MM น." จากเส้นตายจริงของใบนั้น (ออก QR ใหม่ไม่ใช่ 11:15)
+//   เลยเส้นตาย (short) -> โน้ตสีเหลือง: ยังสั่งแบบย่อได้ถึง 15:00 (QR ยังใช้ได้)
+//   ถึง 15:00 (expired) -> ยังไม่สั่ง = คูปองหมดอายุ / สั่งแล้ว = หมดเวลาการใช้งาน
+//   สั่งแล้วก่อน 15:00   -> ไม่ต้องบอกเส้นตาย
+// ไม่ยืดเวลาให้เองเด็ดขาด — ทำได้เฉพาะ Counter ยกเลิก + ออก QR ใหม่ ให้คนที่สั่งแล้ว
 import { AlertTriangle } from "lucide-react";
 
-export const LUNCH_LATE_NOTE =
-  "เลยเวลาสั่งแล้ว กรุณาแจ้งเจ้าหน้าที่ที่ Counter เพื่อเปิดเวลาพิเศษ";
+export const LUNCH_SHORT_NOTE =
+  "เลยเวลาสั่งแบบเลือกเมนูแล้ว · ยังสแกนเพื่อรับคูปองแล้วไปสั่งที่ร้านได้ถึง 15:00 น.";
+export const LUNCH_FORFEITED_NOTE = "คูปองหมดอายุ ไม่สามารถใช้งานได้";
+export const LUNCH_ENDED_NOTE = "หมดเวลาการใช้งานตามเงื่อนไขของระบบ";
+
+function Note({ testId, children }) {
+  return (
+    <p
+      data-testid={testId}
+      className="mx-auto mt-3 flex max-w-md items-start gap-2 rounded-2xl bg-amber-100 px-4 py-3 text-left text-amber-800 sm:text-lg lg:text-sm"
+    >
+      <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+      {children}
+    </p>
+  );
+}
 
 function hmBkk(d) {
   if (!d) return "";
@@ -21,18 +36,19 @@ function hmBkk(d) {
 }
 
 export default function LunchDeadlineLine({ deadlineAt, phase, status }) {
-  if (status === "ordered" || status === "at_shop" || status === "cancelled") return null;
+  if (status === "cancelled") return null;
+  const placed = status === "ordered" || status === "at_shop";
 
-  if (phase === "closed" || status === "unassigned") {
+  if (phase === "expired" || status === "forfeited") {
     return (
-      <p
-        data-testid="late-note"
-        className="mx-auto mt-3 flex max-w-md items-start gap-2 rounded-2xl bg-amber-100 px-4 py-3 text-left text-amber-800 sm:text-lg lg:text-sm"
-      >
-        <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
-        {LUNCH_LATE_NOTE}
-      </p>
+      <Note testId="expired-note">{placed ? LUNCH_ENDED_NOTE : LUNCH_FORFEITED_NOTE}</Note>
     );
+  }
+
+  if (placed) return null;
+
+  if (phase === "short") {
+    return <Note testId="late-note">{LUNCH_SHORT_NOTE}</Note>;
   }
 
   const hm = hmBkk(deadlineAt);

@@ -15,9 +15,11 @@ import Restaurant from "@/models/Restaurant";
 import {
   LUNCH_BUDGET_THB,
   defaultDeadline,
+  finalCloseAt,
   orderWindow,
   toBkkYMD,
 } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 import {
   getDaySet,
   getCouponAvailability,
@@ -36,14 +38,16 @@ function activeKeyOf(classId, studentId, dayYMD) {
 
 /* ---------------- derived status ---------------- */
 
-// "unassigned" ไม่เคยถูกเก็บลง DB — คำนวณตอนอ่านเสมอ
-export function computeStatus(order, now = new Date()) {
+// C1: "forfeited" (ตัดสิทธิ์) ไม่เคยถูกเก็บลง DB — คำนวณตอนอ่านเสมอ
+//     = pending และถึง 15:00 ของวันนั้นแล้ว
+//     pending ที่เลย deadlineAt แต่ยังไม่ถึง 15:00 ยังเป็น pending (สั่งแบบย่อได้)
+export function computeStatus(order, now = lunchNow()) {
   const stored = String(order?.status || "pending");
   if (stored !== "pending") return stored;
 
-  const deadline = order?.deadlineAt ? new Date(order.deadlineAt) : null;
-  if (deadline && new Date(now).getTime() >= deadline.getTime()) {
-    return "unassigned";
+  const finalClose = order?.dayYMD ? finalCloseAt(order.dayYMD) : null;
+  if (finalClose && new Date(now).getTime() >= finalClose.getTime()) {
+    return "forfeited";
   }
   return "pending";
 }
@@ -66,7 +70,7 @@ export async function issueLunchOrder({
   deadlineAt,
   reopenCount,
 }) {
-  const at = now ? new Date(now) : new Date();
+  const at = now ? new Date(now) : lunchNow();
   const ymd = String(dayYMD || "").slice(0, 10) || toBkkYMD(at);
 
   if (!studentId || !classId) {
@@ -147,7 +151,7 @@ function restaurantState(entryMode, isStock, stockCount) {
  *   null            -> ไม่รู้จัก token
  *   { gone: true }  -> ถูกยกเลิก/ถูกแทนที่แล้ว
  */
-export async function getLunchSession(token, now = new Date()) {
+export async function getLunchSession(token, now = lunchNow()) {
   const t = String(token || "").trim();
   if (!t) return null;
 
@@ -201,7 +205,7 @@ export async function getLunchSession(token, now = new Date()) {
   const status = computeStatus(order, at);
 
   // สรุปออเดอร์ที่บันทึกไว้
-  // pending = ยังไม่สั่ง, unassigned = หมดเวลาโดยไม่ได้สั่ง — ทั้งคู่ไม่มีอะไรให้สรุป
+  // pending = ยังไม่สั่ง, forfeited = ถึง 15:00 โดยไม่ได้สั่ง — ทั้งคู่ไม่มีอะไรให้สรุป
   const placed = order.status === "ordered" || order.status === "at_shop";
 
   let orderSummary = null;

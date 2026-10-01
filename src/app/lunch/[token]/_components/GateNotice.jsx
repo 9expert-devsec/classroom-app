@@ -1,11 +1,35 @@
 // src/app/lunch/[token]/_components/GateNotice.jsx
 //
 // หน้าแจ้งของด่านตรวจ (lunchGuards.server) ที่ sub-route ทุกหน้าใช้ร่วมกัน
-// คืน null เมื่อผ่านด่าน (OK / PLACED) — PLACED ให้แต่ละหน้า redirect เอง
+// คืน null เมื่อผ่านด่าน (OK / PLACED / SHORT) — PLACED / SHORT ให้แต่ละหน้า redirect เอง
 import Link from "next/link";
 import { X, RefreshCw, Clock, Ban } from "lucide-react";
-import { LUNCH_GATE, deadlineLabel } from "@/lib/lunchGuards.server";
+import {
+  LUNCH_GATE,
+  EXPIRED_KIND,
+  expiredKindOf,
+} from "@/lib/lunchGuards.server";
 import { NoticeScreen, Shell } from "./Shell";
+
+/** C1: ถึง 15:00 แล้ว — 2 แบบตามว่าเคยสั่งหรือยัง */
+export function ExpiredScreen({ kind }) {
+  if (kind === EXPIRED_KIND.FORFEITED) {
+    return (
+      <NoticeScreen
+        icon={Clock}
+        tone="red"
+        title="คูปองหมดอายุ ไม่สามารถใช้งานได้"
+      />
+    );
+  }
+  return (
+    <NoticeScreen
+      icon={Clock}
+      tone="red"
+      title="หมดเวลาการใช้งานตามเงื่อนไขของระบบ"
+    />
+  );
+}
 
 export default function GateNotice({ gate, session }) {
   if (gate === LUNCH_GATE.INVALID) {
@@ -28,15 +52,8 @@ export default function GateNotice({ gate, session }) {
       />
     );
   }
-  if (gate === LUNCH_GATE.CLOSED) {
-    return (
-      <NoticeScreen
-        icon={Clock}
-        tone="red"
-        title={`ปิดรับออเดอร์แล้ว (${deadlineLabel(session.window?.deadlineAt)} น.)`}
-        body="หากยังต้องการสั่งอาหาร กรุณาติดต่อเจ้าหน้าที่ที่ Counter"
-      />
-    );
+  if (gate === LUNCH_GATE.EXPIRED) {
+    return <ExpiredScreen kind={expiredKindOf(session)} />;
   }
   return null;
 }

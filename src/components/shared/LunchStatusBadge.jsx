@@ -1,9 +1,9 @@
 // ป้ายสถานะออเดอร์อาหารกลางวัน — ใช้ทั้งหน้าแอดมินและแท็บเล็ต
-// unassigned = pending ที่เลยเวลาแล้ว (คำนวณ ไม่ได้เก็บใน DB)
+// C1: forfeited = pending ที่ถึง 15:00 แล้ว = ตัดสิทธิ์ (คำนวณ ไม่ได้เก็บใน DB)
 
 export const LUNCH_STATUS_LABELS = {
   pending: "รอสั่ง",
-  unassigned: "เลยเวลา",
+  forfeited: "ตัดสิทธิ์",
   ordered: "สั่งแล้ว",
   at_shop: "ไปสั่งที่ร้าน",
   cancelled: "ยกเลิก",
@@ -11,7 +11,7 @@ export const LUNCH_STATUS_LABELS = {
 
 const STYLES = {
   pending: "bg-blue-100 text-blue-700",
-  unassigned: "bg-amber-100 text-amber-700",
+  forfeited: "bg-amber-100 text-amber-700",
   ordered: "bg-green-100 text-green-700",
   at_shop: "bg-teal-100 text-teal-700",
   cancelled: "bg-slate-200 text-slate-500",

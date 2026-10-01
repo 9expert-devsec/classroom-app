@@ -17,6 +17,7 @@ import {
   bkkAt,
   toBkkYMD,
 } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 // unique index ต้องมีจริงก่อน insert แรก ไม่งั้น 2 instance ที่ยิงพร้อมกันจะได้แถวซ้ำ
 let indexesReady = null;
@@ -112,9 +113,9 @@ let unorderedDoneFor = "";
 /**
  * 11:00 ยังไม่สั่ง — ไม่มี cron จึงเรียกจาก poll ของแอดมิน
  * ก่อน 11:00 / ทำไปแล้ววันนี้ -> ไม่ query อะไรเลย
- * นอกนั้น aggregate ครั้งเดียว: pending (รวม unassigned) ต่อคลาสของวันนี้
+ * นอกนั้น aggregate ครั้งเดียว: pending ต่อคลาสของวันนี้
  */
-export async function ensureUnorderedNotifications(now = new Date()) {
+export async function ensureUnorderedNotifications(now = lunchNow()) {
   try {
     const at = new Date(now);
     const dayYMD = toBkkYMD(at);

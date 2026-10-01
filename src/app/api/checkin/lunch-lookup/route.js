@@ -17,6 +17,7 @@ import LunchOrder from "@/models/LunchOrder";
 import { bangkokYMD, bangkokHM, computeDayIndexToday } from "@/lib/classDates";
 import { computeStatus, activeKeyOf } from "@/lib/lunchOrders.server";
 import { orderWindow } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export async function GET(req) {
       );
     }
 
-    const now = new Date();
+    const now = lunchNow();
     const todayYMD = bangkokYMD(now);
 
     // คลาสที่วันนี้เป็นวันเรียน (ไม่รวม Masterclass — ไม่มีขั้นตอนอาหาร)

@@ -29,6 +29,8 @@ export default async function MenuDetailPage({ params }) {
   const notice = GateNotice({ gate, session });
   if (notice) return notice;
   if (gate === LUNCH_GATE.PLACED) redirect(`/lunch/${token}`);
+  // C1: เลยเส้นตายแล้ว -> สั่งแบบย่อของร้านนี้ (ไม่มีเมนู)
+  if (gate === LUNCH_GATE.SHORT) redirect(`/lunch/${token}/short/${restaurantId}`);
 
   // ร้านไม่อยู่ในรายการ / ปิด / คูปองหมด -> หน้าเมนูของร้านเป็นคนแจ้งเหตุผล
   const restaurant = (session.restaurants || []).find((r) => r.id === restaurantId);
