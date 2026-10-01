@@ -167,6 +167,20 @@ export function isCouponClosed(dayYMD, now = new Date()) {
 }
 
 /**
+ * C3a: กฎ 15:00 ของ Cash Coupon ใช้กับแท็บเล็ต (kiosk) เท่านั้น
+ * แอดมินแก้จากหน้า Food Report บันทึก coupon ได้ทุกเวลา (แต่ไม่มีการออก QR จากทางนั้น)
+ * callerKind มาจาก session ฝั่ง server (requireKioskOrAdmin) ไม่ใช่ flag จาก client
+ */
+export function isCouponClosedFor(callerKind, dayYMD, now = new Date()) {
+  return callerKind === "kiosk" && isCouponClosed(dayYMD, now);
+}
+
+/** "15:00" ที่ใช้จริง (ผ่าน lunchTimes) สำหรับข้อความที่ผู้ใช้เห็น */
+export function finalCloseLabel() {
+  return lunchTimes().final;
+}
+
+/**
  * ออก QR ใหม่ให้รายคน = min(max(11:15, now + 10 นาที), 15:00)
  * ได้อย่างน้อย SPECIAL_REOPEN_MINUTES นาที ไม่สั้นกว่าเวลาปิดปกติ และไม่เกิน 15:00
  */

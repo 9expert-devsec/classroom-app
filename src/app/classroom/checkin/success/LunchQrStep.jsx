@@ -41,7 +41,12 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
         if (res.ok && data?.path) {
           setPath(data.path);
           // P4b-0: เส้นตายจริงของใบนี้ + phase ณ ตอนออก (ไม่ใช่ 11:15 ตายตัว)
-          setWin({ deadlineAt: data.deadlineAt, phase: data.phase, status: data.status });
+          setWin({
+            deadlineAt: data.deadlineAt,
+            phase: data.phase,
+            status: data.status,
+            finalHM: data.finalHM,
+          });
           setState("ready");
           return;
         }
@@ -54,10 +59,13 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
 
         // อย่างอื่นทั้งหมดคือระบบออก QR ไม่ได้ — ไม่โทษผู้เรียน ให้ไปแจ้ง Counter
         // พร้อมเหตุผลจาก server ตัวเล็ก ๆ ให้เจ้าหน้าที่ดูต่อ
+        // C3a: coupon_closed มีข้อความไทยครบอยู่แล้ว ไม่ต่อรหัสเหตุผลดิบท้ายข้อความ
         setMessage(
-          [data?.error, data?.reason ? `(${data.reason})` : `(HTTP ${res.status})`]
-            .filter(Boolean)
-            .join(" "),
+          data?.reason === "coupon_closed" && data?.error
+            ? data.error
+            : [data?.error, data?.reason ? `(${data.reason})` : `(HTTP ${res.status})`]
+                .filter(Boolean)
+                .join(" "),
         );
         setState("error");
       } catch (err) {
@@ -96,6 +104,7 @@ export default function LunchQrStep({ studentId, classId, onReady, onDone }) {
             deadlineAt={win.deadlineAt}
             phase={win.phase}
             status={win.status}
+            finalHM={win.finalHM}
           />
         </>
       ) : (

@@ -38,6 +38,7 @@ function QrView({ view, onClose }) {
         deadlineAt={view.deadlineAt}
         phase={view.phase}
         status={view.status}
+        finalHM={view.finalHM}
       />
 
       <button
@@ -173,6 +174,7 @@ export default function LunchQrLookupClient() {
       path: it.order.path,
       deadlineAt: it.order.deadlineAt,
       phase: it.order.phase,
+      finalHM: it.order.finalHM,
     });
   }
 
@@ -195,15 +197,20 @@ export default function LunchQrLookupClient() {
           path: data.path,
           deadlineAt: data.deadlineAt,
           phase: data.phase,
+          finalHM: data.finalHM,
         });
         search(q); // ให้การ์ดขึ้นสถานะใหม่หลังปิด
         return;
       }
       setIssueErrors((m) => ({
         ...m,
-        [it.studentId]: [data?.error, data?.reason ? `(${data.reason})` : `(HTTP ${res.status})`]
-          .filter(Boolean)
-          .join(" "),
+        // C3a: coupon_closed มีข้อความไทยครบอยู่แล้ว ไม่ต่อรหัสเหตุผลดิบท้ายข้อความ
+        [it.studentId]:
+          data?.reason === "coupon_closed" && data?.error
+            ? data.error
+            : [data?.error, data?.reason ? `(${data.reason})` : `(HTTP ${res.status})`]
+                .filter(Boolean)
+                .join(" "),
       }));
     } catch {
       setIssueErrors((m) => ({ ...m, [it.studentId]: "เชื่อมต่อไม่สำเร็จ (network)" }));

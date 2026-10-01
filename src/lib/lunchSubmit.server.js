@@ -16,7 +16,12 @@ import LunchOrder from "@/models/LunchOrder";
 import FoodMenu from "@/models/FoodMenu";
 import Restaurant from "@/models/Restaurant";
 
-import { LUNCH_BUDGET_THB, isValidNickname, finalCloseAt } from "@/lib/lunchConfig";
+import {
+  LUNCH_BUDGET_THB,
+  isValidNickname,
+  finalCloseAt,
+  finalCloseLabel,
+} from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { getDaySet, getCouponAvailability } from "@/lib/couponAvailability.server";
 import { assignCode } from "@/lib/couponStock.server";
@@ -238,7 +243,7 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
     fail(
       403,
       "closed",
-      "หมดเวลาสั่งอาหารแบบเลือกเมนูแล้ว ยังรับคูปองไปสั่งที่ร้านได้ถึง 15:00 น.",
+      `หมดเวลาสั่งอาหารแบบเลือกเมนูแล้ว ยังรับคูปองไปสั่งที่ร้านได้ถึง ${finalCloseLabel()} น.`,
     );
   }
 

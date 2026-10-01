@@ -5,6 +5,7 @@
 //     ใบ pending สั่งแบบย่อเองได้ถึง 15:00 ส่วนคนที่สั่งแล้วอยากเปลี่ยนใช้ ยกเลิก + ออก QR ใหม่
 //     เก็บไฟล์ไว้ให้ client เก่าที่ยังยิงมาได้คำตอบชัดเจน แทนที่จะเป็น 404
 import { NextResponse } from "next/server";
+import { finalCloseLabel } from "@/lib/lunchConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ const NO_STORE = { "Cache-Control": "no-store" };
 export async function POST() {
   return NextResponse.json(
     {
-      error: "ยกเลิกฟังก์ชันเปิดเวลาพิเศษแล้ว ผู้เรียนสั่งแบบย่อได้เองถึง 15:00 น.",
+      error: `ยกเลิกฟังก์ชันเปิดเวลาพิเศษแล้ว ผู้เรียนสั่งแบบย่อได้เองถึง ${finalCloseLabel()} น.`,
       reason: "gone",
     },
     { status: 410, headers: NO_STORE },

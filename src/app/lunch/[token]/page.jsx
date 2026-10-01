@@ -16,6 +16,7 @@ import {
 
 import { Shell, NoticeScreen } from "./_components/Shell";
 import { ExpiredScreen } from "./_components/GateNotice";
+import { finalCloseLabel } from "@/lib/lunchConfig";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
 import { ThankYouView, RescanView } from "./_components/PlacedViews";
 
@@ -91,6 +92,7 @@ export default async function LunchPage({ params, searchParams }) {
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
         notice={NOTICES[String(searchParams?.notice || "")] || ""}
         short={gate === LUNCH_GATE.SHORT}
+        finalLabel={finalCloseLabel()}
       />
     </Shell>
   );

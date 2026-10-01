@@ -5,9 +5,12 @@
 //   สั่งแล้วก่อน 15:00   -> ไม่ต้องบอกเส้นตาย
 // ไม่ยืดเวลาให้เองเด็ดขาด — ทำได้เฉพาะ Counter ยกเลิก + ออก QR ใหม่ ให้คนที่สั่งแล้ว
 import { AlertTriangle } from "lucide-react";
+import { lunchTimes } from "@/lib/lunchConfig";
 
-export const LUNCH_SHORT_NOTE =
-  "เลยเวลาสั่งแบบเลือกเมนูแล้ว · ยังสแกนเพื่อรับคูปองแล้วไปสั่งที่ร้านได้ถึง 15:00 น.";
+// C3a: เวลาปิดมาจาก server (finalHM ที่ API ส่งมาจาก lunchTimes) — ไม่มีก็ใช้ค่าปกติ
+export function lunchShortNote(finalHM) {
+  return `เลยเวลาสั่งแบบเลือกเมนูแล้ว · ยังสแกนเพื่อรับคูปองแล้วไปสั่งที่ร้านได้ถึง ${finalHM || lunchTimes().final} น.`;
+}
 export const LUNCH_FORFEITED_NOTE = "คูปองหมดอายุ ไม่สามารถใช้งานได้";
 export const LUNCH_ENDED_NOTE = "หมดเวลาการใช้งานตามเงื่อนไขของระบบ";
 
@@ -35,7 +38,7 @@ function hmBkk(d) {
   });
 }
 
-export default function LunchDeadlineLine({ deadlineAt, phase, status }) {
+export default function LunchDeadlineLine({ deadlineAt, phase, status, finalHM }) {
   if (status === "cancelled") return null;
   const placed = status === "ordered" || status === "at_shop";
 
@@ -48,7 +51,7 @@ export default function LunchDeadlineLine({ deadlineAt, phase, status }) {
   if (placed) return null;
 
   if (phase === "short") {
-    return <Note testId="late-note">{LUNCH_SHORT_NOTE}</Note>;
+    return <Note testId="late-note">{lunchShortNote(finalHM)}</Note>;
   }
 
   const hm = hmBkk(deadlineAt);

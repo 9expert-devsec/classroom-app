@@ -12,7 +12,8 @@ import { Fragment } from "react";
 
 export function codeGroups(code) {
   const c = String(code || "");
-  if (/^9XP-/i.test(c) || c.length <= 8) return [c];
+  // C3a: มีขีด (9XP-XXXX, DEVFIX-0004 ฯลฯ) = แสดงตามเดิม ไม่หั่นข้ามขีด
+  if (c.includes("-") || c.length <= 8) return [c];
   const out = [];
   for (let i = 0; i < c.length; i += 4) out.push(c.slice(i, i + 4));
   return out;

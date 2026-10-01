@@ -82,6 +82,8 @@ export default function ChooseRestaurantClient({
   notice = "",
   // C1: เลยเส้นตายแล้วแต่ยังไม่ถึง 15:00 — เลือกร้านแล้วไปหน้าสรุปแบบย่อ (ไม่มีเมนู)
   short = false,
+  // C3a: เวลาปิดจริงจาก server (lunchTimes) — ไม่ฮาร์ดโค้ด
+  finalLabel = "",
 }) {
   const router = useRouter();
 
@@ -178,7 +180,7 @@ export default function ChooseRestaurantClient({
             data-testid="short-flow-note"
             className="rounded-xl bg-[#48b0ff]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#005cff]"
           >
-            สั่งแบบย่อได้ถึง 15:00 น. · รับคูปองแล้วไปสั่งที่ร้าน
+            สั่งแบบย่อได้ถึง {finalLabel} น. · รับคูปองแล้วไปสั่งที่ร้าน
           </p>
         ) : null}
 

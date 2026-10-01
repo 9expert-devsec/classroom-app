@@ -15,6 +15,7 @@ import FoodDaySet from "@/models/FoodDaySet";
 import Restaurant from "@/models/Restaurant";
 import { bangkokYMD, addDaysYMD_BKK } from "@/lib/classDates";
 import { countAvailable } from "@/lib/couponStock.server";
+import { finalCloseLabel } from "@/lib/lunchConfig";
 
 /**
  * วันอบรม (Bangkok "YYYY-MM-DD") ของ day ที่ N ในคลาสนี้
@@ -135,9 +136,9 @@ export function couponUnavailableMessage(reason) {
   if (reason === "no_coupon_restaurant") {
     return "วันนี้ไม่มีร้านคูปองเปิดให้เลือก";
   }
-  // C2: หลัง 15:00 (lunchConfig.isCouponClosed)
+  // C2: หลังเวลาปิด (lunchConfig.isCouponClosed) — C3a: เวลามาจาก lunchTimes()
   if (reason === "coupon_closed") {
-    return "หลัง 15:00 น. ไม่สามารถรับคูปองได้แล้ว";
+    return `หมดเวลารับคูปองอาหารกลางวันของวันนี้แล้ว (หลัง ${finalCloseLabel()} น.) กรุณาติดต่อเจ้าหน้าที่`;
   }
   return "ไม่สามารถใช้คูปองได้ในขณะนี้";
 }

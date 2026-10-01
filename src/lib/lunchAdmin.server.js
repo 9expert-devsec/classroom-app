@@ -24,7 +24,7 @@ import {
   confirmReturn,
   CouponStockError,
 } from "@/lib/couponStock.server";
-import { reissueDeadline, finalCloseAt, toBkkYMD } from "@/lib/lunchConfig";
+import { reissueDeadline, finalCloseAt, finalCloseLabel, toBkkYMD } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, bangkokHM } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
@@ -122,7 +122,10 @@ function isAfterFinalClose(order, now) {
   return !!fc && new Date(now).getTime() >= fc.getTime();
 }
 
-export const AFTER_FINAL_CLOSE_MESSAGE = "หลัง 15:00 น. ยกเลิก/ออก QR ใหม่ไม่ได้";
+// C3a: เวลาปิดจริง (lunchTimes) — เป็นฟังก์ชันเพราะ env ทดสอบเปลี่ยนได้
+export function afterFinalCloseMessage() {
+  return `หลัง ${finalCloseLabel()} น. ยกเลิก/ออก QR ใหม่ไม่ได้`;
+}
 export const NEVER_PLACED_MESSAGE = "ออก QR ใหม่ได้เฉพาะผู้เรียนที่เคยสั่งอาหารแล้ว";
 export const ALREADY_USED_MESSAGE = "ร้านใช้คูปองนี้แล้ว ยกเลิกไม่ได้";
 
@@ -131,7 +134,7 @@ export const ALREADY_USED_MESSAGE = "ร้านใช้คูปองนี�
  * ได้เฉพาะก่อน 15:00 ของวันนั้น และใบก่อนหน้าต้องเคย ordered / at_shop
  */
 export function reopenBlockedReason(prevOrder, now = lunchNow()) {
-  if (isAfterFinalClose(prevOrder, now)) return AFTER_FINAL_CLOSE_MESSAGE;
+  if (isAfterFinalClose(prevOrder, now)) return afterFinalCloseMessage();
   if (!wasPlaced(prevOrder)) return NEVER_PLACED_MESSAGE;
   return "";
 }
@@ -144,7 +147,7 @@ export function cancelBlockedReason(order, now = lunchNow()) {
   if (order?.status !== "ordered" && order?.status !== "at_shop") return null;
   // C2: ร้านใช้คูปองไปแล้ว -> ยกเลิกไม่ได้
   if (order?.redeemedAt) return ALREADY_USED_MESSAGE;
-  if (isAfterFinalClose(order, now)) return AFTER_FINAL_CLOSE_MESSAGE;
+  if (isAfterFinalClose(order, now)) return afterFinalCloseMessage();
   return "";
 }
 
@@ -354,7 +357,7 @@ export async function reopenLunchOrder({
 
   // C1: ก่อน 15:00 และต้องเป็นคนที่เคยสั่งแล้วเท่านั้น
   if (isAfterFinalClose({ dayYMD }, at)) {
-    fail(409, "after_final_close", AFTER_FINAL_CLOSE_MESSAGE);
+    fail(409, "after_final_close", afterFinalCloseMessage());
   }
   if (!wasPlaced(prev)) {
     fail(409, "never_placed", NEVER_PLACED_MESSAGE);

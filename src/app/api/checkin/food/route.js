@@ -21,7 +21,7 @@ import {
   getCouponAvailability,
   couponUnavailableMessage,
 } from "@/lib/couponAvailability.server";
-import { toBkkYMD, isCouponClosed } from "@/lib/lunchConfig";
+import { toBkkYMD, isCouponClosedFor } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday } from "@/lib/classDates";
 import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchAdmin.server";
@@ -350,9 +350,12 @@ export async function POST(req) {
   });
 
   // C2: ถึง 15:00 แล้วเลือก Cash Coupon ไม่ได้ — ปฏิเสธก่อนเขียนอะไรทั้งนั้น
+  // C3a: เฉพาะแท็บเล็ต (session kiosk) — แอดมินจาก Food Report (session แอดมิน + FOOD_WRITE)
+  //      บันทึก coupon ได้ทุกเวลา route นี้ไม่ออก lunch order/QR อยู่แล้วไม่ว่าใครเรียก
+  //      (QR ออกที่ /api/checkin/lunch-token ซึ่งรับเฉพาะ session kiosk)
   if (finalChoiceType === "coupon") {
     const now = lunchNow();
-    if (isCouponClosed(toBkkYMD(now), now)) {
+    if (isCouponClosedFor(auth.kind, toBkkYMD(now), now)) {
       return NextResponse.json(
         {
           ok: false,

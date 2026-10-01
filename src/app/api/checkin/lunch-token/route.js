@@ -17,7 +17,7 @@ import Checkin from "@/models/Checkin";
 
 import { issueLunchOrder, computeStatus } from "@/lib/lunchOrders.server";
 import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
-import { toBkkYMD, orderWindow, isCouponClosed } from "@/lib/lunchConfig";
+import { toBkkYMD, orderWindow, isCouponClosed, finalCloseLabel } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
 
@@ -164,6 +164,8 @@ export async function POST(req) {
         deadlineAt: win.deadlineAt ? new Date(win.deadlineAt).toISOString() : null,
         phase: win.phase,
         status: computeStatus(res.order, now),
+        // C3a: เวลาปิดจริง (lunchTimes) ให้ข้อความบนแท็บเล็ตไม่ฮาร์ดโค้ด
+        finalHM: finalCloseLabel(),
       },
       { headers: NO_STORE },
     );
