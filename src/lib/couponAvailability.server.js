@@ -135,5 +135,9 @@ export function couponUnavailableMessage(reason) {
   if (reason === "no_coupon_restaurant") {
     return "วันนี้ไม่มีร้านคูปองเปิดให้เลือก";
   }
+  // C2: หลัง 15:00 (lunchConfig.isCouponClosed)
+  if (reason === "coupon_closed") {
+    return "หลัง 15:00 น. ไม่สามารถรับคูปองได้แล้ว";
+  }
   return "ไม่สามารถใช้คูปองได้ในขณะนี้";
 }

@@ -17,7 +17,8 @@ import {
   getDaySet,
   getCouponAvailability,
 } from "@/lib/couponAvailability.server";
-import { toBkkYMD } from "@/lib/lunchConfig";
+import { toBkkYMD, isCouponClosed } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
 
@@ -131,11 +132,19 @@ export async function GET(req) {
     const daySet = await getDaySet(dayYMD);
 
     // ✅ กฎเดียวสำหรับ "วันนี้กด Cash Coupon ได้ไหม"
-    const couponAvail = await getCouponAvailability({
+    const baseAvail = await getCouponAvailability({
       classDoc,
       dayYMD,
       daySet,
     });
+
+    // C2: ถึง 15:00 (เวลาไทยของ server ไม่ใช่นาฬิกาแท็บเล็ต) -> ไม่เสนอ Cash Coupon
+    //     เหลือแค่ร้าน set กับ "ไม่รับอาหาร" เหมือนคลาสที่ปิดคูปองไว้
+    const now = lunchNow();
+    const couponClosed = isCouponClosed(toBkkYMD(now), now);
+    const couponAvail = couponClosed
+      ? { ...baseAvail, available: false, reason: "coupon_closed", couponRestaurants: [] }
+      : baseAvail;
 
     // ✅ RULE: ถ้าไม่มีการตั้งค่าใน Calendar → ไม่มีร้าน/เมนูวันนี้
     if (
@@ -153,6 +162,7 @@ export async function GET(req) {
         couponAvailable: couponAvail.available,
         couponUnavailableReason: couponAvail.reason,
         couponRestaurants: couponAvail.couponRestaurants || [],
+      couponClosed,
       });
     }
 
@@ -345,6 +355,7 @@ export async function GET(req) {
       couponAvailable: couponAvail.available,
       couponUnavailableReason: couponAvail.reason,
       couponRestaurants: couponAvail.couponRestaurants || [],
+      couponClosed,
     });
   } catch (err) {
     console.error("GET /api/food/today error:", err);

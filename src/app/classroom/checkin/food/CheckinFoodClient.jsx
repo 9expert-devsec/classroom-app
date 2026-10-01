@@ -527,7 +527,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
         // ✅ อ่านจาก data ตรง ๆ (state อาจยัง commit ไม่ทันตอน prefill)
         // couponAvailable มาจาก /api/food/today โดยตรง (ไม่คิดเองซ้ำ)
-        const couponAllowed = !!data?.couponAvailable;
+        // C2: couponClosed = ถึง 15:00 ตามเวลา server แล้ว (ไม่ดูนาฬิกาแท็บเล็ต)
+        const couponAllowed = !!data?.couponAvailable && !data?.couponClosed;
         setCouponAvailable(couponAllowed);
 
         // ✅ POLICY:

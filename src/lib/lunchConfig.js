@@ -83,6 +83,15 @@ export function finalCloseAt(dayYMD) {
 }
 
 /**
+ * C2: หลัง 15:00 ของวันนั้นปิดเรื่องคูปองทั้งหมด — แท็บเล็ตไม่เสนอ Cash Coupon,
+ * บันทึก choiceType "coupon" ไม่ได้ และไม่ออก QR สั่งอาหาร
+ */
+export function isCouponClosed(dayYMD, now = new Date()) {
+  const fc = finalCloseAt(dayYMD);
+  return !!fc && new Date(now).getTime() >= fc.getTime();
+}
+
+/**
  * ออก QR ใหม่ให้รายคน = min(max(11:15, now + 10 นาที), 15:00)
  * ได้อย่างน้อย SPECIAL_REOPEN_MINUTES นาที ไม่สั้นกว่าเวลาปิดปกติ และไม่เกิน 15:00
  */

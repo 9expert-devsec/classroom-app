@@ -17,7 +17,7 @@ import Checkin from "@/models/Checkin";
 
 import { issueLunchOrder, computeStatus } from "@/lib/lunchOrders.server";
 import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
-import { toBkkYMD, orderWindow } from "@/lib/lunchConfig";
+import { toBkkYMD, orderWindow, isCouponClosed } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
 
@@ -38,7 +38,11 @@ function isObjectId(x) {
 
 // ข้อความไทยของเหตุผลที่ออก QR ไม่ได้
 function reasonMessage(reason) {
-  if (reason === "class_disabled" || reason === "no_coupon_restaurant") {
+  if (
+    reason === "class_disabled" ||
+    reason === "no_coupon_restaurant" ||
+    reason === "coupon_closed"
+  ) {
     return couponUnavailableMessage(reason);
   }
   if (reason === "not_checked_in") return "ยังไม่พบการเช็คอินของวันนี้";
@@ -124,6 +128,13 @@ export async function POST(req) {
 
     if (!foodClassMatches || !foodDayMatches) {
       return fail("coupon_not_today", 409);
+    }
+
+    // C2: ถึง 15:00 แล้ว ไม่ออก QR (ใบที่ออกตอนนี้ก็หมดอายุทันทีอยู่ดี)
+    //     เช็คก่อน issueLunchOrder จึงไม่มีการเขียนออเดอร์ใหม่
+    {
+      const now = lunchNow();
+      if (isCouponClosed(toBkkYMD(now), now)) return fail("coupon_closed", 403);
     }
 
     // 4) ออกออเดอร์ (idempotent — กด Step 3 ซ้ำได้ token เดิม)

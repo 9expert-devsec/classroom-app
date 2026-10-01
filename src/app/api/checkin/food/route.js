@@ -21,7 +21,8 @@ import {
   getCouponAvailability,
   couponUnavailableMessage,
 } from "@/lib/couponAvailability.server";
-import { toBkkYMD } from "@/lib/lunchConfig";
+import { toBkkYMD, isCouponClosed } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday } from "@/lib/classDates";
 import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchAdmin.server";
 
@@ -347,6 +348,21 @@ export async function POST(req) {
     restaurantId,
     menuId,
   });
+
+  // C2: ถึง 15:00 แล้วเลือก Cash Coupon ไม่ได้ — ปฏิเสธก่อนเขียนอะไรทั้งนั้น
+  if (finalChoiceType === "coupon") {
+    const now = lunchNow();
+    if (isCouponClosed(toBkkYMD(now), now)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: couponUnavailableMessage("coupon_closed"),
+          reason: "coupon_closed",
+        },
+        { status: 403 },
+      );
+    }
+  }
 
   // ✅ กันฝั่ง server: บันทึก choiceType = "coupon" ได้เฉพาะเมื่อกฎกลางอนุญาต
   //    (คลาสไม่ได้ปิดคูปอง และวันนั้นมีร้านคูปองที่ใช้ได้จริง)
