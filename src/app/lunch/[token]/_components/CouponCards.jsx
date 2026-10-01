@@ -1,13 +1,34 @@
+"use client";
+
 // src/app/lunch/[token]/_components/CouponCards.jsx
 //
 // การ์ดคูปองหลังยืนยัน (หน้าตาตาม mockup) — ใช้ทั้งหน้าขอบคุณและหน้าสแกนซ้ำ
-//   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter)
-//   ร้านอื่น      -> ECouponCard (แสดงรหัสที่ร้าน)
+//   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter) — ไม่ poll
+//   ร้านอื่น      -> ECouponCard (แสดง QR + รหัสที่ร้าน)
 // ข้อมูลทั้งหมดมาจาก session.order — ไม่มีชื่อสำรอง
+//
+// C2: ECouponCard มี QR ของ "รหัสเปล่า ๆ" (ไม่ใช่ token/URL) + poll สถานะ
+//     ร้านกดใช้แล้ว -> QR จาง + ตราประทับ "ใช้แล้ว" + บรรทัด "ใช้แล้ว เวลา hh:mm"
 import { Ticket } from "lucide-react";
 import CouponCode from "./CouponCode";
+import LunchQrCode from "@/components/shared/LunchQrCode";
+import useCouponStatus from "./useCouponStatus";
 
-function ECouponCard({ order, dateLabel }) {
+function hmBkk(d, withSeconds = false) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  return dt.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(withSeconds ? { second: "2-digit" } : {}),
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+function ECouponCard({ order, dateLabel, token }) {
+  const live = useCouponStatus(token, order.coupon);
   const rows = [
     ["ชื่อ", order.holderName],
     ["ชื่อเล่น", order.nickname],
@@ -34,8 +55,28 @@ function ECouponCard({ order, dateLabel }) {
           ))}
         </div>
         <div className="border-t-2 border-dashed border-black/10" />
-        <div className="px-4 py-4">
+        <div className="flex flex-col items-center gap-2 px-4 py-4">
+          {/* QR = รหัสเปล่า ๆ เท่านั้น ร้านสแกนแล้วได้ 9XP-XXXX เหมือนพิมพ์เอง */}
+          <LunchQrCode
+            value={order.couponCode}
+            size={168}
+            status={live.state === "used" ? "used" : "unused"}
+            className="p-2"
+          />
           <CouponCode code={order.couponCode} />
+          {live.state === "used" ? (
+            <p
+              data-testid="coupon-used-line"
+              className="text-[14px] font-semibold text-[#c2453e]"
+            >
+              ใช้แล้ว เวลา {hmBkk(live.usedAt) || "-"} น.
+            </p>
+          ) : null}
+          {live.polling && live.lastUpdated ? (
+            <p data-testid="coupon-updated-line" className="text-[11px] text-slate-400">
+              อัปเดตล่าสุด {hmBkk(live.lastUpdated, true)}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -67,10 +108,10 @@ function CounterCard({ order }) {
   );
 }
 
-export default function CouponCard({ order, dateLabel }) {
+export default function CouponCard({ order, dateLabel, token }) {
   return order.isStock ? (
     <CounterCard order={order} />
   ) : (
-    <ECouponCard order={order} dateLabel={dateLabel} />
+    <ECouponCard order={order} dateLabel={dateLabel} token={token} />
   );
 }

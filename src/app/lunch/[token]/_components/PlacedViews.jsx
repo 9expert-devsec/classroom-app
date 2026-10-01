@@ -33,7 +33,7 @@ function InfoBox({ children, testId }) {
 
 /* ---------------- thank-you ---------------- */
 
-export function ThankYouView({ order, dateLabel }) {
+export function ThankYouView({ order, dateLabel, token }) {
   const atShop = order.mode === "at_shop";
 
   return (
@@ -51,7 +51,7 @@ export function ThankYouView({ order, dateLabel }) {
         <LogoTile src={order.restaurantLogo} alt={order.restaurantName} size={40} />
       </div>
 
-      <CouponCard order={order} dateLabel={dateLabel} />
+      <CouponCard order={order} dateLabel={dateLabel} token={token} />
 
       {atShop ? (
         <InfoBox testId="at-shop-box">
@@ -79,7 +79,7 @@ export function ThankYouView({ order, dateLabel }) {
 
 /* ---------------- re-scan (read-only) ---------------- */
 
-export function RescanView({ order, dateLabel }) {
+export function RescanView({ order, dateLabel, token }) {
   const atShop = order.mode === "at_shop";
 
   return (
@@ -168,7 +168,7 @@ export function RescanView({ order, dateLabel }) {
         </>
       )}
 
-      <CouponCard order={order} dateLabel={dateLabel} />
+      <CouponCard order={order} dateLabel={dateLabel} token={token} />
 
       <div className="flex gap-2.5 rounded-2xl bg-[#48b0ff]/10 px-4 py-3.5">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#005cff]" />

@@ -65,9 +65,9 @@ export default async function LunchPage({ params, searchParams }) {
     return (
       <Shell>
         {String(searchParams?.done || "") === "1" ? (
-          <ThankYouView order={session.order} dateLabel={dateLabel} />
+          <ThankYouView order={session.order} dateLabel={dateLabel} token={token} />
         ) : (
-          <RescanView order={session.order} dateLabel={dateLabel} />
+          <RescanView order={session.order} dateLabel={dateLabel} token={token} />
         )}
       </Shell>
     );
