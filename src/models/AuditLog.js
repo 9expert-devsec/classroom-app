@@ -48,6 +48,8 @@ const AuditLogSchema = new mongoose.Schema(
         "kiosk.staff_unlock",
         "kiosk.staff_lock",
         "kiosk.revoke",
+        // ✅ C3: Merchant กดใช้ e-coupon
+        "lunch.redeem",
       ],
       default: "custom",
       index: true,
