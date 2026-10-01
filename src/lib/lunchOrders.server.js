@@ -52,6 +52,30 @@ export function computeStatus(order, now = lunchNow()) {
   return "pending";
 }
 
+/* ---------------- e-coupon status (C2) ---------------- */
+
+/**
+ * สถานะคูปองของออเดอร์ e-coupon ใบหนึ่ง (ตัวเดียวทั้ง endpoint และ server render)
+ *   used    : ร้านกดใช้แล้ว (redeemedAt) — คงเป็น used ไม่ว่าเวลาจะผ่านไปเท่าไร
+ *   expired : ยังไม่ใช้ และถึง 15:00 ของวันนั้นแล้ว
+ *   unused  : นอกนั้น
+ */
+export function couponStateOf(order, now = lunchNow()) {
+  if (order?.redeemedAt) {
+    return { state: "used", usedAt: new Date(order.redeemedAt).toISOString() };
+  }
+  const finalClose = order?.dayYMD ? finalCloseAt(order.dayYMD) : null;
+  if (finalClose && new Date(now).getTime() >= finalClose.getTime()) {
+    return { state: "expired" };
+  }
+  return { state: "unused" };
+}
+
+/** ออเดอร์ที่ใช้ QR + รหัส e-coupon (ร้านที่ไม่ใช้คูปอง stock) */
+export function isECouponOrder(order) {
+  return order?.couponSource === "ecoupon" && !!order?.couponCode;
+}
+
 /* ---------------- issue ---------------- */
 
 /**
@@ -242,6 +266,8 @@ export async function getLunchSession(token, now = lunchNow()) {
 
       couponCode: order.couponCode || "",
       couponSource: order.couponSource || "",
+      // C2: สถานะคูปอง ณ ตอน render — หน้าแรกถูกต้องทันทีโดยไม่ต้องรอ poll
+      coupon: isECouponOrder(order) ? couponStateOf(order, at) : null,
 
       holderName: order.holderName || "",
       nickname: order.nickname || "",

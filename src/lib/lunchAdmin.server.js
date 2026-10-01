@@ -124,6 +124,7 @@ function isAfterFinalClose(order, now) {
 
 export const AFTER_FINAL_CLOSE_MESSAGE = "หลัง 15:00 น. ยกเลิก/ออก QR ใหม่ไม่ได้";
 export const NEVER_PLACED_MESSAGE = "ออก QR ใหม่ได้เฉพาะผู้เรียนที่เคยสั่งอาหารแล้ว";
+export const ALREADY_USED_MESSAGE = "ร้านใช้คูปองนี้แล้ว ยกเลิกไม่ได้";
 
 /**
  * เหตุผลที่ออก QR ใหม่ไม่ได้ ("" = ได้) — ใช้ทั้ง reopenLunchOrder และหน้าแอดมิน
@@ -141,6 +142,8 @@ export function reopenBlockedReason(prevOrder, now = lunchNow()) {
  */
 export function cancelBlockedReason(order, now = lunchNow()) {
   if (order?.status !== "ordered" && order?.status !== "at_shop") return null;
+  // C2: ร้านใช้คูปองไปแล้ว -> ยกเลิกไม่ได้
+  if (order?.redeemedAt) return ALREADY_USED_MESSAGE;
   if (isAfterFinalClose(order, now)) return AFTER_FINAL_CLOSE_MESSAGE;
   return "";
 }
@@ -179,6 +182,9 @@ export async function cancelLunchOrder({
       if (!CANCELLABLE.includes(order.status)) {
         fail(409, "not_cancellable", "ออเดอร์นี้ถูกยกเลิกไปแล้ว");
       }
+      if (order.redeemedAt) {
+        fail(409, "already_used", ALREADY_USED_MESSAGE);
+      }
 
       const set = {
         status: "cancelled",
@@ -205,13 +211,19 @@ export async function cancelLunchOrder({
         couponEffect = "voided";
       }
 
-      // conditional: สถานะต้องยังเหมือนตอนอ่าน ไม่งั้นมีคนแก้พร้อมกัน
+      // conditional: สถานะต้องยังเหมือนตอนอ่าน และร้านต้องยังไม่ได้ใช้คูปอง (C2)
+      // redeemedAt: null อยู่ใน filter เอง — ร้านกดใช้พร้อมกันก็ยกเลิกไม่ผ่าน
       const upd = await LunchOrder.updateOne(
-        { _id: order._id, status: order.status },
+        { _id: order._id, status: order.status, redeemedAt: null },
         { $set: set, $unset: { activeKey: "" } },
         { session },
       );
       if (upd.modifiedCount !== 1) {
+        const fresh = await LunchOrder.findById(order._id)
+          .select("redeemedAt")
+          .session(session)
+          .lean();
+        if (fresh?.redeemedAt) fail(409, "already_used", ALREADY_USED_MESSAGE);
         fail(409, "conflict", "ออเดอร์เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
       }
 

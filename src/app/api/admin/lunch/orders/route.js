@@ -53,7 +53,7 @@ export async function GET(req) {
     const all = await LunchOrder.find(find)
       .sort({ createdAt: 1 })
       .select(
-        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt cancelledAt cancelReason handedOutAt handedOutBy",
+        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason handedOutAt handedOutBy",
       )
       .lean();
 
@@ -129,6 +129,8 @@ export async function GET(req) {
         handedOutHM: o.handedOutAt ? bangkokHM(o.handedOutAt) : "",
         handedOutBy: o.handedOutBy || "",
         couponVoided: !!o.couponVoidedAt,
+        // C2: ร้านใช้คูปองแล้ว
+        redeemedHM: o.redeemedAt ? bangkokHM(o.redeemedAt) : "",
         itemsTotal: o.itemsTotal || 0,
         overBudget: o.overBudget || 0,
         deadlineHM: o.deadlineAt ? bangkokHM(o.deadlineAt) : "",

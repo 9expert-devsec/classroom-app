@@ -135,6 +135,22 @@ const LunchOrderSchema = new Schema(
     handedOutBy: { type: String, default: "" },
     printedAt: { type: Date, default: null },
     printedCouponCode: { type: String, default: "" },
+
+    /* ---------------- redeem (C2) ---------------- */
+    // ร้าน (ที่ไม่ใช้คูปอง stock) สแกน/พิมพ์รหัส e-coupon แล้วกดใช้ — C3 (Merchant) เป็นคนเขียน
+    // redeemedAt != null = ใช้แล้ว: หน้าผู้เรียนขึ้นตราประทับ และยกเลิกออเดอร์ไม่ได้อีก
+    redeemedAt: { type: Date, default: null },
+    redeemedRestaurantId: {
+      type: Schema.Types.ObjectId,
+      ref: "Restaurant",
+      default: null,
+    },
+    // วิธีที่ร้านใช้รหัส: สแกน QR หรือพิมพ์รหัสเอง
+    redeemedVia: {
+      type: String,
+      enum: ["scan", "typed", null],
+      default: null,
+    },
   },
   { timestamps: true, collection: "lunchorders" },
 );

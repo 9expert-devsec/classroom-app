@@ -98,6 +98,15 @@ function CodeCell({ row }) {
       </div>
     );
   }
+  // C2: ร้านใช้คูปองแล้ว
+  if (row.redeemedHM) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <CouponCode code={row.couponCode} size="table" />
+        <span className="text-[11px] font-medium text-green-700">ใช้แล้ว {row.redeemedHM}</span>
+      </div>
+    );
+  }
   return <CouponCode code={row.couponCode} size="table" />;
 }
 
