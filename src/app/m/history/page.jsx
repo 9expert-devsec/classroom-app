@@ -1,5 +1,18 @@
-import HistoryPageClient from "./HistoryPageClient";
+// src/app/m/history/page.jsx
+//
+// C3b: ระบบ Merchant เดิม (CouponRecord + login) เลิกใช้แล้ว -> 404
+// Merchant ตัวใหม่อยู่ที่ /m/[key] (ทำงานบน LunchOrder) — โค้ดเดิมเก็บไว้ข้างล่างเป็น comment
+import { notFound } from "next/navigation";
 
-export default function HistoryPage() {
-  return <HistoryPageClient />;
+export const dynamic = "force-dynamic";
+
+export default function RetiredMerchantPage() {
+  notFound();
 }
+
+/* ---- ของเดิม (ก่อน C3b) ---- */
+// import HistoryPageClient from "./HistoryPageClient";
+//
+// export default function HistoryPage() {
+//   return <HistoryPageClient />;
+// }
