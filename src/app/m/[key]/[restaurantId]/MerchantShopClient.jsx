@@ -8,7 +8,7 @@
 // ทุก API ส่ง header x-merchant-key — server เป็นคนตัดสินทั้งหมด (ร้าน วัน เวลาปิด)
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, CheckCircle2, Clock, Ban, XCircle, ArrowLeft } from "lucide-react";
+import { Camera, CheckCircle2, Clock, Ban, XCircle, ArrowLeft, BarChart3 } from "lucide-react";
 
 import { ShopLogo, LAST_SHOP_KEY } from "../ShopPickerClient";
 
@@ -366,7 +366,14 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               </button>
             </form>
 
-            {/* C4: "Usage summary" button goes here */}
+            <Link
+              href={`/m/${merchantKey}/${restaurant.id}/report`}
+              data-testid="merchant-usage-summary"
+              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a] active:scale-[0.99]"
+            >
+              <BarChart3 className="h-5 w-5 text-slate-500" />
+              Usage summary
+            </Link>
 
             <div className="mt-6">
               <h2 className="text-sm font-semibold text-slate-500">Recent redemptions</h2>
