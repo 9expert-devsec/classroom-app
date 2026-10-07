@@ -133,6 +133,8 @@ export async function reportAll({ restaurantId, range, now = lunchNow() }) {
     pageCount: 1,
     rows: docs.map(rowOf),
     truncated: total > EXPORT_CAP,
+    // เวลาที่สร้างสรุป (นาฬิกาเดียวกับที่ใช้คิดช่วง) -> "Summary as of …"
+    generatedAt: new Date(now).toISOString(),
   };
 
   if (range !== "today") {

@@ -1,7 +1,7 @@
 // src/app/api/merchant/lunch/report/route.js
 // GET ?restaurantId=&range=today|week|month&page=N
 //   -> { range: {label, fromISO, toISO, fromYMD, toYMD}, total, page, pageCount, rows[] }
-// GET …&all=1 -> ทุกแถวในช่วง (สูงสุด 2000, เกิน -> truncated: true) + byDay (week/month)
+// GET …&all=1 -> ทุกแถวในช่วง (สูงสุด 2000, เกิน -> truncated: true) + byDay (week/month) + generatedAt
 // rows: { redeemedAt, nickname, name, room, code } — ไม่มีราคาใด ๆ
 // C4: header x-merchant-key (ไม่ตรง -> 404) · rate limit · ร้านต้องเป็นร้าน Merchant (ไม่ใช่ stock)
 import { NextResponse } from "next/server";

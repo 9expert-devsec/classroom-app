@@ -10,28 +10,30 @@ import { ArrowLeft, ChevronLeft, ChevronRight, ImageDown } from "lucide-react";
 import { ShopLogo } from "../../ShopPickerClient";
 import { RANGES, rangeKeyOf, fmtRowTime, fmtRangeDates } from "./reportFormat";
 
-export function ReportTable({ rows, rangeKey, testId }) {
+/** compact = จอมือถือ (ตัวเล็ก ช่องแคบ ให้ 5 คอลัมน์พอดี 390px), ไม่ compact = การ์ดในรูปสรุป */
+export function ReportTable({ rows, rangeKey, testId, compact = false }) {
+  const cell = compact ? "px-2 py-2" : "px-3 py-2";
   return (
-    <table className="w-full text-left text-sm" data-testid={testId}>
+    <table className={compact ? "w-full text-left text-xs" : "w-full text-left text-sm"} data-testid={testId}>
       <thead className="text-xs uppercase text-slate-400">
         <tr>
-          <th className="px-3 py-2 font-medium">{rangeKey === "today" ? "Time" : "Date / Time"}</th>
-          <th className="px-3 py-2 font-medium">Nickname</th>
-          <th className="px-3 py-2 font-medium">Name</th>
-          <th className="px-3 py-2 font-medium">Room</th>
-          <th className="px-3 py-2 font-medium">Code</th>
+          <th className={`${cell} font-medium`}>{rangeKey === "today" ? "Time" : "Date / Time"}</th>
+          <th className={`${cell} font-medium`}>Nickname</th>
+          <th className={`${cell} font-medium`}>Name</th>
+          <th className={`${cell} font-medium`}>Room</th>
+          <th className={`${cell} font-medium`}>Code</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-black/5">
         {rows.map((r, i) => (
           <tr key={`${r.code}-${r.redeemedAt}-${i}`}>
-            <td className="whitespace-nowrap px-3 py-2 tabular-nums">
+            <td className={`whitespace-nowrap ${cell} tabular-nums`}>
               {fmtRowTime(r.redeemedAt, rangeKey)}
             </td>
-            <td className="px-3 py-2">{r.nickname || "-"}</td>
-            <td className="px-3 py-2">{r.name || "-"}</td>
-            <td className="px-3 py-2">{r.room || "-"}</td>
-            <td className="whitespace-nowrap px-3 py-2 font-mono">{r.code}</td>
+            <td className={cell}>{r.nickname || "-"}</td>
+            <td className={cell}>{r.name || "-"}</td>
+            <td className={cell}>{r.room || "-"}</td>
+            <td className={`whitespace-nowrap ${cell} font-mono`}>{r.code}</td>
           </tr>
         ))}
       </tbody>
@@ -153,7 +155,7 @@ export default function ReportClient({ merchantKey, restaurant }) {
         ].join(" ")}
       >
         {shown && shown.total > 0 ? (
-          <ReportTable rows={shown.rows} rangeKey={rangeKey} testId="report-table" />
+          <ReportTable rows={shown.rows} rangeKey={rangeKey} testId="report-table" compact />
         ) : (
           <p className="px-4 py-8 text-center text-sm text-slate-400" data-testid="report-empty">
             {shown ? "No coupons redeemed in this period" : " "}

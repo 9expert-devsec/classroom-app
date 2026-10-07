@@ -12,8 +12,8 @@
  * @param {{ restaurantName: string, startYMD: string, endYMD: string, ext: "png"|"pdf" }} opts
  * @returns {string}
  */
-export function buildReportFilename({ restaurantName, startYMD, endYMD, ext }) {
-  let slug = String(restaurantName || "")
+export function slugifyRestaurantName(restaurantName) {
+  const slug = String(restaurantName || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "-")
@@ -22,7 +22,10 @@ export function buildReportFilename({ restaurantName, startYMD, endYMD, ext }) {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 
-  if (!slug) slug = "merchant";
+  return slug || "merchant";
+}
 
+export function buildReportFilename({ restaurantName, startYMD, endYMD, ext }) {
+  const slug = slugifyRestaurantName(restaurantName);
   return `9expert-report-${slug}-${startYMD}-to-${endYMD}.${ext}`;
 }
