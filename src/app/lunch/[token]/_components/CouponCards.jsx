@@ -44,11 +44,11 @@ function ECouponCard({ order, dateLabel, token }) {
         <div className="bg-[#2486ff] px-4 py-2.5 text-center text-[13px] font-bold tracking-[0.2em] text-white">
           E-COUPON
         </div>
-        <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-4 py-4 text-[13px]">
+        <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-4 py-4 text-base">
           {rows.map(([k, v]) => (
             <div key={k} className="contents">
-              <span className="text-slate-400">{k}</span>
-              <span className="break-words text-right font-medium text-[#0d1b2a]">
+              <span className="font-medium text-slate-600">{k}</span>
+              <span className="break-words text-right font-semibold text-[#0d1b2a]">
                 {v || "-"}
               </span>
             </div>
@@ -89,17 +89,27 @@ function CounterCard({ order }) {
       data-testid="counter-card"
       className="rounded-2xl bg-[#2486ff]/[0.08] p-4 ring-1 ring-[#2486ff]/20"
     >
-      <div className="flex gap-2.5">
-        <Ticket aria-hidden="true" className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#2486ff]" />
-        <p className="text-[14px] leading-relaxed text-[#0d1b2a]">
-          เมื่อถึงช่วงพักเบรค กรุณารับคูปองร้าน {order.restaurantName} กับเจ้าหน้าที่ที่ Counter
+      {/* คำแนะนำหลักของหน้า — ตัวใหญ่ เข้ม เต็มความกว้างการ์ด */}
+      <div
+        data-testid="counter-instruction"
+        className="flex gap-3 rounded-xl bg-white px-4 py-3.5 ring-2 ring-[#2486ff]/40"
+      >
+        <Ticket aria-hidden="true" className="mt-0.5 h-6 w-6 shrink-0 text-[#005cff]" />
+        <p className="min-w-0 text-base font-semibold leading-snug text-[#0d1b2a]">
+          เมื่อถึงช่วงพักเบรก กรุณารับคูปองร้าน{" "}
+          <span className="font-bold">{order.restaurantName}</span> กับเจ้าหน้าที่ที่ Counter
         </p>
       </div>
       <div className="mt-4 rounded-xl bg-white p-4 text-center shadow-sm">
-        <p className="text-[12px] text-slate-500">
-          ชื่อ: {order.holderName} · ชื่อเล่น: {order.nickname}
-        </p>
-        <p className="mt-2 text-[12px] text-slate-400">รหัสคูปองของท่าน</p>
+        <div data-testid="counter-name" className="text-base font-medium text-[#0d1b2a]">
+          <p>
+            ชื่อ: <span className="font-semibold">{order.holderName}</span>
+          </p>
+          <p className="mt-0.5">
+            ชื่อเล่น: <span className="font-semibold">{order.nickname}</span>
+          </p>
+        </div>
+        <p className="mt-3 text-base font-medium text-slate-600">รหัสคูปองของท่าน</p>
         <div className="mt-1">
           <CouponCode code={order.couponCode} />
         </div>
