@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 
@@ -13,6 +13,7 @@ import {
   enterRestaurant,
   switchRestaurant,
 } from "@/lib/lunchCart.client";
+import { clearMenuScrolls } from "@/lib/lunchScroll.client";
 import { LogoTile } from "./_components/Shell";
 import CountdownBanner from "./_components/CountdownBanner";
 import SwitchModal from "./_components/SwitchModal";
@@ -86,6 +87,11 @@ export default function ChooseRestaurantClient({
   finalLabel = "",
 }) {
   const router = useRouter();
+
+  // เข้าหน้าเมนูจากหน้านี้ต้องเริ่มบนสุด -> ทิ้งตำแหน่งเลื่อนที่ค้างไว้
+  useEffect(() => {
+    clearMenuScrolls(token);
+  }, [token]);
 
   // ตะกร้าใน storage แบบ external store: null = ยังไม่รู้ (server / hydration)
   const raw = useCartRaw(token);

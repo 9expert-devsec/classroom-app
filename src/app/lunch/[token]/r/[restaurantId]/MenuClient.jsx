@@ -16,6 +16,7 @@ import {
   enterRestaurant,
   clearCartLines,
 } from "@/lib/lunchCart.client";
+import { saveMenuScroll, takeMenuScroll, clearMenuScroll } from "@/lib/lunchScroll.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
 import SwitchModal, { Sheet, CartConflictBanner } from "../../_components/SwitchModal";
 import BudgetBar from "../../_components/BudgetBar";
@@ -275,6 +276,9 @@ export default function MenuClient({
     setSpacerH(Math.max(0, Math.ceil(need)));
   }, []);
 
+  // ตำแหน่งที่จะคืนตอนกลับจากหน้ารายละเอียด (อ่านครั้งเดียว — StrictMode รัน effect ซ้ำ)
+  const restoreTop = useRef(undefined);
+
   useEffect(() => {
     scrollerRef.current = scrollParentOf(stickyRef.current);
     measure();
@@ -282,7 +286,35 @@ export default function MenuClient({
     [scrollerRef.current, stickyRef.current, listRef.current].forEach(
       (el) => el && ro.observe(el),
     );
-    return () => ro.disconnect();
+
+    if (restoreTop.current === undefined) {
+      restoreTop.current = takeMenuScroll(token, restaurant.id);
+    }
+    // รอให้ช่องว่างท้ายหน้าถูกวัดก่อน ไม่งั้นตำแหน่งล่าง ๆ จะโดนตัด
+    let raf = 0;
+    let tries = 0;
+    function restore() {
+      raf = 0;
+      const scroller = scrollerRef.current;
+      const top = restoreTop.current;
+      if (!scroller || !top) return;
+      const max = scroller.scrollHeight - scroller.clientHeight;
+      if (max < top && tries++ < 30) {
+        raf = requestAnimationFrame(restore);
+        return;
+      }
+      restoreTop.current = 0;
+      jumping.current = false;
+      // กระโดดทันที ไม่ smooth -> spy เห็นแค่ตำแหน่งปลายทาง
+      scroller.scrollTop = top;
+    }
+    raf = requestAnimationFrame(restore);
+
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measure]);
 
   // แถบตะกร้าล่างโผล่/หาย เปลี่ยนความสูงที่เลื่อนได้
@@ -366,6 +398,8 @@ export default function MenuClient({
   const openOthers = others.filter((r) => r.state === "open");
 
   function goDetail(m) {
+    // กลับจากหน้ารายละเอียดแล้วอยู่ตำแหน่งเดิม
+    saveMenuScroll(token, restaurant.id, scrollerRef.current?.scrollTop);
     router.push(`/lunch/${token}/r/${restaurant.id}/m/${m.id}`);
   }
 
@@ -397,6 +431,7 @@ export default function MenuClient({
       setConflict(false);
       return;
     }
+    clearMenuScroll(token, target.id);
     router.push(`/lunch/${token}/r/${target.id}`);
   }
 
