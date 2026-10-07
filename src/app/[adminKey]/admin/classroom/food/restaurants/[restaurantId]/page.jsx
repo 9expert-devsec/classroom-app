@@ -63,6 +63,21 @@ function toggleId(list, id) {
   return list.includes(s) ? list.filter((x) => x !== s) : [...list, s];
 }
 
+// หน้ารายละเอียดเมนูบนมือถือแสดงรูปกว้างเต็มจอ (390px x DPR 3) — รูปแคบกว่านี้จะเบลอ
+const MIN_MENU_IMAGE_W = 800;
+
+/** ความกว้างจริงของไฟล์รูป (0 = อ่านไม่ได้ เช่น ฟอร์แมตที่เบราว์เซอร์ถอดไม่ได้) */
+async function imageWidthOf(file) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const w = bmp.width;
+    bmp.close?.();
+    return w;
+  } catch {
+    return 0;
+  }
+}
+
 function toIdString(x) {
   if (!x) return "";
   if (typeof x === "string") return String(x);
@@ -123,6 +138,8 @@ export default function RestaurantDetailPage({ params }) {
   const [editingMenuId, setEditingMenuId] = useState(null);
   const [menuName, setMenuName] = useState("");
   const [menuImageUrl, setMenuImageUrl] = useState("");
+  // ความกว้างจริงของไฟล์ที่เพิ่งเลือก ถ้าเล็กกว่า MIN_MENU_IMAGE_W (0 = ไม่ต้องเตือน)
+  const [menuImageSmallW, setMenuImageSmallW] = useState(0);
   const [savingMenu, setSavingMenu] = useState(false);
 
   // ✅ new: ids (ผูกจริง)
@@ -184,6 +201,9 @@ export default function RestaurantDetailPage({ params }) {
   async function handleUploadMenuImage(e) {
     const file = e.target.files?.[0];
     if (!file) return;
+    // รูปเล็กแค่เตือน ไม่บล็อกการอัพโหลด (หน้าเมนูมือถือแสดงกว้างเต็มจอ)
+    const w = await imageWidthOf(file);
+    setMenuImageSmallW(w > 0 && w < MIN_MENU_IMAGE_W ? w : 0);
     setUploadingMenuImage(true);
     try {
       const out = await uploadImage(file);
@@ -461,6 +481,7 @@ export default function RestaurantDetailPage({ params }) {
     setEditingMenuId(null);
     setMenuName("");
     setMenuImageUrl("");
+    setMenuImageSmallW(0);
 
     setMenuAddonIds([]);
     setMenuDrinkIds([]);
@@ -482,6 +503,7 @@ export default function RestaurantDetailPage({ params }) {
     setEditingMenuId(String(m._id));
     setMenuName(m.name || "");
     setMenuImageUrl(m.imageUrl || "");
+    setMenuImageSmallW(0);
 
     setMenuAddonIds(uniq((m.addonIds || []).map(toIdString)));
     setMenuDrinkIds(uniq((m.drinkIds || []).map(toIdString)));
@@ -1477,7 +1499,10 @@ export default function RestaurantDetailPage({ params }) {
             <span className="text-admin-text">รูปเมนู (URL รูป)</span>
             <TextInput
               value={menuImageUrl}
-              onChange={(e) => setMenuImageUrl(e.target.value)}
+              onChange={(e) => {
+                setMenuImageUrl(e.target.value);
+                setMenuImageSmallW(0);
+              }}
               placeholder="วางลิงก์รูป หรือกดอัพโหลดด้านล่าง"
             />
           </label>
@@ -1497,6 +1522,16 @@ export default function RestaurantDetailPage({ params }) {
               {uploadingMenuImage ? "กำลังอัพโหลด..." : "อัพโหลดรูปจากเครื่อง"}
             </label>
           </div>
+
+          {menuImageSmallW ? (
+            <p
+              data-testid="menu-image-small-warning"
+              className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700"
+            >
+              ภาพมีขนาดเล็ก อาจไม่คมชัดบนมือถือ แนะนำความกว้างอย่างน้อย {MIN_MENU_IMAGE_W}px
+              (ภาพนี้กว้าง {menuImageSmallW}px)
+            </p>
+          ) : null}
 
           {menuImageUrl && (
             <div className="mt-1 inline-flex items-center gap-3 rounded-xl bg-admin-surfaceMuted px-3 py-2">
