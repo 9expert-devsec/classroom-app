@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, ImageOff } from "lucide-react";
 
@@ -17,6 +17,7 @@ import {
   MIN_QTY,
   MAX_QTY,
 } from "@/lib/lunchCart.client";
+import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
 import { StickyBottom } from "../../../../_components/Shell";
 import BudgetBar from "../../../../_components/BudgetBar";
 import CountdownBanner from "../../../../_components/CountdownBanner";
@@ -82,6 +83,101 @@ function ChoiceRow({ group, choice, on, onToggle }) {
         <span className="text-[13px] text-slate-500">+{choice.priceDelta}฿</span>
       ) : null}
     </label>
+  );
+}
+
+/* ---------------- hero ---------------- */
+
+/**
+ * รูปเมนูกรอบ 4:3 เต็มความกว้าง
+ *   รูปกว้าง >= MIN_MENU_IMAGE_W -> เต็มกรอบ (object-cover)
+ *   รูปเล็กกว่านั้น -> พื้นหลังเป็นรูปเดียวกันเบลอ + รูปจริงตรงกลางไม่ขยายเกินขนาดจริง
+ * ตัดสินจาก naturalWidth ตอนโหลดเสร็จ ระหว่างนั้นกรอบคงขนาดไว้ แล้วค่อย fade รูปเข้า
+ */
+function MenuHero({ src, alt }) {
+  const imgRef = useRef(null);
+  // loading | normal | small | error
+  const [mode, setMode] = useState("loading");
+  const [nat, setNat] = useState({ w: 0, h: 0 });
+
+  function decide(img) {
+    if (!img.naturalWidth) {
+      setMode("error");
+      return;
+    }
+    setNat({ w: img.naturalWidth, h: img.naturalHeight });
+    setMode(img.naturalWidth < MIN_MENU_IMAGE_W ? "small" : "normal");
+  }
+
+  useEffect(() => {
+    setMode("loading");
+    // โหลดเสร็จก่อน hydrate -> onLoad ไม่ยิง ต้องเช็กเอง
+    const img = imgRef.current;
+    if (img?.complete) decide(img);
+  }, [src]);
+
+  if (!src || mode === "error") {
+    return (
+      <div
+        data-testid="menu-hero"
+        data-mode="fallback"
+        className="flex aspect-[4/3] w-full items-center justify-center bg-slate-100 text-slate-300"
+      >
+        <ImageOff className="h-10 w-10" />
+      </div>
+    );
+  }
+
+  const small = mode === "small";
+
+  return (
+    <div
+      data-testid="menu-hero"
+      data-mode={mode}
+      className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100"
+    >
+      <div
+        className={[
+          "absolute inset-0 transition-opacity duration-300",
+          mode === "loading" ? "opacity-0" : "opacity-100",
+        ].join(" ")}
+      >
+        {small ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+            />
+            <div className="absolute inset-0 bg-white/30" />
+          </>
+        ) : null}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={imgRef}
+          src={src}
+          alt={alt}
+          data-testid="menu-hero-img"
+          onLoad={(e) => decide(e.currentTarget)}
+          onError={() => setMode("error")}
+          className={
+            small
+              ? "absolute inset-0 m-auto rounded-2xl object-contain shadow-sm"
+              : "absolute inset-0 h-full w-full object-cover"
+          }
+          style={
+            small
+              ? {
+                  maxWidth: `min(${nat.w}px, calc(100% - 2rem))`,
+                  maxHeight: `min(${nat.h}px, calc(100% - 2rem))`,
+                }
+              : undefined
+          }
+        />
+      </div>
+    </div>
   );
 }
 
@@ -199,23 +295,12 @@ export default function MenuDetailClient({
 
       <div className="flex-1 pb-6">
         <div className="relative">
-          {menu.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={menu.image}
-              alt={menu.name}
-              className="h-56 w-full bg-slate-100 object-cover"
-            />
-          ) : (
-            <div className="flex h-56 w-full items-center justify-center bg-slate-100 text-slate-300">
-              <ImageOff className="h-10 w-10" />
-            </div>
-          )}
+          <MenuHero src={menu.image} alt={menu.name} />
           <button
             type="button"
             onClick={() => router.replace(backHref)}
             aria-label="ย้อนกลับ"
-            className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[#0d1b2a] shadow-sm backdrop-blur"
+            className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[#0d1b2a] shadow-sm backdrop-blur"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>

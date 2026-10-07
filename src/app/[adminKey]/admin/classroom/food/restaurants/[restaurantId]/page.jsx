@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import TextInput from "@/components/ui/TextInput";
+import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsCard from "./_components/CouponSettingsCard";
@@ -62,9 +63,6 @@ function toggleId(list, id) {
   const s = String(id);
   return list.includes(s) ? list.filter((x) => x !== s) : [...list, s];
 }
-
-// หน้ารายละเอียดเมนูบนมือถือแสดงรูปกว้างเต็มจอ (390px x DPR 3) — รูปแคบกว่านี้จะเบลอ
-const MIN_MENU_IMAGE_W = 800;
 
 /** ความกว้างจริงของไฟล์รูป (0 = อ่านไม่ได้ เช่น ฟอร์แมตที่เบราว์เซอร์ถอดไม่ได้) */
 async function imageWidthOf(file) {
