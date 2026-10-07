@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, ArrowLeftRight, ImageOff } from "lucide-react";
 
@@ -121,6 +121,48 @@ function PickShopSheet({ others, onPick, onCancel }) {
   );
 }
 
+/* ---------------- sections ---------------- */
+
+const OTHER_ID = "__other";
+
+/**
+ * ทุกหมวดเรียงตามลำดับที่แอดมินตั้ง แต่ละหมวดเป็น section ของตัวเอง
+ * เมนูที่อยู่หลายหมวดโผล่ทุก section ที่มันสังกัด / หมวดที่ไม่มีเมนูไม่แสดง
+ * เมนูที่ไม่มีหมวด -> section "อื่นๆ" ท้ายสุด
+ * ร้านที่ไม่มีหมวดเลย -> section เดียวไม่มีหัว (เหมือนเดิมที่ไม่มีแถบหมวด)
+ */
+function buildSections(categories, menus) {
+  const sections = categories
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      items: menus.filter((m) => (m.categoryIds || []).includes(c.id)),
+    }))
+    .filter((s) => s.items.length > 0);
+
+  const catIds = new Set(categories.map((c) => c.id));
+  const orphans = menus.filter(
+    (m) => !(m.categoryIds || []).some((id) => catIds.has(id)),
+  );
+  if (orphans.length > 0) {
+    sections.push({
+      id: OTHER_ID,
+      name: sections.length > 0 ? "อื่นๆ" : "",
+      items: orphans,
+    });
+  }
+  return sections;
+}
+
+/** กล่องที่เลื่อนจริง (layout ของ lunch เป็น h-dvh overflow-y-auto ไม่ใช่ window) */
+function scrollParentOf(el) {
+  for (let p = el?.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if (oy === "auto" || oy === "scroll") return p;
+  }
+  return document.scrollingElement;
+}
+
 /* ---------------- page ---------------- */
 
 export default function MenuClient({
@@ -182,11 +224,144 @@ export default function MenuClient({
     [cart, menus],
   );
 
-  const shown = useMemo(() => {
-    if (!activeCat) return menus;
-    // เมนูหนึ่งตัวโผล่ได้ทุกหมวดที่มันสังกัด
-    return menus.filter((m) => (m.categoryIds || []).includes(activeCat));
-  }, [menus, activeCat]);
+  const sections = useMemo(() => buildSections(categories, menus), [categories, menus]);
+  const showPills = sections.some((s) => s.name);
+
+  /* ---- scroll-spy ---- */
+
+  const stickyRef = useRef(null);
+  const pillRowRef = useRef(null);
+  const listRef = useRef(null);
+  const spacerRef = useRef(null);
+  const scrollerRef = useRef(null);
+  const sectionEls = useRef({});
+  const pillEls = useRef({});
+  // ระหว่างเลื่อนเพราะกดหมวด -> ไม่ให้ spy เปลี่ยนหมวดตามทางที่เลื่อนผ่าน
+  const jumping = useRef(false);
+  const jumpTimer = useRef(null);
+
+  // ความสูงของกองแถบบนที่ sticky (แถบร้าน + แถบเตือน + งบ + หมวด) วัดจริง ไม่เดา
+  const [stickyH, setStickyH] = useState(0);
+  const [spacerH, setSpacerH] = useState(0);
+
+  // หมวดที่ไม่อยู่แล้ว (เมนูเปลี่ยน) -> กลับไปหมวดแรก
+  useEffect(() => {
+    if (!sections.some((s) => s.id === activeCat)) setActiveCat(sections[0]?.id || "");
+  }, [sections, activeCat]);
+
+  // ช่องว่างท้ายหน้า: ให้ section สุดท้ายเลื่อนขึ้นไปชนแถบหมวดได้ (หมวดสุดท้ายจึง active ได้)
+  const measure = useCallback(() => {
+    const scroller = scrollerRef.current;
+    const sticky = stickyRef.current;
+    const list = listRef.current;
+    const spacer = spacerRef.current;
+    if (!scroller || !sticky || !list || !spacer) return;
+
+    const h = sticky.offsetHeight;
+    setStickyH(h);
+
+    const last = list.lastElementChild;
+    if (!last) {
+      setSpacerH(0);
+      return;
+    }
+    const top0 = scroller.getBoundingClientRect().top - scroller.scrollTop;
+    const lastTop = last.getBoundingClientRect().top - top0;
+    const spacerTop = spacer.getBoundingClientRect().top - top0;
+    const wrapperBottom = spacer.parentElement.getBoundingClientRect().bottom - top0;
+    // ของที่อยู่ต่อจากเนื้อหา (แถบตะกร้าล่าง ฯลฯ) ก็นับเป็นที่เลื่อนได้
+    const after = scroller.scrollHeight - wrapperBottom;
+    const need = scroller.clientHeight - h - (spacerTop - lastTop) - after;
+    setSpacerH(Math.max(0, Math.ceil(need)));
+  }, []);
+
+  useEffect(() => {
+    scrollerRef.current = scrollParentOf(stickyRef.current);
+    measure();
+    const ro = new ResizeObserver(() => measure());
+    [scrollerRef.current, stickyRef.current, listRef.current].forEach(
+      (el) => el && ro.observe(el),
+    );
+    return () => ro.disconnect();
+  }, [measure]);
+
+  // แถบตะกร้าล่างโผล่/หาย เปลี่ยนความสูงที่เลื่อนได้
+  useEffect(() => {
+    measure();
+  }, [measure, count, conflict, removedNotice]);
+
+  // เลื่อนอยู่ -> หมวดของ section ที่อยู่บนสุด (ใต้แถบ sticky) เป็นหมวด active
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !showPills) return;
+    let raf = 0;
+
+    function spy() {
+      raf = 0;
+      const line = stickyRef.current.getBoundingClientRect().bottom + 8;
+      let current = sections[0]?.id;
+      for (const s of sections) {
+        const el = sectionEls.current[s.id];
+        if (el && el.getBoundingClientRect().top <= line) current = s.id;
+      }
+      if (current) setActiveCat(current);
+    }
+
+    function onScroll() {
+      if (jumping.current) {
+        // ยังเลื่อนอยู่ -> ต่อเวลา, หยุดนิ่ง 150ms ถือว่าจบ
+        clearTimeout(jumpTimer.current);
+        jumpTimer.current = setTimeout(() => (jumping.current = false), 150);
+        return;
+      }
+      if (!raf) raf = requestAnimationFrame(spy);
+    }
+
+    // ผู้ใช้แตะ/หมุนล้อเอง -> เลิกโหมดกดหมวดทันที
+    function onUser() {
+      jumping.current = false;
+    }
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("touchstart", onUser, { passive: true });
+    scroller.addEventListener("wheel", onUser, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("touchstart", onUser);
+      scroller.removeEventListener("wheel", onUser);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [sections, showPills]);
+
+  useEffect(() => () => clearTimeout(jumpTimer.current), []);
+
+  // หมวด active เปลี่ยน -> เลื่อนแถบหมวดแนวนอนให้เห็นปุ่มนั้น (กลางแถบ)
+  useEffect(() => {
+    const row = pillRowRef.current;
+    const pill = pillEls.current[activeCat];
+    if (!row || !pill) return;
+    const r = row.getBoundingClientRect();
+    const p = pill.getBoundingClientRect();
+    const delta = p.left - r.left - (r.width - p.width) / 2;
+    if (Math.abs(delta) > 1) row.scrollBy({ left: delta, behavior: "smooth" });
+  }, [activeCat]);
+
+  function jumpTo(id) {
+    const scroller = scrollerRef.current;
+    const el = sectionEls.current[id];
+    setActiveCat(id);
+    if (!scroller || !el) return;
+    jumping.current = true;
+    clearTimeout(jumpTimer.current);
+    // เผื่อไม่มี scroll event เลย (อยู่ตำแหน่งนั้นอยู่แล้ว)
+    jumpTimer.current = setTimeout(() => (jumping.current = false), 150);
+    const top =
+      el.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top +
+      scroller.scrollTop -
+      stickyRef.current.offsetHeight;
+    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+  }
 
   const openOthers = others.filter((r) => r.state === "open");
 
@@ -264,7 +439,7 @@ export default function MenuClient({
 
   return (
     <>
-      <div className="sticky top-0 z-10">
+      <div ref={stickyRef} className="sticky top-0 z-10">
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -319,47 +494,73 @@ export default function MenuClient({
 
         <BudgetBar budget={budget} selected={total} />
 
-        {categories.length > 0 ? (
-          <div className="flex gap-2 overflow-x-auto border-b border-black/5 bg-[#f8fafd] px-4 py-2.5">
-            {categories.map((c) => (
+        {showPills ? (
+          <div
+            ref={pillRowRef}
+            data-testid="category-pills"
+            className="flex gap-2 overflow-x-auto border-b border-black/5 bg-[#f8fafd] px-4 py-2.5"
+          >
+            {sections.map((s) => (
               <button
-                key={c.id}
+                key={s.id}
+                ref={(el) => (pillEls.current[s.id] = el)}
                 type="button"
-                onClick={() => setActiveCat(c.id)}
+                onClick={() => jumpTo(s.id)}
+                aria-current={activeCat === s.id ? "true" : undefined}
                 className={[
                   "h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition",
-                  activeCat === c.id
+                  activeCat === s.id
                     ? "bg-[#2486ff] text-white shadow-sm"
                     : "bg-white text-slate-500 ring-1 ring-black/5",
                 ].join(" ")}
               >
-                {c.name}
+                {s.name}
               </button>
             ))}
           </div>
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2.5 px-4 py-4 pb-6">
+      <div className="flex flex-1 flex-col px-4 pb-6 pt-1">
         {removedNotice > 0 ? (
-          <p className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
+          <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
             มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
           </p>
         ) : null}
 
-        {shown.map((m) => (
-          <MenuRow
-            key={m.id}
-            m={m}
-            locked={conflict}
-            onAdd={quickAdd}
-            onOpen={goDetail}
-          />
-        ))}
+        <div ref={listRef} className="flex flex-col gap-2">
+          {sections.map((s) => (
+            <section
+              key={s.id}
+              ref={(el) => (sectionEls.current[s.id] = el)}
+              data-testid="menu-section"
+              aria-label={s.name || undefined}
+              className="pt-3"
+              style={{ scrollMarginTop: stickyH }}
+            >
+              {s.name ? (
+                <h2 className="mb-2.5 text-[16px] font-semibold text-[#0d1b2a]">
+                  {s.name}
+                </h2>
+              ) : null}
+              <div className="flex flex-col gap-2.5">
+                {s.items.map((m) => (
+                  <MenuRow
+                    key={`${s.id}-${m.id}`}
+                    m={m}
+                    locked={conflict}
+                    onAdd={quickAdd}
+                    onOpen={goDetail}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
 
-        {shown.length === 0 ? (
+        {sections.length === 0 ? (
           <p className="py-6 text-center text-[13px] text-slate-400">
-            ยังไม่มีเมนูในหมวดนี้
+            ยังไม่มีเมนู
           </p>
         ) : null}
 
@@ -369,10 +570,13 @@ export default function MenuClient({
             setSubmitError("");
             setNoOrderOpen(true);
           }}
-          className="mt-3 h-11 w-full rounded-xl border border-[#2486ff]/40 bg-white text-[14px] font-medium text-[#005cff] transition active:scale-[0.99]"
+          className="mt-6 h-11 w-full shrink-0 rounded-xl border border-[#2486ff]/40 bg-white text-[14px] font-medium text-[#005cff] transition active:scale-[0.99]"
         >
           ไม่เลือกอาหารตอนนี้ (ไปสั่งที่ร้านเอง)
         </button>
+
+        {/* ที่ว่างท้ายหน้าให้ section สุดท้ายเลื่อนขึ้นถึงแถบหมวด */}
+        <div ref={spacerRef} aria-hidden="true" className="shrink-0" style={{ height: spacerH }} />
       </div>
 
       {count > 0 && !conflict ? (
