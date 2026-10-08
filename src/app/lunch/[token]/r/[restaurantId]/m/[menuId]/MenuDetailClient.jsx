@@ -17,7 +17,7 @@ import {
   MIN_QTY,
   MAX_QTY,
 } from "@/lib/lunchCart.client";
-import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
+import { menuHeroSrc } from "@/lib/menuImage";
 import { StickyBottom } from "../../../../_components/Shell";
 import BudgetBar from "../../../../_components/BudgetBar";
 import CountdownBanner from "../../../../_components/CountdownBanner";
@@ -89,34 +89,48 @@ function ChoiceRow({ group, choice, on, onToggle }) {
 /* ---------------- hero ---------------- */
 
 /**
- * รูปเมนูกรอบ 4:3 เต็มความกว้าง
- *   รูปกว้าง >= MIN_MENU_IMAGE_W -> เต็มกรอบ (object-cover)
- *   รูปเล็กกว่านั้น -> พื้นหลังเป็นรูปเดียวกันเบลอ + รูปจริงตรงกลางไม่ขยายเกินขนาดจริง
- * ตัดสินจาก naturalWidth ตอนโหลดเสร็จ ระหว่างนั้นกรอบคงขนาดไว้ แล้วค่อย fade รูปเข้า
+ * รูปเมนูกรอบ 4:3 เต็มความกว้าง (รูปเดียว ไม่มีพื้นหลังเบลอ)
+ *   1) รูปเมนูบน Cloudinary -> URL ที่ผ่าน AI upscale + c_fill 4:3 (menuHeroSrc) แสดงเต็มกรอบ
+ *   2) โหลดไม่ได้ / ไม่ใช่รูป Cloudinary -> รูปต้นฉบับขนาดจริงตรงกลาง บนพื้นเรียบ (ไม่เกินกรอบ)
+ *   3) ต้นฉบับก็โหลดไม่ได้ -> ImageOff
+ * ระหว่างโหลดกรอบคงขนาดไว้ (bg-slate-100) แล้วค่อย fade รูปเข้า
  */
 function MenuHero({ src, alt }) {
+  const upscaled = useMemo(() => menuHeroSrc(src), [src]);
   const imgRef = useRef(null);
-  // loading | normal | small | error
-  const [mode, setMode] = useState("loading");
-  const [nat, setNat] = useState({ w: 0, h: 0 });
+  // stage: upscaled | original | error ; loaded: รูปของ stage ปัจจุบันโหลดเสร็จแล้ว
+  const [stage, setStage] = useState(upscaled ? "upscaled" : "original");
+  const [loaded, setLoaded] = useState(false);
 
-  function decide(img) {
+  function fail() {
+    setLoaded(false);
+    setStage((s) => (s === "upscaled" ? "original" : "error"));
+  }
+
+  function done(img) {
     if (!img.naturalWidth) {
-      setMode("error");
+      fail();
       return;
     }
-    setNat({ w: img.naturalWidth, h: img.naturalHeight });
-    setMode(img.naturalWidth < MIN_MENU_IMAGE_W ? "small" : "normal");
+    setLoaded(true);
   }
 
   useEffect(() => {
-    setMode("loading");
+    setStage(upscaled ? "upscaled" : "original");
+    setLoaded(false);
+  }, [upscaled, src]);
+
+  useEffect(() => {
     // โหลดเสร็จก่อน hydrate -> onLoad ไม่ยิง ต้องเช็กเอง
     const img = imgRef.current;
-    if (img?.complete) decide(img);
-  }, [src]);
+    if (img?.complete) {
+      if (img.naturalWidth) done(img);
+      else fail();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
-  if (!src || mode === "error") {
+  if (!src || stage === "error") {
     return (
       <div
         data-testid="menu-hero"
@@ -128,55 +142,39 @@ function MenuHero({ src, alt }) {
     );
   }
 
-  const small = mode === "small";
+  const isUpscaled = stage === "upscaled";
 
   return (
     <div
       data-testid="menu-hero"
-      data-mode={mode}
+      data-mode={loaded ? stage : "loading"}
       className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100"
     >
-      <div
-        className={[
-          "absolute inset-0 transition-opacity duration-300",
-          mode === "loading" ? "opacity-0" : "opacity-100",
-        ].join(" ")}
-      >
-        {small ? (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
-            />
-            <div className="absolute inset-0 bg-white/30" />
-          </>
-        ) : null}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          ref={imgRef}
-          src={src}
-          alt={alt}
-          data-testid="menu-hero-img"
-          onLoad={(e) => decide(e.currentTarget)}
-          onError={() => setMode("error")}
-          className={
-            small
-              ? "absolute inset-0 m-auto rounded-2xl object-contain shadow-sm"
-              : "absolute inset-0 h-full w-full object-cover"
-          }
-          style={
-            small
-              ? {
-                  maxWidth: `min(${nat.w}px, calc(100% - 2rem))`,
-                  maxHeight: `min(${nat.h}px, calc(100% - 2rem))`,
-                }
-              : undefined
-          }
-        />
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        key={stage}
+        ref={imgRef}
+        src={isUpscaled ? upscaled : src}
+        alt={alt}
+        data-testid="menu-hero-img"
+        onLoad={(e) => done(e.currentTarget)}
+        onError={fail}
+        className={
+          isUpscaled
+            ? loaded
+              ? "absolute inset-0 h-full w-full object-cover opacity-100 transition-opacity duration-300"
+              : "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300"
+            : loaded
+              ? "absolute inset-0 m-auto rounded-2xl object-contain opacity-100 shadow-sm transition-opacity duration-300"
+              : "absolute inset-0 m-auto rounded-2xl object-contain opacity-0 shadow-sm transition-opacity duration-300"
+        }
+        // ต้นฉบับ: ขนาดจริง (img absolute ไม่กำหนด w/h) แต่ไม่เกินกรอบ
+        style={
+          isUpscaled
+            ? undefined
+            : { maxWidth: "calc(100% - 2rem)", maxHeight: "calc(100% - 2rem)" }
+        }
+      />
     </div>
   );
 }
