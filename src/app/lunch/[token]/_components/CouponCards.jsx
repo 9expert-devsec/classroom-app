@@ -103,7 +103,13 @@ function CounterCard({ order }) {
           <span className="font-bold">{order.restaurantName}</span> กับเจ้าหน้าที่ที่ Counter
         </p>
       </div>
+      {/* รหัสก่อน แล้วค่อยชื่อ (เหมือนการ์ด e-coupon: QR/รหัส -> รายละเอียด) */}
       <div className="mt-4 rounded-xl bg-white p-4 text-center shadow-sm">
+        <p className="text-base font-medium text-slate-600">รหัสคูปองของท่าน</p>
+        <div className="mt-1">
+          <CouponCode code={order.couponCode} />
+        </div>
+        <div className="my-3 border-t border-black/10" />
         <div data-testid="counter-name" className="text-base font-medium text-[#0d1b2a]">
           <p>
             ชื่อ: <span className="font-semibold">{order.holderName}</span>
@@ -111,10 +117,6 @@ function CounterCard({ order }) {
           <p className="mt-0.5">
             ชื่อเล่น: <span className="font-semibold">{order.nickname}</span>
           </p>
-        </div>
-        <p className="mt-3 text-base font-medium text-slate-600">รหัสคูปองของท่าน</p>
-        <div className="mt-1">
-          <CouponCode code={order.couponCode} />
         </div>
       </div>
     </div>
