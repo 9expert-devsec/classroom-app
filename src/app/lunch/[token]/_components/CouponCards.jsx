@@ -8,6 +8,7 @@
 // ข้อมูลทั้งหมดมาจาก session.order — ไม่มีชื่อสำรอง
 //
 // C2: ECouponCard มี QR ของ "รหัสเปล่า ๆ" (ไม่ใช่ token/URL) + poll สถานะ
+//     ลำดับ: หัว E-COUPON -> QR + รหัส + อัปเดตล่าสุด -> เส้นปรุ -> รายละเอียดผู้เรียน
 //     ร้านกดใช้แล้ว -> QR จาง + ตราประทับ "ใช้แล้ว" + บรรทัด "ใช้แล้ว เวลา hh:mm"
 import { Ticket } from "lucide-react";
 import CouponCode from "./CouponCode";
@@ -37,24 +38,10 @@ function ECouponCard({ order, dateLabel, token }) {
   ];
   return (
     <div className="relative" data-testid="ecoupon-card">
-      {/* รอยปรุ */}
-      <span className="absolute -left-2.5 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-full bg-[#f8fafd]" />
-      <span className="absolute -right-2.5 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-full bg-[#f8fafd]" />
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-        <div className="bg-[#2486ff] px-4 py-2.5 text-center text-[13px] font-bold tracking-[0.2em] text-white">
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+        <div className="rounded-t-2xl bg-[#2486ff] px-4 py-2.5 text-center text-[13px] font-bold tracking-[0.2em] text-white">
           E-COUPON
         </div>
-        <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-4 py-4 text-base">
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <span className="font-medium text-slate-600">{k}</span>
-              <span className="break-words text-right font-semibold text-[#0d1b2a]">
-                {v || "-"}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="border-t-2 border-dashed border-black/10" />
         <div className="flex flex-col items-center gap-2 px-4 py-4">
           {/* QR = รหัสเปล่า ๆ เท่านั้น ร้านสแกนแล้วได้ 9XP-XXXX เหมือนพิมพ์เอง */}
           <LunchQrCode
@@ -77,6 +64,22 @@ function ECouponCard({ order, dateLabel, token }) {
               อัปเดตล่าสุด {hmBkk(live.lastUpdated, true)}
             </p>
           ) : null}
+        </div>
+        {/* เส้นปรุ + รอยปรุสองข้าง (อยู่ที่เส้นแบ่งระหว่าง QR กับรายละเอียด) */}
+        <div className="relative">
+          <span className="absolute -left-2.5 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-full bg-[#f8fafd]" />
+          <span className="absolute -right-2.5 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded-full bg-[#f8fafd]" />
+          <div className="border-t-2 border-dashed border-black/10" />
+        </div>
+        <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 px-4 py-4 text-base">
+          {rows.map(([k, v]) => (
+            <div key={k} className="contents">
+              <span className="font-medium text-slate-600">{k}</span>
+              <span className="break-words text-right font-semibold text-[#0d1b2a]">
+                {v || "-"}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
