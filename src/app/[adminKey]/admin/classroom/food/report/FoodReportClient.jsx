@@ -3,6 +3,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  buildOrderSheetHtml,
+  orderSheetStorageKey,
+  isHHMM,
+} from "./orderSheetHtml";
+
 const TD = "border border-admin-border px-1.5 py-1 align-top"; // ลด padding
 const TH = "border border-admin-border px-1.5 py-1 align-top";
 const TRUNC = "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap";
@@ -375,6 +381,12 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
   const [editNote, setEditNote] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // C5d: ใบสั่งร้าน
+  const [openSheet, setOpenSheet] = useState(false);
+  const [sheetShopId, setSheetShopId] = useState("all");
+  const [sheetAfter, setSheetAfter] = useState("");
+  const [sheetDefault, setSheetDefault] = useState("");
+
   async function load() {
     setLoading(true);
     try {
@@ -646,9 +658,30 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     );
   }
 
-  function handlePrintRows(rows) {
+  // เปิดหน้าต่างพิมพ์ (ใช้ร่วมกันทั้ง per-class print และใบสั่งร้าน)
+  function openAndPrint(html) {
     const w = window.open("", "_blank");
-    if (!w) return;
+    if (!w) return false;
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    const doPrint = () => {
+      try {
+        w.focus();
+        w.print();
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    w.onload = () => setTimeout(doPrint, 80);
+    setTimeout(doPrint, 500);
+    return true;
+  }
+
+  function handlePrintRows(rows) {
 
     // group by class for print
     const map = new Map();
@@ -996,21 +1029,66 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       </html>
     `;
 
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+    openAndPrint(html);
+  }
 
-    const doPrint = () => {
-      try {
-        w.focus();
-        w.print();
-      } catch (e) {
-        console.error(e);
-      }
-    };
+  /* ---------------- C5d: ใบสั่งร้าน (coupon orders ต่อร้าน) ---------------- */
+  function readLastPrinted(shopId) {
+    try {
+      const v = window.localStorage.getItem(orderSheetStorageKey(date, shopId)) || "";
+      return isHHMM(v) ? v : "";
+    } catch {
+      return ""; // storage ใช้ไม่ได้ก็ไม่เป็นไร
+    }
+  }
 
-    w.onload = () => setTimeout(doPrint, 80);
-    setTimeout(doPrint, 500);
+  function openOrderSheetDialog() {
+    if (!shopCards.length) return alert("วันนี้ยังไม่มีออร์เดอร์คูปองของร้านใด");
+    const def = readLastPrinted("all");
+    setSheetShopId("all");
+    setSheetAfter(def);
+    setSheetDefault(def);
+    setOpenSheet(true);
+  }
+
+  function changeSheetShop(shopId) {
+    const def = readLastPrinted(shopId);
+    setSheetShopId(shopId);
+    setSheetAfter(def);
+    setSheetDefault(def);
+  }
+
+  function printOrderSheet() {
+    const after = String(sheetAfter || "").trim();
+    if (after && !isHHMM(after)) return alert("รูปแบบเวลาไม่ถูกต้อง (HH:mm)");
+
+    const printedAt = new Date();
+    const { html, printedShopIds } = buildOrderSheetHtml({
+      rows: orders, // ทั้งวัน ไม่ขึ้นกับ filter ของตาราง
+      shops: shopCards,
+      dateYMD: date,
+      shopId: sheetShopId,
+      afterHHMM: after,
+      printedAt,
+      origin: window.location.origin,
+    });
+
+    if (!openAndPrint(html)) return alert("เปิดหน้าต่างพิมพ์ไม่ได้ (ตรวจสอบ pop-up blocker)");
+
+    // จำเวลาที่พิมพ์ (ต่อวัน + ร้าน) เป็นค่าเริ่มต้นของ "เฉพาะออร์เดอร์หลังเวลา" ครั้งถัดไป
+    const hhmm = printedAt.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Bangkok",
+    });
+    const keys = sheetShopId === "all" ? ["all", ...printedShopIds] : [sheetShopId];
+    try {
+      keys.forEach((k) => window.localStorage.setItem(orderSheetStorageKey(date, k), hhmm));
+    } catch {
+      // ignore
+    }
+    setOpenSheet(false);
   }
 
   function handlePrintAll() {
@@ -1690,6 +1768,19 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               >
                 Print เฉพาะที่เลือก
               </button>
+
+              <button
+                type="button"
+                onClick={openOrderSheetDialog}
+                className={cx(
+                  "rounded-full border px-4 py-1.5 text-xs font-medium",
+                  shopCards.length
+                    ? "border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100"
+                    : "border-admin-border text-admin-textMuted",
+                )}
+              >
+                พิมพ์ใบสั่งร้าน
+              </button>
             </div>
           </div>
         </div>
@@ -1956,6 +2047,76 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           </div>
         </div>
       </div>
+
+      {/* ===== C5d: ใบสั่งร้าน ===== */}
+      <Modal
+        open={openSheet}
+        title={`พิมพ์ใบสั่งร้าน • ${formatDateEN(date)}`}
+        onClose={() => setOpenSheet(false)}
+      >
+        <div className="space-y-4">
+          <div>
+            <div className="text-[11px] text-admin-textMuted">ร้าน</div>
+            <select
+              className="mt-1 w-full rounded-lg border border-admin-border bg-white px-2 py-2 text-sm"
+              value={sheetShopId}
+              onChange={(e) => changeSheetShop(e.target.value)}
+            >
+              <option value="all">ทุกร้านที่มีออร์เดอร์ ({shopCards.length})</option>
+              {shopCards.map((shop) => (
+                <option key={shop.id} value={shop.id}>
+                  {shop.name || "-"}
+                  {shop.source === "stock" ? " (Stock)" : " (E-coupon)"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="text-[11px] text-admin-textMuted">
+              เฉพาะออร์เดอร์หลังเวลา (ว่าง = ทั้งหมด)
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="time"
+                className="rounded-lg border border-admin-border bg-white px-2 py-2 text-sm"
+                value={sheetAfter}
+                onChange={(e) => setSheetAfter(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setSheetAfter("")}
+                disabled={!sheetAfter}
+                className="rounded-full border border-admin-border px-3 py-1 text-[11px] hover:bg-admin-surfaceMuted disabled:opacity-40"
+              >
+                ล้าง (พิมพ์ทั้งหมด)
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-admin-textMuted">
+              {sheetDefault
+                ? `ค่าเริ่มต้น = เวลาที่พิมพ์ครั้งล่าสุดในเครื่องนี้ (${sheetDefault} น.)`
+                : "ยังไม่เคยพิมพ์ใบสั่งของวัน/ร้านนี้ในเครื่องนี้"}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setOpenSheet(false)}
+              className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm hover:bg-admin-surfaceMuted"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={printOrderSheet}
+              className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              พิมพ์
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* ===== Edit Modal ===== */}
       <Modal

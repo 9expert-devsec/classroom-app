@@ -30,7 +30,8 @@ import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
   "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia " +
-  "lines.name lines.qty lines.options.choiceName nickname holderName";
+  "lines.name lines.qty lines.options.choiceName lines.note nickname holderName roomName " +
+  "submittedAt createdAt";
 
 function cleanLower(x) {
   return String(x || "")
@@ -101,6 +102,7 @@ function orderLines(order) {
     name: l.name || "",
     qty: Number(l.qty) || 1,
     options: (l.options || []).map((o) => o.choiceName).filter(Boolean),
+    note: l.note || "",
   }));
 }
 
@@ -217,6 +219,10 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         handedOutAt: order.handedOutAt || stock?.handedOutAt || null,
         redeemedAt: order.redeemedAt || null,
         lines: orderLines(order),
+        // C5d: ใบสั่งร้าน
+        orderedAt: order.submittedAt || order.createdAt || null,
+        nickname: order.nickname || "",
+        orderRoomName: order.roomName || "",
       };
     } else if (src.kind === "coupon") {
       type = "coupon";
@@ -231,6 +237,9 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         handedOutAt: null,
         redeemedAt: null,
         lines: [],
+        orderedAt: null,
+        nickname: "",
+        orderRoomName: "",
       };
     } else {
       type = src.kind; // set | none
@@ -262,6 +271,9 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         handedOutAt: null,
         redeemedAt: null,
         lines: [],
+        orderedAt: null,
+        nickname: "",
+        orderRoomName: "",
       }),
       flags,
       hasCheckin,
@@ -344,6 +356,15 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   }
 
   const summary = summarize(rows, allOrders, stockById);
+
+  // C5d: โลโก้ร้านสำหรับใบสั่งร้าน
+  if (summary.shops.length) {
+    const logos = await Restaurant.find({ _id: { $in: summary.shops.map((x) => x.id) } })
+      .select("logoUrl")
+      .lean();
+    const logoById = new Map(logos.map((r) => [idStr(r._id), r.logoUrl || ""]));
+    for (const shop of summary.shops) shop.logoUrl = logoById.get(shop.id) || "";
+  }
   const finalClose = finalCloseAt(dateYMD);
 
   return {
