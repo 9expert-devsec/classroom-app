@@ -107,6 +107,135 @@ function cleanClassTitle(title, courseCode) {
   return t || "-";
 }
 
+/* ---------- C5c: resolved food state (จาก /api/admin/food-orders) ---------- */
+// API ใหม่ส่ง type มาเสมอ (set | none | coupon) — fallback ตรรกะเดิมเผื่อข้อมูลเก่า
+function rowType(o) {
+  if (o?.type === "set" || o?.type === "none" || o?.type === "coupon") return o.type;
+  const choice = String(o?.choiceType || o?.food?.choiceType || "").toLowerCase();
+  let isCoupon = choice === "coupon" || o?.isCoupon === true || o?.food?.coupon === true;
+  let isNoFood = choice === "nofood" || o?.isNoFood === true || o?.food?.noFood === true;
+  if (!choice) {
+    const noteLower = String(o?.note || o?.food?.note || "").toLowerCase();
+    if (noteLower.includes("coupon")) isCoupon = true;
+    if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
+  }
+  return isCoupon ? "coupon" : isNoFood ? "none" : "set";
+}
+
+const TYPE_LABEL = { set: "Set", none: "ไม่รับอาหาร", coupon: "Coupon" };
+
+const COUPON_STATE_LABEL = {
+  ordered: "สั่งแล้ว",
+  at_shop: "สั่งที่ร้าน",
+  pending: "ยังไม่สั่ง",
+  forfeited: "ตัดสิทธิ์",
+  no_order: "ไม่มีออเดอร์",
+};
+
+const FLAG_INFO = {
+  mismatch: {
+    label: "ข้อมูลไม่ตรง",
+    tip: "มีออเดอร์คูปองวันนี้ แต่ข้อมูลอาหารของผู้เรียนไม่ได้เป็น COUPON",
+  },
+  no_checkin: {
+    label: "ไม่ได้เช็คอิน",
+    tip: "มีออเดอร์คูปองวันนี้ แต่ไม่พบการเช็คอินของวันนี้",
+  },
+  missing_code: {
+    label: "ไม่มีโค้ด",
+    tip: "ร้านคูปองกระดาษ: สั่งแล้วแต่ยังไม่ได้ผูกโค้ดคูปอง",
+  },
+};
+
+function hmBKK(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+// ✅ (จาก 0dc9504) ร้านของคูปอง — ตอนนี้มาจาก LunchOrder (couponShopName)
+function couponRestaurantName(o) {
+  return String(o?.couponShopName ?? "").trim();
+}
+
+// ✅ (จาก 0dc9504) label สรุปของแถว coupon — ใช้ที่เดียว อย่าพิมพ์ "Cash Coupon" ซ้ำหลายที่
+function couponLabelFor(o) {
+  const rest = couponRestaurantName(o);
+  return rest ? `Cash Coupon — ${rest}` : "Cash Coupon";
+}
+
+function couponStateText(o) {
+  return COUPON_STATE_LABEL[o?.couponState] || "-";
+}
+
+function sourceBadge(o) {
+  if (o?.couponSource === "stock") return "Stock";
+  if (o?.couponSource === "ecoupon") return "E";
+  return "";
+}
+
+function shopText(o) {
+  const t = rowType(o);
+  if (t === "coupon") return couponRestaurantName(o) || "-";
+  if (t === "set") return o?.restaurantName || o?.food?.restaurantName || "-";
+  return "-";
+}
+
+function progressText(o) {
+  if (rowType(o) !== "coupon") return "-";
+  if (o.couponSource === "stock") {
+    return o.handedOutAt ? `รับคูปองแล้ว ${hmBKK(o.handedOutAt)}` : "-";
+  }
+  if (o.couponSource === "ecoupon") {
+    return o.redeemedAt ? `ใช้แล้ว ${hmBKK(o.redeemedAt)}` : "-";
+  }
+  return "-";
+}
+
+function addonsOf(o) {
+  return Array.isArray(o?.addons)
+    ? o.addons
+    : Array.isArray(o?.food?.addons)
+      ? o.food.addons
+      : [];
+}
+
+// รายการคูปอง: ชื่อ (ตัวเลือก) ×จำนวน — ไม่มีราคา
+function couponLinesText(o) {
+  return (Array.isArray(o?.lines) ? o.lines : [])
+    .map(
+      (l) =>
+        `${l.name || "-"}${l.options?.length ? ` (${l.options.join(", ")})` : ""} ×${l.qty || 1}`,
+    )
+    .join(" / ");
+}
+
+function itemsText(o) {
+  const t = rowType(o);
+  if (t === "coupon") return couponLinesText(o) || "-";
+  if (t === "set") {
+    const parts = [
+      o?.menuName || o?.food?.menuName || "",
+      addonsOf(o).join(" / "),
+      String(o?.drink ?? o?.food?.drink ?? ""),
+    ].filter(Boolean);
+    return parts.join(" · ") || "-";
+  }
+  return "-";
+}
+
+function flagLabels(o) {
+  return (Array.isArray(o?.flags) ? o.flags : [])
+    .map((f) => FLAG_INFO[f]?.label || f)
+    .join(", ");
+}
+
 /** Modal เบา ๆ */
 function Modal({ open, title, children, onClose }) {
   if (!open) return null;
@@ -137,7 +266,7 @@ function Modal({ open, title, children, onClose }) {
 }
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
-/** ✅ สรุป “ชื่ออาหาร” (รวม COUPON + ไม่รับอาหาร ด้วย) */
+/** ✅ สรุป “ชื่ออาหาร” (รวม COUPON ต่อร้าน + ไม่รับอาหาร ด้วย) */
 function buildSummaryItems(rows) {
   const items = new Map();
 
@@ -148,25 +277,9 @@ function buildSummaryItems(rows) {
   };
 
   rows.forEach((o) => {
-    const choice = String(
-      o.choiceType || o.food?.choiceType || "",
-    ).toLowerCase();
-
-    // ยึด choiceType ก่อน
-    let isCoupon =
-      choice === "coupon" || o.isCoupon === true || o.food?.coupon === true;
-    let isNoFood =
-      choice === "nofood" || o.isNoFood === true || o.food?.noFood === true;
-
-    // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มีจริง ๆ
-    if (!choice) {
-      const noteLower = String(o.note || o.food?.note || "").toLowerCase();
-      if (noteLower.includes("coupon")) isCoupon = true;
-      if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-    }
-
-    if (isCoupon) add("Cash Coupon", 1);
-    else if (isNoFood) add("ไม่รับอาหาร", 1);
+    const t = rowType(o);
+    if (t === "coupon") add(couponLabelFor(o), 1);
+    else if (t === "none") add("ไม่รับอาหาร", 1);
     else add(String(o.menuName || "-").trim() || "-", 1);
   });
 
@@ -185,24 +298,7 @@ function buildAddonSummaryItems(rows) {
   };
 
   rows.forEach((o) => {
-    const choice = String(
-      o.choiceType || o.food?.choiceType || "",
-    ).toLowerCase();
-
-    let isCoupon =
-      choice === "coupon" || o.isCoupon === true || o.food?.coupon === true;
-
-    let isNoFood =
-      choice === "nofood" || o.isNoFood === true || o.food?.noFood === true;
-
-    // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มี
-    if (!choice) {
-      const noteLower = String(o.note || o.food?.note || "").toLowerCase();
-      if (noteLower.includes("coupon")) isCoupon = true;
-      if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-    }
-
-    if (isCoupon || isNoFood) return;
+    if (rowType(o) !== "set") return;
 
     // addons อาจอยู่ทั้ง o.addons และ o.food.addons
     const rawAddons = o.addons ?? o.food?.addons;
@@ -234,24 +330,7 @@ function buildDrinkSummaryItems(rows) {
   };
 
   rows.forEach((o) => {
-    const choice = String(
-      o.choiceType || o.food?.choiceType || "",
-    ).toLowerCase();
-
-    let isCoupon =
-      choice === "coupon" || o.isCoupon === true || o.food?.coupon === true;
-
-    let isNoFood =
-      choice === "nofood" || o.isNoFood === true || o.food?.noFood === true;
-
-    // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มี
-    if (!choice) {
-      const noteLower = String(o.note || o.food?.note || "").toLowerCase();
-      if (noteLower.includes("coupon")) isCoupon = true;
-      if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-    }
-
-    if (isCoupon || isNoFood) return;
+    if (rowType(o) !== "set") return;
 
     const drink = String(o.drink ?? o.food?.drink ?? "").trim();
     if (drink && drink !== "-") add(drink, 1);
@@ -271,8 +350,12 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
 
-  // all | food | coupon | noFood
-  const [statusFilter, setStatusFilter] = useState("all");
+  // C5c: all | set | none | coupon  +  coupon sub-filter
+  const [typeFilter, setTypeFilter] = useState("all");
+  // all | active | pending | forfeited | no_order | flagged
+  const [couponFilter, setCouponFilter] = useState("all");
+  const [pastDayNote, setPastDayNote] = useState(false);
+  const [finalClosed, setFinalClosed] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
@@ -305,6 +388,8 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
       setOrders(data.items || []);
       setSummary(data.summary || null);
+      setPastDayNote(data.pastDayNote === true);
+      setFinalClosed(data.finalClosed === true);
 
       setSelectedIds((prev) => {
         const next = new Set();
@@ -353,26 +438,21 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       const key = o.classId || o.className || "unknown";
       if (classFilter && key !== classFilter) return false;
 
-      const choice = String(
-        o.choiceType || o.food?.choiceType || "",
-      ).toLowerCase();
+      const t = rowType(o);
+      const isCoupon = t === "coupon";
+      const isNoFood = t === "none";
 
-      let isCoupon =
-        choice === "coupon" || o.isCoupon === true || o.food?.coupon === true;
+      if (typeFilter !== "all" && t !== typeFilter) return false;
 
-      let isNoFood =
-        choice === "nofood" || o.isNoFood === true || o.food?.noFood === true;
-
-      // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มี
-      if (!choice) {
-        const noteLower = String(o.note || o.food?.note || "").toLowerCase();
-        if (noteLower.includes("coupon")) isCoupon = true;
-        if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
+      if (couponFilter !== "all") {
+        if (!isCoupon) return false;
+        const st = o.couponState || "";
+        if (couponFilter === "active" && st !== "ordered" && st !== "at_shop") return false;
+        if (couponFilter === "pending" && st !== "pending") return false;
+        if (couponFilter === "forfeited" && st !== "forfeited") return false;
+        if (couponFilter === "no_order" && st !== "no_order") return false;
+        if (couponFilter === "flagged" && !(o.flags || []).length) return false;
       }
-
-      if (statusFilter === "coupon" && !isCoupon) return false;
-      if (statusFilter === "noFood" && !isNoFood) return false;
-      if (statusFilter === "food" && (isCoupon || isNoFood)) return false;
 
       if (!q) return true;
 
@@ -397,6 +477,9 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         addonsArr.length ? addonsArr.join(" ") : "",
         o.drink ?? o.food?.drink,
         o.note ?? o.food?.note,
+        isCoupon ? couponRestaurantName(o) : "",
+        isCoupon ? o.code : "",
+        isCoupon ? couponLinesText(o) : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -404,7 +487,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
       return haystack.includes(q);
     });
-  }, [orders, search, classFilter, statusFilter]);
+  }, [orders, search, classFilter, typeFilter, couponFilter]);
 
   // ✅ groups (ใช้ชื่อคลาสที่ clean แล้ว)
   const groups = useMemo(() => {
@@ -471,6 +554,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
   /* ---------------- export/print helpers ---------------- */
   function buildCsv(rows) {
+    // C5c: เพิ่ม ประเภท/สถานะคูปอง/ร้าน/Stock-E/Code/Progress/รายการคูปอง/Flags — ไม่มีราคา
     const headers = [
       "วันที่",
       "รหัสคอร์ส",
@@ -478,54 +562,25 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       "ห้อง",
       "ชื่อผู้เรียน",
       "บริษัท",
-      "สถานะ",
+      "ประเภท",
+      "สถานะคูปอง",
       "ร้านอาหาร",
+      "Stock/E",
+      "Code",
+      "Progress",
       "เมนู",
       "Add-on",
       "เครื่องดื่ม",
+      "รายการคูปอง",
+      "Flags",
       "หมายเหตุ",
     ];
 
     const outRows = rows.map((o) => {
-      const choice = String(
-        o.choiceType || o.food?.choiceType || "",
-      ).toLowerCase();
-
-      let isCoupon =
-        choice === "coupon" || o.isCoupon === true || o.food?.coupon === true;
-
-      let isNoFood =
-        choice === "nofood" || o.isNoFood === true || o.food?.noFood === true;
-
-      // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มี
-      if (!choice) {
-        const noteLower = String(o.note || o.food?.note || "").toLowerCase();
-        if (noteLower.includes("coupon")) isCoupon = true;
-        if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-      }
-
-      const status = isCoupon ? "COUPON" : isNoFood ? "ไม่รับอาหาร" : "อาหาร";
-
-      const rest = isCoupon
-        ? "-"
-        : isNoFood
-          ? "-"
-          : (o.restaurantName ?? o.food?.restaurantName ?? "");
-
-      const menu = isCoupon
-        ? "-"
-        : isNoFood
-          ? "-"
-          : (o.menuName ?? o.food?.menuName ?? "");
-
-      const addonsArr = Array.isArray(o.addons)
-        ? o.addons
-        : Array.isArray(o.food?.addons)
-          ? o.food.addons
-          : [];
-
-      const drink = o.drink ?? o.food?.drink ?? "";
-      const note = o.note ?? o.food?.note ?? "";
+      const t = rowType(o);
+      const isSet = t === "set";
+      const isCoupon = t === "coupon";
+      const addonsArr = addonsOf(o);
 
       const classTitle = cleanClassTitle(
         o.className || o.classTitle || "",
@@ -539,12 +594,18 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         o.roomName || "",
         o.studentName || o.studentThaiName || o.studentEngName || "",
         o.company || "",
-        status,
-        rest,
-        menu,
-        addonsArr.length ? addonsArr.join(" / ") : "",
-        drink,
-        note,
+        TYPE_LABEL[t],
+        isCoupon ? couponStateText(o) : "",
+        shopText(o) === "-" ? "" : shopText(o),
+        isCoupon ? sourceBadge(o) : "",
+        isCoupon ? o.code || "" : "",
+        progressText(o) === "-" ? "" : progressText(o),
+        isSet ? (o.menuName ?? o.food?.menuName ?? "") : "",
+        isSet && addonsArr.length ? addonsArr.join(" / ") : "",
+        isSet ? (o.drink ?? o.food?.drink ?? "") : "",
+        isCoupon ? couponLinesText(o) : "",
+        flagLabels(o),
+        o.note ?? o.food?.note ?? "",
       ];
     });
 
@@ -679,7 +740,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         (x, idx) => `
         <tr>
           <td style="border:1px solid #999;padding:6px;text-align:center;width:60px;">${idx + 1}</td>
-          <td style="border:1px solid #999;padding:6px;">${x.label}</td>
+          <td style="border:1px solid #999;padding:6px;">${esc(x.label)}</td>
           <td style="border:1px solid #999;padding:6px;text-align:center;width:120px;">${x.count}</td>
         </tr>
       `,
@@ -772,65 +833,50 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
       .map((g, gi) => {
         const rowsHtml = g.items
           .map((o, idx) => {
-            const choice = String(
-              o.choiceType || o.food?.choiceType || "",
-            ).toLowerCase();
+            // C5c: ประเภท + สถานะคูปอง / ร้าน / Stock-E + Code / Progress — ไม่มีราคา
+            const t = rowType(o);
+            const isCoupon = t === "coupon";
+            const isSet = t === "set";
 
-            let isCoupon =
-              choice === "coupon" ||
-              o.isCoupon === true ||
-              o.food?.coupon === true;
+            const typeCell = isCoupon
+              ? `${TYPE_LABEL[t]}<div class="sub">${esc(couponStateText(o))}</div>`
+              : esc(TYPE_LABEL[t]);
 
-            let isNoFood =
-              choice === "nofood" ||
-              o.isNoFood === true ||
-              o.food?.noFood === true;
+            const codeCell = isCoupon && o.code
+              ? `${esc(sourceBadge(o))} · ${esc(o.code)}`
+              : isCoupon
+                ? esc(sourceBadge(o))
+                : "";
 
-            // fallback legacy: ใช้ note เฉพาะตอน choiceType ไม่มี
-            if (!choice) {
-              const noteLower = String(
-                o.note || o.food?.note || "",
-              ).toLowerCase();
-              if (noteLower.includes("coupon")) isCoupon = true;
-              if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-            }
-
-            const rest = isCoupon
-              ? "-"
-              : isNoFood
-                ? "-"
-                : (o.restaurantName ?? o.food?.restaurantName ?? "");
+            const progress = progressText(o) === "-" ? "" : progressText(o);
 
             const menu = isCoupon
-              ? "Cash Coupon"
-              : isNoFood
-                ? "ไม่รับอาหาร"
-                : (o.menuName ?? o.food?.menuName ?? "");
+              ? couponLinesText(o)
+              : isSet
+                ? (o.menuName ?? o.food?.menuName ?? "")
+                : "ไม่รับอาหาร";
 
-            const addonsArr = Array.isArray(o.addons)
-              ? o.addons
-              : Array.isArray(o.food?.addons)
-                ? o.food.addons
-                : [];
+            const addons = isSet ? addonsOf(o).join(" / ") : "";
+            const drink = isSet ? (o.drink ?? o.food?.drink ?? "") : "";
 
-            const addons = addonsArr.length ? addonsArr.join(" / ") : "";
-
-            const drink = o.drink ?? o.food?.drink ?? "";
-
-            const note =
-              (o.note ?? o.food?.note ?? "") ||
-              (isCoupon ? "COUPON" : isNoFood ? "ไม่รับอาหาร" : "");
+            const flags = flagLabels(o);
+            const note = [o.note ?? o.food?.note ?? "", flags ? `⚠ ${flags}` : ""]
+              .filter(Boolean)
+              .join(" · ");
 
             // ✅ ตัดคอลัมน์ "บริษัท" ออกจาก Print
             return `
               <tr>
                 <td class="td num">${idx + 1}</td>
-                <td class="td">${o.studentName || "-"}</td>
-                
-                <td class="td">${menu}</td>
-                <td class="td">${addons}</td>
-                <td class="td">${drink}</td>
-                <td class="td">${note}</td>
+                <td class="td">${esc(o.studentName || "-")}</td>
+                <td class="td">${typeCell}</td>
+                <td class="td">${esc(shopText(o) === "-" ? "" : shopText(o))}</td>
+                <td class="td">${codeCell}</td>
+                <td class="td">${esc(progress)}</td>
+                <td class="td">${esc(menu)}</td>
+                <td class="td">${esc(addons)}</td>
+                <td class="td">${esc(drink)}</td>
+                <td class="td">${esc(note)}</td>
               </tr>
             `;
           })
@@ -842,6 +888,10 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               <colgroup>
                 <col class="c-num" />
                 <col class="c-student" />
+                <col class="c-type" />
+                <col class="c-shop" />
+                <col class="c-code" />
+                <col class="c-progress" />
                 <col class="c-menu" />
                 <col class="c-addon" />
                 <col class="c-drink" />
@@ -849,7 +899,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                 </colgroup>
               <thead>
                 <tr>
-                  <th colspan="7" class="class-head">
+                  <th colspan="10" class="class-head">
                     <div class="class-title">${g.className}</div>
                     <div class="class-sub">
                       ${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${printDate}
@@ -859,7 +909,11 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                 <tr>
                   <th class="th num">#</th>
                   <th class="th">ชื่อผู้เรียน</th>
-                  <th class="th">เมนู</th>
+                  <th class="th">ประเภท</th>
+                  <th class="th">ร้าน</th>
+                  <th class="th">Code</th>
+                  <th class="th">Progress</th>
+                  <th class="th">เมนู / รายการ</th>
                   <th class="th">Add-on</th>
                   <th class="th">เครื่องดื่ม</th>
                   <th class="th">หมายเหตุ</th>
@@ -868,7 +922,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               <tbody>
                 ${
                   rowsHtml ||
-                  `<tr><td colspan="7" class="td empty">ไม่มีข้อมูล</td></tr>`
+                  `<tr><td colspan="10" class="td empty">ไม่มีข้อมูล</td></tr>`
                 }
               </tbody>
             </table>
@@ -907,19 +961,24 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
             .class-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
             .class-sub { font-size: 11px; color: #6b7280; }
 
-            .th, .td { border: 1px solid #111827; padding: 5px 6px; font-size: 12px; vertical-align: top; overflow: hidden; word-break: break-word;}
+            .th, .td { border: 1px solid #111827; padding: 4px 5px; font-size: 11px; vertical-align: top; overflow: hidden; word-break: break-word;}
             .th { background: #f3f4f6; font-weight: 700; }
             .num { width: 54px; text-align: right; }
             .empty { text-align: center; color: #6b7280; padding: 10px; }
 
             .footer { margin-top: 8px; font-size: 11px; color: #6b7280; text-align: right; }
 
-            .c-num     { width: 4%; }
-            .c-student { width: 30%; }
-            .c-menu   { width: 24%; }
-            .c-addon   { width: 12%; }
-            .c-drink   { width: 10%; }
-            .c-note    { width: 20%; }
+            .c-num      { width: 4%; }
+            .c-student  { width: 17%; }
+            .c-type     { width: 9%; }
+            .c-shop     { width: 10%; }
+            .c-code     { width: 11%; }
+            .c-progress { width: 9%; }
+            .c-menu     { width: 16%; }
+            .c-addon    { width: 8%; }
+            .c-drink    { width: 7%; }
+            .c-note     { width: 9%; }
+            .sub { font-size: 10px; color: #6b7280; }
 
             .trunc{white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
 
@@ -1027,21 +1086,10 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     setEditingRow(row);
     const f = row.food || {};
 
-    const choice = String(row.choiceType || f.choiceType || "").toLowerCase();
-
-    // 1) ใช้ choiceType/flag ก่อน (กันเพี้ยนจาก note)
-    let isCoupon =
-      choice === "coupon" || row.isCoupon === true || f.coupon === true;
-
-    let isNo =
-      choice === "nofood" || row.isNoFood === true || f.noFood === true;
-
-    // 2) fallback ไปดู note เฉพาะตอน "ไม่มี choiceType"
-    if (!choice) {
-      const noteLower = String(row.note || f.note || "").toLowerCase();
-      if (noteLower.includes("coupon")) isCoupon = true;
-      if (noteLower.includes("ไม่รับอาหาร")) isNo = true;
-    }
+    // C5c: ใช้ type ที่ server ตัดสินแล้ว (LunchOrder ชนะ Student.food)
+    const t = rowType(row);
+    const isCoupon = t === "coupon";
+    const isNo = t === "none";
 
     // set choiceType UI
     setEditChoiceType(isCoupon ? "coupon" : isNo ? "noFood" : "food");
@@ -1070,6 +1118,17 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
     if (!isCoupon && !isNo) {
       loadFoodOptionsForRow(row).catch((e) => console.error(e));
     }
+  }
+
+  // ✅ (จาก 0dc9504) สลับสถานะใน modal → ล้าง restaurant/menu/addon/drink ทุกครั้ง
+  //    กันส่ง id ค้างข้ามประเภท (food ↔ coupon ↔ noFood)
+  function switchEditChoiceType(next) {
+    if (next === editChoiceType) return;
+    setEditChoiceType(next);
+    setEditRestaurantId("");
+    setEditMenuId("");
+    setEditAddons([]);
+    setEditDrink("");
   }
 
   useEffect(() => {
@@ -1295,35 +1354,51 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
   /* ---------------- derived counts (ตาม filter) ---------------- */
   const filteredCounts = useMemo(() => {
-    let noFoodCount = 0;
-    let couponCount = 0;
-    let foodCount = 0;
-
-    filteredOrders.forEach((o) => {
-      const choice = String(o.choiceType || "").toLowerCase();
-
-      let isCoupon = choice === "coupon" || o.isCoupon === true;
-      let isNoFood = choice === "nofood" || o.isNoFood === true;
-
-      // fallback ไปดู note เฉพาะตอน choiceType ว่าง
-      if (!choice) {
-        const noteLower = String(o.note || "").toLowerCase();
-        if (noteLower.includes("coupon")) isCoupon = true;
-        if (noteLower.includes("ไม่รับอาหาร")) isNoFood = true;
-      }
-
-      if (isCoupon) couponCount += 1;
-      else if (isNoFood) noFoodCount += 1;
-      else foodCount += 1;
-    });
-
-    return {
-      noFoodCount,
-      couponCount,
-      foodCount,
+    // C5c: นับจาก type ที่ server ตัดสินแล้ว — coupon แยกย่อยตาม couponState
+    const c = {
+      setCount: 0,
+      noFoodCount: 0,
+      couponCount: 0,
+      couponActive: 0,
+      couponPending: 0,
+      forfeited: 0,
+      couponNoOrder: 0,
       total: filteredOrders.length,
     };
+
+    filteredOrders.forEach((o) => {
+      const t = rowType(o);
+      if (t === "set") c.setCount += 1;
+      else if (t === "none") c.noFoodCount += 1;
+      else {
+        c.couponCount += 1;
+        const st = o.couponState || "no_order";
+        if (st === "ordered" || st === "at_shop") c.couponActive += 1;
+        else if (st === "pending") c.couponPending += 1;
+        else if (st === "forfeited") c.forfeited += 1;
+        else c.couponNoOrder += 1;
+      }
+    });
+
+    return c;
   }, [filteredOrders]);
+
+  // C5c: per-shop + "ยังไม่เลือกร้าน" มาจาก summary ของ server (ทั้งวัน)
+  const shopCards = useMemo(
+    () => (Array.isArray(summary?.shops) ? summary.shops : []),
+    [summary],
+  );
+
+  const noShopLines = useMemo(
+    () =>
+      (Array.isArray(summary?.byClass) ? summary.byClass : []).filter(
+        (c) =>
+          (!classFilter || c.classId === classFilter) &&
+          c.noShopYet &&
+          c.noShopYet.pending + c.noShopYet.forfeited + c.noShopYet.noOrder > 0,
+      ),
+    [summary, classFilter],
+  );
 
   /* ---------------- render ---------------- */
   return (
@@ -1367,18 +1442,18 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           </div>
         </div>
 
+        {pastDayNote && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            วันที่ผ่านมาแล้ว: ข้อมูลอาหาร Set / ไม่รับอาหาร แสดงตามที่เลือกไว้ล่าสุดของผู้เรียน
+            (ระบบไม่ได้เก็บแยกรายวัน) — ส่วนคูปองมาจากออเดอร์ของวันนั้นจริง
+          </div>
+        )}
+
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-admin-surfaceMuted p-3">
-            <div className="text-[11px] text-admin-textMuted">อาหาร</div>
+            <div className="text-[11px] text-admin-textMuted">Set</div>
             <div className="text-lg font-semibold text-admin-text">
-              {filteredCounts.foodCount}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-admin-surfaceMuted p-3">
-            <div className="text-[11px] text-admin-textMuted">COUPON</div>
-            <div className="text-lg font-semibold text-admin-text">
-              {filteredCounts.couponCount}
+              {filteredCounts.setCount}
             </div>
           </div>
 
@@ -1388,17 +1463,91 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
               {filteredCounts.noFoodCount}
             </div>
           </div>
+
+          <div className="rounded-2xl bg-admin-surfaceMuted p-3">
+            <div className="text-[11px] text-admin-textMuted">Coupon</div>
+            <div className="text-lg font-semibold text-admin-text">
+              {filteredCounts.couponCount}
+            </div>
+            <div className="mt-0.5 text-[11px] text-admin-textMuted">
+              สั่งแล้ว {filteredCounts.couponActive} · ยังไม่สั่ง{" "}
+              {filteredCounts.couponPending} · ตัดสิทธิ์ {filteredCounts.forfeited}{" "}
+              · ไม่มีออเดอร์ {filteredCounts.couponNoOrder}
+            </div>
+          </div>
         </div>
+
+        {/* C5c: ร้านคูปอง (ทั้งวัน ไม่ขึ้นกับ filter) */}
+        {shopCards.length > 0 && (
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {shopCards.map((shop) => (
+              <div
+                key={shop.id}
+                className="rounded-2xl border border-admin-border bg-white p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-xs font-semibold text-admin-text">
+                    {shop.name || "-"}
+                  </div>
+                  <span
+                    className={cx(
+                      "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                      shop.source === "stock"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-sky-100 text-sky-800",
+                    )}
+                  >
+                    {shop.source === "stock" ? "Stock" : "E-coupon"}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+                  {shop.source === "stock" ? (
+                    <>
+                      <span>ออเดอร์ <b>{shop.orders}</b></span>
+                      <span>รับคูปองแล้ว <b>{shop.handedOut}</b></span>
+                      <span>ยังไม่รับ <b>{shop.assignedNotHandedOut}</b></span>
+                      <span>รอคืนคูปอง <b>{shop.awaitingReturn}</b></span>
+                      <span className={shop.missingCode ? "text-red-700" : ""}>
+                        ไม่มีโค้ด <b>{shop.missingCode}</b>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>ออกคูปอง <b>{shop.issued}</b></span>
+                      <span>ใช้แล้ว <b>{shop.redeemed}</b></span>
+                      <span>
+                        {finalClosed ? "หมดอายุ" : "ยังไม่ใช้"}{" "}
+                        <b>{shop.notRedeemed}</b>
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {noShopLines.length > 0 && (
+          <div className="mt-2 space-y-0.5 text-[11px] text-admin-textMuted">
+            {noShopLines.map((c) => (
+              <div key={c.classId}>
+                ยังไม่เลือกร้าน · {cleanClassTitle(c.className, "")}: ยังไม่สั่ง{" "}
+                {c.noShopYet.pending} · ตัดสิทธิ์ {c.noShopYet.forfeited} · ไม่มีออเดอร์{" "}
+                {c.noShopYet.noOrder}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-3 rounded-2xl bg-admin-surfaceMuted p-3">
           <div className="text-[11px] text-admin-textMuted">
-            Top เมนู (จาก API)
+            Top เมนู (เฉพาะ Set)
           </div>
           <div
             className="mt-2 space-y-1 overflow-y-auto pr-1"
             style={{ maxHeight: "86px" }}
           >
-            {(summary?.menuCounts || []).slice(0, 8).map((x, idx) => (
+            {(summary?.setMenuCounts || []).slice(0, 8).map((x, idx) => (
               <div
                 key={idx}
                 className="flex items-center justify-between text-[12px]"
@@ -1407,7 +1556,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                 <span className="font-semibold">{x.count}</span>
               </div>
             ))}
-            {!summary?.menuCounts?.length && (
+            {!summary?.setMenuCounts?.length && (
               <div className="text-[11px] text-admin-textMuted">
                 ไม่มีข้อมูล
               </div>
@@ -1458,17 +1607,35 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
 
             <div>
               <label className="block text-[11px] text-admin-textMuted">
-                สถานะ
+                ประเภท
               </label>
               <select
                 className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
               >
                 <option value="all">ทั้งหมด</option>
-                <option value="food">เฉพาะอาหาร</option>
-                <option value="coupon">เฉพาะ COUPON</option>
-                <option value="noFood">เฉพาะ ไม่รับอาหาร</option>
+                <option value="set">เฉพาะ Set</option>
+                <option value="none">เฉพาะ ไม่รับอาหาร</option>
+                <option value="coupon">เฉพาะ Coupon</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-admin-textMuted">
+                สถานะคูปอง
+              </label>
+              <select
+                className="mt-1 rounded-lg border border-admin-border bg-white px-2 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary"
+                value={couponFilter}
+                onChange={(e) => setCouponFilter(e.target.value)}
+              >
+                <option value="all">ทั้งหมด</option>
+                <option value="active">สั่งแล้ว</option>
+                <option value="pending">ยังไม่สั่ง</option>
+                <option value="forfeited">ตัดสิทธิ์</option>
+                <option value="no_order">ไม่มีออเดอร์</option>
+                <option value="flagged">มีข้อสังเกต</option>
               </select>
             </div>
           </div>
@@ -1476,7 +1643,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
           <div className="flex flex-1 min-w-0 flex-col gap-2 md:items-end">
             <input
               className="w-full max-w-full rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary md:w-96"
-              placeholder="ค้นหา (ชื่อผู้เรียน / ร้าน / เมนู / หมายเหตุ)"
+              placeholder="ค้นหา (ชื่อผู้เรียน / ร้าน / เมนู / โค้ด / หมายเหตุ)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1578,15 +1745,18 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   <div className="min-w-0 overflow-x-hidden">
                     <table className="w-full table-fixed border-collapse text-xs">
                       <colgroup>
-                        <col className="w-[44px]" /> {/* เลือก */}
-                        <col className="w-[44px]" /> {/* # */}
-                        <col className="w-[22%]" /> {/* ชื่อผู้เรียน */}
-                        <col className="w-[14%]" /> {/* ร้านอาหาร */}
-                        <col className="w-[16%]" /> {/* เมนู */}
-                        <col className="w-[12%]" /> {/* Add-on */}
-                        <col className="w-[10%]" /> {/* เครื่องดื่ม */}
-                        <col className="w-[16%]" /> {/* หมายเหตุ */}
-                        <col className="w-[84px]" /> {/* Action */}
+                        <col className="w-[36px]" /> {/* เลือก */}
+                        <col className="w-[36px]" /> {/* # */}
+                        <col className="w-[16%]" /> {/* ชื่อผู้เรียน */}
+                        <col className="w-[10%]" /> {/* ประเภท */}
+                        <col className="w-[11%]" /> {/* ร้าน */}
+                        <col className="w-[48px]" /> {/* Stock/E */}
+                        <col className="w-[9%]" /> {/* Code */}
+                        <col className="w-[10%]" /> {/* Progress */}
+                        <col className="w-[18%]" /> {/* รายการ */}
+                        <col className="w-[9%]" /> {/* ข้อสังเกต */}
+                        <col className="w-[10%]" /> {/* หมายเหตุ */}
+                        <col className="w-[64px]" /> {/* Action */}
                       </colgroup>
 
                       <thead className="bg-admin-surfaceMuted text-[11px] text-admin-textMuted">
@@ -1604,13 +1774,16 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                           <th className={cx(TH, "text-left", TRUNC)}>
                             ชื่อผู้เรียน
                           </th>
+                          <th className={cx(TH, "text-left", TRUNC)}>ประเภท</th>
+                          <th className={cx(TH, "text-left", TRUNC)}>ร้าน</th>
+                          <th className={cx(TH, "text-center", TRUNC)}>S/E</th>
+                          <th className={cx(TH, "text-left", TRUNC)}>Code</th>
                           <th className={cx(TH, "text-left", TRUNC)}>
-                            ร้านอาหาร
+                            Progress
                           </th>
-                          <th className={cx(TH, "text-left", TRUNC)}>เมนู</th>
-                          <th className={cx(TH, "text-left", TRUNC)}>Add-on</th>
+                          <th className={cx(TH, "text-left", TRUNC)}>รายการ</th>
                           <th className={cx(TH, "text-left", TRUNC)}>
-                            เครื่องดื่ม
+                            ข้อสังเกต
                           </th>
                           <th className={cx(TH, "text-left", TRUNC)}>
                             หมายเหตุ
@@ -1628,51 +1801,13 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                           const rowId = String(o.id || o._id);
                           const checked = selectedIds.has(rowId);
 
-                          // ===== status detection: choiceType first, note fallback only if choiceType empty =====
-                          const choiceRaw =
-                            o.choiceType ?? o.food?.choiceType ?? "";
-                          const choice = String(choiceRaw || "").toLowerCase();
-
-                          let isCoupon =
-                            choice === "coupon" ||
-                            o.isCoupon === true ||
-                            o.food?.coupon === true;
-
-                          let isNoFood =
-                            choice === "nofood" ||
-                            o.isNoFood === true ||
-                            o.food?.noFood === true;
-
-                          // fallback to note only when choiceType is empty
-                          if (!choice) {
-                            const noteLower = String(
-                              o.note ?? o.food?.note ?? "",
-                            ).toLowerCase();
-                            if (noteLower.includes("coupon")) isCoupon = true;
-                            if (noteLower.includes("ไม่รับอาหาร"))
-                              isNoFood = true;
-                          }
-
-                          const rest = isCoupon
-                            ? "-"
-                            : isNoFood
-                              ? "ไม่รับอาหาร"
-                              : o.restaurantName || "-";
-
-                          const menu = isCoupon
-                            ? "Cash Coupon"
-                            : isNoFood
-                              ? "ไม่รับอาหาร"
-                              : o.menuName || "-";
-
-                          // note text: show actual note if exists, else default for coupon/noFood
+                          // C5c: type มาจาก server (LunchOrder ชนะ Student.food)
+                          const t = rowType(o);
+                          const isCoupon = t === "coupon";
+                          const items = itemsText(o);
                           const noteText =
-                            String(o.note ?? o.food?.note ?? "").trim() ||
-                            (isCoupon
-                              ? "COUPON"
-                              : isNoFood
-                                ? "ไม่รับอาหาร"
-                                : "-");
+                            String(o.note ?? o.food?.note ?? "").trim() || "-";
+                          const flags = Array.isArray(o.flags) ? o.flags : [];
 
                           return (
                             <tr key={rowId}>
@@ -1717,26 +1852,82 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                                 )}
                               </td>
 
-                              <td className={cx(TD, TRUNC)}>{rest}</td>
-
-                              <td className={cx(TD, TRUNC)}>
-                                <span className={TRUNC}>{menu}</span>
-                              </td>
-
-                              <td className={cx(TD, TRUNC)}>
-                                <span className={TRUNC}>
-                                  {Array.isArray(o.addons) && o.addons.length
-                                    ? o.addons.join(" / ")
-                                    : "-"}
+                              <td className={cx(TD, "min-w-0")}>
+                                <span
+                                  className={cx(
+                                    "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    t === "coupon"
+                                      ? "bg-violet-100 text-violet-800"
+                                      : t === "set"
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-slate-100 text-slate-600",
+                                  )}
+                                >
+                                  {TYPE_LABEL[t]}
                                 </span>
+                                {isCoupon && (
+                                  <div
+                                    className={cx(
+                                      "mt-0.5 text-[11px] text-admin-textMuted",
+                                      TRUNC,
+                                    )}
+                                  >
+                                    {couponStateText(o)}
+                                  </div>
+                                )}
                               </td>
 
-                              <td className={cx(TD, TRUNC)}>
-                                {o.drink || "-"}
+                              <td className={cx(TD, TRUNC)} title={shopText(o)}>
+                                {shopText(o)}
                               </td>
 
-                              <td className={cx(TD, TRUNC)}>
-                                <span className={TRUNC}>{noteText}</span>
+                              <td className={cx(TD, "text-center")}>
+                                {isCoupon && o.couponSource ? (
+                                  <span
+                                    className={cx(
+                                      "inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                                      o.couponSource === "stock"
+                                        ? "bg-amber-100 text-amber-800"
+                                        : "bg-sky-100 text-sky-800",
+                                    )}
+                                  >
+                                    {sourceBadge(o)}
+                                  </span>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+
+                              <td className={cx(TD, TRUNC, "font-mono")}>
+                                {isCoupon && o.code ? o.code : "-"}
+                              </td>
+
+                              <td className={cx(TD, TRUNC)}>{progressText(o)}</td>
+
+                              <td className={cx(TD, TRUNC)} title={items}>
+                                {items}
+                              </td>
+
+                              <td className={cx(TD, "min-w-0")}>
+                                {flags.length ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {flags.map((f) => (
+                                      <span
+                                        key={f}
+                                        title={FLAG_INFO[f]?.tip || f}
+                                        className="rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-red-200"
+                                      >
+                                        ⚠ {FLAG_INFO[f]?.label || f}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  "-"
+                                )}
+                              </td>
+
+                              <td className={cx(TD, TRUNC)} title={noteText}>
+                                {noteText}
                               </td>
 
                               <td
@@ -1776,6 +1967,30 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
         }}
       >
         <div className="space-y-4">
+          {/* C5c: ข้อมูลคูปองของวันนี้ (อ่านอย่างเดียว) — ออเดอร์คูปองจัดการใน lunch flow */}
+          {editingRow && rowType(editingRow) === "coupon" && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-[12px] text-admin-text">
+              <div className="text-[11px] font-semibold text-violet-800">
+                คูปองวันนี้
+              </div>
+              <div className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                <span className="text-admin-textMuted">ร้าน</span>
+                <span>{couponRestaurantName(editingRow) || "-"}</span>
+                <span className="text-admin-textMuted">สถานะ</span>
+                <span>{couponStateText(editingRow)}</span>
+                <span className="text-admin-textMuted">Code</span>
+                <span className="font-mono">
+                  {editingRow.code
+                    ? `${sourceBadge(editingRow)} · ${editingRow.code}`
+                    : "-"}
+                </span>
+              </div>
+              <div className="mt-2 text-[11px] text-admin-textMuted">
+                ออเดอร์คูปองจัดการในหน้า Lunch — การแก้ไขที่นี่ไม่สร้างออเดอร์หรือ QR
+              </div>
+            </div>
+          )}
+
           {/* Choice type */}
           <div className="rounded-xl border border-admin-border bg-admin-surfaceMuted p-3">
             <div className="text-[11px] font-semibold text-admin-text">
@@ -1787,7 +2002,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "food"}
-                  onChange={() => setEditChoiceType("food")}
+                  onChange={() => switchEditChoiceType("food")}
                 />
                 <span>อาหาร</span>
               </label>
@@ -1796,7 +2011,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "coupon"}
-                  onChange={() => setEditChoiceType("coupon")}
+                  onChange={() => switchEditChoiceType("coupon")}
                 />
                 <span>COUPON</span>
               </label>
@@ -1805,7 +2020,7 @@ export default function FoodReportClient({ initialDate, initialOrders }) {
                   type="radio"
                   name="choiceType"
                   checked={editChoiceType === "noFood"}
-                  onChange={() => setEditChoiceType("noFood")}
+                  onChange={() => switchEditChoiceType("noFood")}
                 />
                 <span>ไม่รับอาหาร</span>
               </label>
