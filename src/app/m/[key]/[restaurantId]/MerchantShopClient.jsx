@@ -344,7 +344,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               onClick={startScan}
               disabled={busy}
               data-testid="merchant-scan"
-              className="flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-[#2486ff] px-4 py-3 text-white shadow-card transition hover:bg-[#005cff] active:scale-[0.99] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 focus-visible:ring-offset-2 disabled:opacity-60"
+              className="flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-[#005cff] px-4 py-3 text-white shadow-card transition hover:bg-[#004bd1] active:scale-[0.99] active:bg-[#004bd1] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#005cff]/40 focus-visible:ring-offset-2 disabled:opacity-60"
             >
               <Camera className="h-8 w-8" aria-hidden="true" />
               <span className="text-xl font-bold">Scan QR</span>
@@ -367,11 +367,11 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter code, e.g. 9XP-B6MW"
+                placeholder="e.g. 9XP-B6MW"
                 aria-label="E-coupon code"
                 autoCapitalize="characters"
                 autoComplete="off"
-                className="h-[52px] min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 font-mono text-base uppercase tracking-wider outline-none focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
+                className="h-[52px] min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 font-mono text-base uppercase tracking-wider outline-none placeholder:normal-case placeholder:tracking-normal focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
               />
               <button
                 type="submit"
