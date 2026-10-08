@@ -1,7 +1,7 @@
 "use client";
 
 // C3d: Merchant shop page — English only, mobile-first, no prices anywhere
-//   home     : logo + name, Scan QR, Enter code + Check, Recent redemptions
+//   home     : logo + name, Scan QR (primary), or enter code + Check, Recent redemptions + Usage summary link
 //   scanning : camera (@zxing/browser, same reader as the old ScanClient)
 //   result   : unused (info + Confirm) / used (Used at hh:mm) / expired / not_found
 //   complete : Back, or auto-return to home after 3 s
@@ -34,6 +34,12 @@ function dateLabel(ymd) {
     year: "numeric",
     timeZone: "Asia/Bangkok",
   });
+}
+
+// รูปแบบเดียวกับ normalizeECouponCode (merchantLunch.server.js) — ใช้แค่เปิด/ปิดปุ่ม Check, server ตัดสินจริง
+function isCodeShaped(input) {
+  const s = String(input || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^9XP[A-Z0-9]{4}$/.test(s) || /^[A-Z0-9]{4}$/.test(s);
 }
 
 /* ---------------- views ---------------- */
@@ -201,6 +207,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [recent, setRecent] = useState([]);
+  const codeOk = isCodeShaped(code);
 
   const api = useCallback(
     async (path, init = {}) => {
@@ -336,47 +343,61 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               type="button"
               onClick={startScan}
               disabled={busy}
-              className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#2486ff] text-lg font-semibold text-white shadow-sm active:scale-[0.99] disabled:opacity-60"
+              data-testid="merchant-scan"
+              className="flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-[#2486ff] px-4 py-3 text-white shadow-card transition hover:bg-[#005cff] active:scale-[0.99] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 focus-visible:ring-offset-2 disabled:opacity-60"
             >
-              <Camera className="h-6 w-6" />
-              Scan QR
+              <Camera className="h-8 w-8" aria-hidden="true" />
+              <span className="text-xl font-bold">Scan QR</span>
+              <span className="text-sm text-white/90">Point the camera at the learner&apos;s QR code</span>
             </button>
+
+            <div className="mt-4 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-black/10" />
+              <span className="text-xs font-medium text-slate-500">or enter code</span>
+              <span className="h-px flex-1 bg-black/10" />
+            </div>
 
             <form
               className="mt-4 flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (code.trim()) lookup(code, "typed");
+                if (codeOk) lookup(code, "typed");
               }}
             >
               <input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 placeholder="Enter code, e.g. 9XP-B6MW"
+                aria-label="E-coupon code"
                 autoCapitalize="characters"
                 autoComplete="off"
-                className="h-12 min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 font-mono text-base uppercase tracking-wider outline-none focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
+                className="h-[52px] min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 font-mono text-base uppercase tracking-wider outline-none focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
               />
               <button
                 type="submit"
-                disabled={busy || !code.trim()}
-                className="h-12 shrink-0 rounded-xl bg-[#0d1b2a] px-5 text-base font-semibold text-white disabled:opacity-40"
+                disabled={busy || !codeOk}
+                className={
+                  codeOk
+                    ? "h-[52px] shrink-0 rounded-xl bg-[#2486ff] px-5 text-base font-semibold text-white transition hover:bg-[#005cff] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 disabled:opacity-60"
+                    : "h-[52px] shrink-0 rounded-xl bg-slate-200 px-5 text-base font-semibold text-slate-500"
+                }
               >
                 {busy ? "…" : "Check"}
               </button>
             </form>
 
-            <Link
-              href={`/m/${merchantKey}/${restaurant.id}/report`}
-              data-testid="merchant-usage-summary"
-              className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a] active:scale-[0.99]"
-            >
-              <BarChart3 className="h-5 w-5 text-slate-500" />
-              Usage summary
-            </Link>
-
-            <div className="mt-6">
-              <h2 className="text-sm font-semibold text-slate-500">Recent redemptions</h2>
+            <div className="mt-7">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-500">Recent redemptions</h2>
+                <Link
+                  href={`/m/${merchantKey}/${restaurant.id}/report`}
+                  data-testid="merchant-usage-summary"
+                  className="flex items-center gap-1.5 rounded-md text-sm font-semibold text-[#2486ff] hover:text-[#005cff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2486ff]/40"
+                >
+                  <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                  Usage summary
+                </Link>
+              </div>
               <div className="mt-2 overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
                 <table className="w-full text-left text-sm" data-testid="merchant-recent">
                   <thead className="text-xs uppercase text-slate-400">

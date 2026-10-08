@@ -16,7 +16,7 @@ function ShopLogo({ src, alt, size = 56 }) {
     >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt} className="h-full w-full object-contain p-1" />
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
       ) : (
         <Store className="h-6 w-6 text-slate-300" />
       )}
