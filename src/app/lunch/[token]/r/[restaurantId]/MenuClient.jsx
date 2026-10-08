@@ -499,12 +499,7 @@ export default function MenuClient({
               className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#2486ff]/40 bg-white px-3 text-[12px] font-medium text-[#005cff] transition active:scale-[0.97]"
             >
               {openOthers[0].logo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={openOthers[0].logo}
-                  alt=""
-                  className="h-4 w-4 rounded object-contain"
-                />
+                <LogoTile src={openOthers[0].logo} alt="" size={16} />
               ) : null}
               เปลี่ยนเป็น {openOthers[0].name}
             </button>

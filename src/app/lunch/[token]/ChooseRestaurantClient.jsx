@@ -50,14 +50,7 @@ function RestaurantTile({ r, disabled, onPick }) {
         </span>
       ) : null}
 
-      <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-white ring-1 ring-black/5">
-        {r.logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={r.logo} alt={r.name} className="h-full w-full object-contain p-1" />
-        ) : (
-          <span className="text-2xl text-slate-300">?</span>
-        )}
-      </div>
+      <LogoTile src={r.logo} alt={r.name} size={64} />
 
       <div>
         <p className="text-[14px] font-semibold leading-tight text-[#0d1b2a]">

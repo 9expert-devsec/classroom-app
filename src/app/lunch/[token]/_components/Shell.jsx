@@ -77,16 +77,23 @@ export function NoticeScreen({ icon: Icon, tone = "red", title, body }) {
   );
 }
 
+// โลโก้ร้าน: รูปเต็มกรอบ (object-cover, ไม่มี padding) ตัดด้วยมุมโค้งของกรอบเดียว + ring บาง ๆ
+// (แก้ "กรอบซ้อน" แบบเดียวกับ ShopLogo ฝั่ง Merchant) — ขนาดเล็ก (≤ 24px) ใช้มุม rounded
 export function LogoTile({ src, alt, size = 56 }) {
+  const small = size <= 24;
   return (
     <div
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+      className={
+        small
+          ? "flex shrink-0 items-center justify-center overflow-hidden rounded bg-white ring-1 ring-black/5"
+          : "flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-black/5"
+      }
       style={{ width: size, height: size }}
     >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt} className="h-full w-full object-contain p-1.5" />
-      ) : (
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
+      ) : small ? null : (
         <span className="text-2xl text-slate-300">?</span>
       )}
     </div>
