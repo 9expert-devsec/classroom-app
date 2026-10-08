@@ -6,6 +6,8 @@ import Restaurant from "@/models/Restaurant";
 import FoodMenu from "@/models/FoodMenu";
 import Class from "@/models/Class";
 import Student from "@/models/Student";
+import { requirePerm } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,16 @@ function cleanLower(x) {
 }
 
 export async function GET(req) {
+  // C5a: admin console only (Food Report) — kiosk ใช้ /api/food/today ไม่ได้เรียก route นี้
+  try {
+    await requirePerm(PERM.FOOD_REPORT);
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Unauthorized" },
+      { status: e?.status || 500 },
+    );
+  }
+
   await dbConnect();
 
   const { searchParams } = new URL(req.url);

@@ -1,6 +1,8 @@
 // src/app/api/admin/food/today/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import { requirePerm } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 import Restaurant from "@/models/Restaurant";
 import FoodMenu from "@/models/FoodMenu";
 import FoodDaySet from "@/models/FoodDaySet";
@@ -19,6 +21,16 @@ import { toBkkYMD } from "@/lib/lunchConfig";
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
+  // C5a: admin console only (Food Report) — kiosk ใช้ /api/food/today ไม่ได้เรียก route นี้
+  try {
+    await requirePerm(PERM.FOOD_READ);
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Unauthorized" },
+      { status: e?.status || 500 },
+    );
+  }
+
   await dbConnect();
 
   const { searchParams } = new URL(req.url);
