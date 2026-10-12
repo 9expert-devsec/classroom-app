@@ -61,7 +61,7 @@ export default function MenuTab({
       // no price goes last
       price: (a, b) =>
         (a.price ?? Infinity) - (b.price ?? Infinity) || byName(a, b),
-    }[params.sort];
+    }[params.sort] || ((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || byName(a, b));
     return list.sort(cmp);
   }, [menus, cat, params.q, params.status, params.sort, categoryById]);
 

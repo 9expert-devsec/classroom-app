@@ -12,7 +12,11 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import CouponSettingsCard from "./_components/CouponSettingsCard";
 import RestaurantTabs from "./_components/RestaurantTabs";
 import MenuTab from "./_components/MenuTab";
-import SetsTab from "./_components/SetsTab";
+import SetsTab from "./_components/sets/SetsTab";
+import SetFormModal from "./_components/sets/SetFormModal";
+import SetDetailModal from "./_components/sets/SetDetailModal";
+import SetDeleteDialog from "./_components/sets/SetDeleteDialog";
+import { setMenus } from "./_components/sets/setUi";
 import LibraryTab from "./_components/LibraryTab";
 import CategoryManagerModal from "./_components/CategoryManagerModal";
 import { useListParams } from "./_components/menuUi";
@@ -108,7 +112,6 @@ function RestaurantDetail({ params }) {
   const [uploadingDrinkImage, setUploadingDrinkImage] = useState(false);
 
   // modals
-  const [openSetModal, setOpenSetModal] = useState(false);
   const [openAddonModal, setOpenAddonModal] = useState(false);
   const [openDrinkModal, setOpenDrinkModal] = useState(false);
 
@@ -117,10 +120,11 @@ function RestaurantDetail({ params }) {
   const [highlightMenuId, setHighlightMenuId] = useState("");
 
   // set form
-  const [editingSetId, setEditingSetId] = useState(null);
-  const [setName, setSetName] = useState("");
-  const [setMenuIds, setSetMenuIds] = useState([]);
-  const [savingSet, setSavingSet] = useState(false);
+  // sets: form { set } (null set = create), detail view, delete confirm
+  const [setForm, setSetForm] = useState(null);
+  const [viewSetId, setViewSetId] = useState("");
+  const [deletingSet, setDeletingSet] = useState(null);
+  const [highlightSetId, setHighlightSetId] = useState("");
 
   // addon form
   const [editingAddonId, setEditingAddonId] = useState(null);
@@ -402,77 +406,20 @@ function RestaurantDetail({ params }) {
 
   /* ---------------- set actions ---------------- */
   function openNewSet() {
-    setEditingSetId(null);
-    setSetName("");
-    setSetMenuIds([]);
-    setOpenSetModal(true);
+    setSetForm({ set: null });
   }
 
-  function openEditSet(s) {
-    setEditingSetId(String(s._id));
-    setSetName(s.name || "");
-    const ids = (s.menuIds || []).map((m) =>
-      typeof m === "string" ? m : String(m._id),
-    );
-    setSetMenuIds(ids);
-    setOpenSetModal(true);
+  async function handleSetSaved(setId) {
+    setSetForm(null);
+    await fetchSets();
+    setHighlightSetId(setId);
+    setTimeout(() => setHighlightSetId(""), 2500);
   }
 
-  async function handleSaveSet(e) {
-    e.preventDefault();
-    if (!setName.trim()) return alert("กรุณากรอกชื่อชุดเมนู");
-
-    setSavingSet(true);
-    try {
-      const payload = {
-        restaurant: restaurantId,
-        name: setName.trim(),
-        menuIds: setMenuIds,
-      };
-
-      const url = editingSetId
-        ? `/api/admin/food/sets/${editingSetId}`
-        : "/api/admin/food/sets";
-      const method = editingSetId ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const out = await safeJson(res);
-      if (!res.ok) {
-        console.error(out);
-        return alert(out.error || "บันทึกชุดเมนูไม่สำเร็จ");
-      }
-
-      await fetchSets();
-      setOpenSetModal(false);
-    } catch (err) {
-      console.error(err);
-      alert("เกิดข้อผิดพลาดในการบันทึกชุดเมนู");
-    } finally {
-      setSavingSet(false);
-    }
-  }
-
-  async function handleDeleteSet(id) {
-    if (!confirm("ต้องการลบชุดเมนูนี้หรือไม่?")) return;
-    try {
-      const res = await fetch(`/api/admin/food/sets/${id}`, {
-        method: "DELETE",
-      });
-      const out = await safeJson(res);
-      if (!res.ok) {
-        console.error(out);
-        return alert(out.error || "ลบชุดเมนูไม่สำเร็จ");
-      }
-      await fetchSets();
-    } catch (err) {
-      console.error(err);
-      alert("เกิดข้อผิดพลาดในการลบชุดเมนู");
-    }
+  async function handleSetDeleted() {
+    setDeletingSet(null);
+    setViewSetId("");
+    await fetchSets();
   }
 
   /* ---------------- addon actions ---------------- */
@@ -668,6 +615,8 @@ function RestaurantDetail({ params }) {
   }
 
   /* ---------------- render ---------------- */
+  const menuById = new Map(menus.map((m) => [String(m._id), m]));
+  const viewSet = viewSetId ? sets.find((s) => String(s._id) === viewSetId) : null;
   const tabCounts = {
     menus: menus.length,
     sets: sets.length,
@@ -712,10 +661,17 @@ function RestaurantDetail({ params }) {
           </div>
         </div>
 
-        <PrimaryButton onClick={openNewMenu}>
-          <Plus className="h-4 w-4" />
-          เพิ่มเมนู
-        </PrimaryButton>
+        {listParams.tab === "sets" ? (
+          <PrimaryButton onClick={openNewSet}>
+            <Plus className="h-4 w-4" />
+            เพิ่มชุดอาหาร
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton onClick={openNewMenu}>
+            <Plus className="h-4 w-4" />
+            เพิ่มเมนู
+          </PrimaryButton>
+        )}
       </div>
 
       {/* coupon settings; stock summary shows inside when stock is on */}
@@ -733,7 +689,7 @@ function RestaurantDetail({ params }) {
           tab={listParams.tab}
           counts={tabCounts}
           onChange={(tab) =>
-            setListParams({ tab: tab === "menus" ? "" : tab, q: "", cat: "", status: "" })
+            setListParams({ tab: tab === "menus" ? "" : tab, q: "", cat: "", status: "", sort: "" })
           }
         />
 
@@ -757,9 +713,13 @@ function RestaurantDetail({ params }) {
             sets={sets}
             menus={menus}
             loading={loadingSets}
+            params={listParams}
+            setParams={setListParams}
+            highlightId={highlightSetId}
             onNew={openNewSet}
-            onEdit={openEditSet}
-            onDelete={handleDeleteSet}
+            onView={(s) => setViewSetId(String(s._id))}
+            onEdit={(s) => setSetForm({ set: s })}
+            onDelete={(s) => setDeletingSet(s)}
           />
         )}
         {listParams.tab === "addons" && (
@@ -817,78 +777,37 @@ function RestaurantDetail({ params }) {
         />
       )}
 
-      {/* ================= Set Modal ================= */}
-      <Modal
-        open={openSetModal}
-        title={editingSetId ? "แก้ไขชุดเมนู" : "สร้างชุดเมนูใหม่"}
-        onClose={() => setOpenSetModal(false)}
-      >
-        <form onSubmit={handleSaveSet} className="space-y-3">
-          <label className="block text-sm">
-            <span className="text-admin-text">ชื่อชุดเมนู</span>
-            <TextInput
-              value={setName}
-              onChange={(e) => setSetName(e.target.value)}
-              placeholder="เช่น Set A, Set B"
-            />
-          </label>
-
-          <div className="text-xs text-admin-text mb-1">
-            เลือกเมนูที่จะอยู่ในชุดนี้
-          </div>
-
-          <div className="max-h-56 overflow-y-auto space-y-1 text-sm border rounded-xl p-2 border-admin-border bg-white">
-            {menus.map((m) => {
-              const id = String(m._id);
-              const checked = setMenuIds.includes(id);
-              return (
-                <label
-                  key={m._id}
-                  className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-admin-surfaceMuted/70"
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      checked={checked}
-                      onChange={() =>
-                        setSetMenuIds((prev) =>
-                          prev.includes(id)
-                            ? prev.filter((x) => x !== id)
-                            : [...prev, id],
-                        )
-                      }
-                    />
-                    <span>{m.name}</span>
-                  </div>
-                </label>
-              );
-            })}
-            {!menus.length && (
-              <p className="text-[11px] text-admin-textMuted">
-                ยังไม่มีเมนูในร้านนี้ ให้เพิ่มเมนูก่อน
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setOpenSetModal(false)}
-              className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm hover:bg-admin-surfaceMuted"
-            >
-              ยกเลิก
-            </button>
-            <PrimaryButton type="submit" disabled={savingSet}>
-              {savingSet
-                ? "กำลังบันทึก..."
-                : editingSetId
-                  ? "อัปเดตชุดเมนู"
-                  : "บันทึกชุดเมนู"}
-            </PrimaryButton>
-          </div>
-        </form>
-      </Modal>
+      {setForm && (
+        <SetFormModal
+          restaurantId={restaurantId}
+          set={setForm.set}
+          sets={sets}
+          menus={menus}
+          categories={categories}
+          onClose={() => setSetForm(null)}
+          onSaved={handleSetSaved}
+        />
+      )}
+      {viewSet && !setForm && !deletingSet && (
+        <SetDetailModal
+          set={viewSet}
+          items={setMenus(viewSet, menuById)}
+          onClose={() => setViewSetId("")}
+          onEdit={() => {
+            setViewSetId("");
+            setSetForm({ set: viewSet });
+          }}
+          onDelete={() => setDeletingSet(viewSet)}
+        />
+      )}
+      {deletingSet && (
+        <SetDeleteDialog
+          set={deletingSet}
+          menuCount={setMenus(deletingSet, menuById).length}
+          onClose={() => setDeletingSet(null)}
+          onDeleted={handleSetDeleted}
+        />
+      )}
 
       {/* ================= Addon Modal ================= */}
       <Modal
