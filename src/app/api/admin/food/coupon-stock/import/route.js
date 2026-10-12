@@ -9,6 +9,7 @@ import { PERM } from "@/lib/acl";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import {
   validateImportTarget,
+  validateImportLot,
   classifyCodes,
 } from "@/lib/couponStockImport.server";
 
@@ -26,7 +27,8 @@ async function safeAudit(payload) {
   }
 }
 
-// POST { restaurantId, codesText, importBatch, expiresYMD }
+// POST { restaurantId, codesText, importBatch, expiresYMD, importType?, note? }
+//   importType: "new" | "existing" (ไม่ส่ง = ไม่ตรวจล็อต แบบเดิม)
 export async function POST(req) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -40,6 +42,15 @@ export async function POST(req) {
     const { restaurant, expiresYMD } = await validateImportTarget({
       restaurantId,
       expiresYMD: body?.expiresYMD,
+    });
+
+    const note = String(body?.note || "").trim();
+    await validateImportLot({
+      restaurantId,
+      importType: body?.importType,
+      importBatch,
+      expiresYMD,
+      note,
     });
 
     const classified = await classifyCodes({
@@ -56,6 +67,7 @@ export async function POST(req) {
         code,
         expiresYMD,
         importBatch,
+        note,
         status: "available",
       }));
 
@@ -87,6 +99,7 @@ export async function POST(req) {
         skippedExisting: classified.counts.exists + raced,
         skippedDuplicateInPaste: classified.counts.duplicate,
         skippedInvalid: classified.counts.invalid,
+        importType: body?.importType || "",
       },
       meta: { restaurantId: String(restaurant._id) },
     });

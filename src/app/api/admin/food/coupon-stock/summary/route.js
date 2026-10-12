@@ -34,51 +34,90 @@ export async function GET(req) {
     const today = toBkkYMD(new Date());
     const in7 = addDaysYMD_BKK(today, 7);
 
-    const [byStatusRows, byBatchRows, availableNotExpired, expiredStillAvailable, expiringSoon] =
-      await Promise.all([
-        CouponStockCode.aggregate([
-          { $match: { restaurant: restaurant._id } },
-          { $group: { _id: "$status", n: { $sum: 1 } } },
-        ]),
-        CouponStockCode.aggregate([
-          { $match: { restaurant: restaurant._id } },
-          {
-            $group: {
-              _id: { batch: "$importBatch", expiresYMD: "$expiresYMD" },
-              total: { $sum: 1 },
-              available: {
-                $sum: { $cond: [{ $eq: ["$status", "available"] }, 1, 0] },
+    const isAvailable = { $eq: ["$status", "available"] };
+
+    // นับทุกอย่างใน aggregate เดียว
+    const [facets] = await CouponStockCode.aggregate([
+      { $match: { restaurant: restaurant._id } },
+      {
+        $facet: {
+          byStatus: [{ $group: { _id: "$status", n: { $sum: 1 } } }],
+          expiry: [
+            {
+              $group: {
+                _id: null,
+                availableNotExpired: {
+                  $sum: {
+                    $cond: [
+                      { $and: [isAvailable, { $gte: ["$expiresYMD", today] }] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                expiredStillAvailable: {
+                  $sum: {
+                    $cond: [
+                      { $and: [isAvailable, { $lt: ["$expiresYMD", today] }] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                expiringSoon: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $and: [
+                          isAvailable,
+                          { $gte: ["$expiresYMD", today] },
+                          { $lte: ["$expiresYMD", in7] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
               },
-              assigned: {
-                $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] },
-              },
-              handedOut: {
-                $sum: { $cond: [{ $eq: ["$status", "handed_out"] }, 1, 0] },
-              },
-              awaitingReturn: {
-                $sum: { $cond: [{ $eq: ["$status", "awaiting_return"] }, 1, 0] },
-              },
-              voided: { $sum: { $cond: [{ $eq: ["$status", "void"] }, 1, 0] } },
             },
-          },
-          { $sort: { "_id.expiresYMD": 1, "_id.batch": 1 } },
-        ]),
-        CouponStockCode.countDocuments({
-          restaurant: restaurant._id,
-          status: "available",
-          expiresYMD: { $gte: today },
-        }),
-        CouponStockCode.countDocuments({
-          restaurant: restaurant._id,
-          status: "available",
-          expiresYMD: { $lt: today },
-        }),
-        CouponStockCode.countDocuments({
-          restaurant: restaurant._id,
-          status: "available",
-          expiresYMD: { $gte: today, $lte: in7 },
-        }),
-      ]);
+          ],
+          byBatch: [
+            {
+              $group: {
+                _id: { batch: "$importBatch", expiresYMD: "$expiresYMD" },
+                total: { $sum: 1 },
+                available: { $sum: { $cond: [isAvailable, 1, 0] } },
+                assigned: {
+                  $sum: { $cond: [{ $eq: ["$status", "assigned"] }, 1, 0] },
+                },
+                handedOut: {
+                  $sum: { $cond: [{ $eq: ["$status", "handed_out"] }, 1, 0] },
+                },
+                awaitingReturn: {
+                  $sum: {
+                    $cond: [{ $eq: ["$status", "awaiting_return"] }, 1, 0],
+                  },
+                },
+                voided: {
+                  $sum: { $cond: [{ $eq: ["$status", "void"] }, 1, 0] },
+                },
+                lastImportedAt: { $max: "$createdAt" },
+              },
+            },
+            { $sort: { "_id.expiresYMD": 1, "_id.batch": 1 } },
+          ],
+        },
+      },
+    ]);
+
+    const byStatusRows = facets?.byStatus || [];
+    const byBatchRows = facets?.byBatch || [];
+    const {
+      availableNotExpired = 0,
+      expiredStillAvailable = 0,
+      expiringSoon = 0,
+    } = facets?.expiry?.[0] || {};
 
     const byStatus = {
       available: 0,
@@ -100,6 +139,7 @@ export async function GET(req) {
       handedOut: b.handedOut,
       awaitingReturn: b.awaitingReturn,
       voided: b.voided,
+      lastImportedAt: b.lastImportedAt || null,
     }));
 
     const lowThreshold = Number(restaurant.couponStockLowThreshold ?? 5);

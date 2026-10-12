@@ -15,19 +15,12 @@ import CouponStockCode from "@/models/CouponStockCode";
 
 /* ---------------- code normalisation ---------------- */
 
-// ตัดช่องว่างทั้งหมด (รวมที่แปะมาจาก Excel) แล้วทำเป็นตัวใหญ่
-export function normalizeStockCode(raw) {
-  return String(raw ?? "")
-    .replace(/\s+/g, "")
-    .trim()
-    .toUpperCase();
-}
-
-export const STOCK_CODE_REGEX = /^[A-Z0-9-]{4,40}$/;
-
-export function isValidStockCode(raw) {
-  return STOCK_CODE_REGEX.test(normalizeStockCode(raw));
-}
+// ย้ายไป couponStockCode.js เพื่อให้หน้า import ฝั่ง client ใช้กติกาเดียวกัน
+export {
+  normalizeStockCode,
+  STOCK_CODE_REGEX,
+  isValidStockCode,
+} from "@/lib/couponStockCode";
 
 /* ---------------- errors ---------------- */
 

@@ -7,6 +7,7 @@ import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import {
   validateImportTarget,
+  validateImportLot,
   classifyCodes,
 } from "@/lib/couponStockImport.server";
 
@@ -16,7 +17,8 @@ function jsonError(message, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
-// POST { restaurantId, codesText, importBatch, expiresYMD }
+// POST { restaurantId, codesText, importBatch, expiresYMD, importType?, note? }
+//   importType: "new" | "existing" (ไม่ส่ง = ไม่ตรวจล็อต แบบเดิม)
 export async function POST(req) {
   try {
     // preview ไม่เขียนอะไร แต่เป็นหน้าจอฝั่ง write จึงใช้สิทธิ์เดียวกับ import
@@ -29,6 +31,14 @@ export async function POST(req) {
     const { restaurant, expiresYMD } = await validateImportTarget({
       restaurantId,
       expiresYMD: body?.expiresYMD,
+    });
+
+    await validateImportLot({
+      restaurantId,
+      importType: body?.importType,
+      importBatch: String(body?.importBatch || "").trim(),
+      expiresYMD,
+      note: String(body?.note || "").trim(),
     });
 
     const result = await classifyCodes({
