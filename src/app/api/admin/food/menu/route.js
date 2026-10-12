@@ -118,6 +118,8 @@ export async function POST(req) {
     if (body?.optionGroups !== undefined) {
       doc.optionGroups = normalizeOptionGroups(body.optionGroups);
     }
+    // "บันทึกแบบปิดใช้งาน" creates the menu switched off (default stays active)
+    if (typeof body?.isActive === "boolean") doc.isActive = body.isActive;
 
     const item = await FoodMenu.create(doc);
 
@@ -134,6 +136,7 @@ export async function POST(req) {
         categoryIds: (item.categoryIds || []).map(String),
         sortOrder: item.sortOrder,
         optionGroups: (item.optionGroups || []).length,
+        isActive: item.isActive !== false,
       },
       meta: { restaurantId: String(restaurantId) },
     });

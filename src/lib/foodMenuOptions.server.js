@@ -3,7 +3,8 @@
 // POST /api/admin/food/menu และ PUT /api/admin/food/menu/[id]
 import mongoose from "mongoose";
 
-export const DESCRIPTION_MAX = 300;
+// R2 menu wizard: 500 (was 300)
+export const DESCRIPTION_MAX = 500;
 
 export class FoodMenuFieldError extends Error {
   constructor(message) {

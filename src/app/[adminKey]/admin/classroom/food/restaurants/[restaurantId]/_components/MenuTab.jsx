@@ -22,6 +22,7 @@ export default function MenuTab({
   onDelete,
   onToggleActive,
   onManageCategories,
+  highlightId = "",
 }) {
   const [searchResetKey, setSearchResetKey] = useState(0);
 
@@ -126,7 +127,13 @@ export default function MenuTab({
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pageItems.map((m) => (
-            <MenuCard key={String(m._id)} menu={m} couponEnabled={couponEnabled} {...shared} />
+            <MenuCard
+              key={String(m._id)}
+              menu={m}
+              couponEnabled={couponEnabled}
+              highlight={highlightId === String(m._id)}
+              {...shared}
+            />
           ))}
         </div>
       )}

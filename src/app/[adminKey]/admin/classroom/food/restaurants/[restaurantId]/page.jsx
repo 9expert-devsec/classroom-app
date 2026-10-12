@@ -7,7 +7,6 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import TextInput from "@/components/ui/TextInput";
-import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsCard from "./_components/CouponSettingsCard";
@@ -17,10 +16,7 @@ import SetsTab from "./_components/SetsTab";
 import LibraryTab from "./_components/LibraryTab";
 import CategoryManagerModal from "./_components/CategoryManagerModal";
 import { useListParams } from "./_components/menuUi";
-import OptionGroupsEditor, {
-  toEditorGroups,
-  toPayloadGroups,
-} from "./_components/OptionGroupsEditor";
+import MenuWizard from "./_components/menu-wizard/MenuWizard";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -60,36 +56,6 @@ function Modal({ open, title, children, onClose }) {
 }
 
 /* ---------------- helpers ---------------- */
-
-function uniq(arr) {
-  return Array.from(new Set((arr || []).map((x) => String(x)).filter(Boolean)));
-}
-
-function toggleId(list, id) {
-  const s = String(id);
-  return list.includes(s) ? list.filter((x) => x !== s) : [...list, s];
-}
-
-/** ความกว้างจริงของไฟล์รูป (0 = อ่านไม่ได้ เช่น ฟอร์แมตที่เบราว์เซอร์ถอดไม่ได้) */
-async function imageWidthOf(file) {
-  try {
-    const bmp = await createImageBitmap(file);
-    const w = bmp.width;
-    bmp.close?.();
-    return w;
-  } catch {
-    return 0;
-  }
-}
-
-function toIdString(x) {
-  if (!x) return "";
-  if (typeof x === "string") return String(x);
-  if (typeof x === "object") {
-    if (x._id) return String(x._id);
-  }
-  return String(x);
-}
 
 async function safeJson(res) {
   const t = await res.text().catch(() => "");
@@ -138,38 +104,17 @@ function RestaurantDetail({ params }) {
   const [loadingDrinks, setLoadingDrinks] = useState(false);
 
   // upload
-  const [uploadingMenuImage, setUploadingMenuImage] = useState(false);
   const [uploadingAddonImage, setUploadingAddonImage] = useState(false);
   const [uploadingDrinkImage, setUploadingDrinkImage] = useState(false);
 
   // modals
-  const [openMenuModal, setOpenMenuModal] = useState(false);
   const [openSetModal, setOpenSetModal] = useState(false);
   const [openAddonModal, setOpenAddonModal] = useState(false);
   const [openDrinkModal, setOpenDrinkModal] = useState(false);
 
-  // menu form
-  const [editingMenuId, setEditingMenuId] = useState(null);
-  const [menuName, setMenuName] = useState("");
-  const [menuImageUrl, setMenuImageUrl] = useState("");
-  // ความกว้างจริงของไฟล์ที่เพิ่งเลือก ถ้าเล็กกว่า MIN_MENU_IMAGE_W (0 = ไม่ต้องเตือน)
-  const [menuImageSmallW, setMenuImageSmallW] = useState(0);
-  const [savingMenu, setSavingMenu] = useState(false);
-
-  // ✅ new: ids (ผูกจริง)
-  const [menuAddonIds, setMenuAddonIds] = useState([]);
-  const [menuDrinkIds, setMenuDrinkIds] = useState([]);
-
-  // ✅ modal search (แยกจากหน้า list)
-  const [qMenuAddon, setQMenuAddon] = useState("");
-  const [qMenuDrink, setQMenuDrink] = useState("");
-
-  // ✅ menu form: ฟิลด์ใหม่สำหรับร้านคูปอง (P1b)
-  const [menuCategoryIds, setMenuCategoryIds] = useState([]);
-  const [menuPrice, setMenuPrice] = useState("");
-  const [menuDescription, setMenuDescription] = useState("");
-  const [menuSortOrder, setMenuSortOrder] = useState("0");
-  const [menuOptionGroups, setMenuOptionGroups] = useState([]);
+  // menu wizard: null = closed, { menu: null } = create, { menu } = edit
+  const [wizard, setWizard] = useState(null);
+  const [highlightMenuId, setHighlightMenuId] = useState("");
 
   // set form
   const [editingSetId, setEditingSetId] = useState(null);
@@ -209,25 +154,6 @@ function RestaurantDetail({ params }) {
       throw new Error(data.error || "upload_failed");
     }
     return { url: data.url, publicId: data.publicId || "" };
-  }
-
-  async function handleUploadMenuImage(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // รูปเล็กแค่เตือน ไม่บล็อกการอัพโหลด (หน้าเมนูมือถือแสดงกว้างเต็มจอ)
-    const w = await imageWidthOf(file);
-    setMenuImageSmallW(w > 0 && w < MIN_MENU_IMAGE_W ? w : 0);
-    setUploadingMenuImage(true);
-    try {
-      const out = await uploadImage(file);
-      setMenuImageUrl(out.url);
-    } catch (err) {
-      console.error(err);
-      alert("อัพโหลดรูปเมนูไม่สำเร็จ");
-    } finally {
-      setUploadingMenuImage(false);
-      e.target.value = "";
-    }
   }
 
   async function handleUploadAddonImage(e) {
@@ -380,22 +306,6 @@ function RestaurantDetail({ params }) {
 
   /* ---------------- derived ---------------- */
 
-  // the menu form only offers active categories; ids of disabled ones the
-  // menu already has stay in menuCategoryIds and are saved unchanged
-  const activeCategories = useMemo(
-    () => categories.filter((c) => c.isActive !== false),
-    [categories],
-  );
-  const activeCategoryIdSet = useMemo(
-    () => new Set(activeCategories.map((c) => String(c._id))),
-    [activeCategories],
-  );
-  const pickedActiveCategoryCount = menuCategoryIds.filter((id) =>
-    activeCategoryIdSet.has(id),
-  ).length;
-  const hiddenPickedCategoryCount =
-    menuCategoryIds.length - pickedActiveCategoryCount;
-
   const filteredAddons = useMemo(() => {
     const kw = qAddon.trim().toLowerCase();
     const list = addonsList || [];
@@ -426,156 +336,20 @@ function RestaurantDetail({ params }) {
     return (drinksList || []).filter((d) => d?.isActive !== false);
   }, [drinksList]);
 
-  const filteredMenuAddons = useMemo(() => {
-    const kw = qMenuAddon.trim().toLowerCase();
-    const list = activeAddons;
-    if (!kw) return list;
-    return list.filter((x) =>
-      String(x.name || "")
-        .toLowerCase()
-        .includes(kw),
-    );
-  }, [activeAddons, qMenuAddon]);
-
-  const filteredMenuDrinks = useMemo(() => {
-    const kw = qMenuDrink.trim().toLowerCase();
-    const list = activeDrinks;
-    if (!kw) return list;
-    return list.filter((x) =>
-      String(x.name || "")
-        .toLowerCase()
-        .includes(kw),
-    );
-  }, [activeDrinks, qMenuDrink]);
-
   /* ---------------- menu actions ---------------- */
   function openNewMenu() {
-    setEditingMenuId(null);
-    setMenuName("");
-    setMenuImageUrl("");
-    setMenuImageSmallW(0);
-
-    setMenuAddonIds([]);
-    setMenuDrinkIds([]);
-
-    setQMenuAddon("");
-    setQMenuDrink("");
-
-    // ✅ P1b
-    setMenuCategoryIds([]);
-    setMenuPrice("");
-    setMenuDescription("");
-    setMenuSortOrder("0");
-    setMenuOptionGroups([]);
-
-    setOpenMenuModal(true);
+    setWizard({ menu: null });
   }
 
   function openEditMenu(m) {
-    setEditingMenuId(String(m._id));
-    setMenuName(m.name || "");
-    setMenuImageUrl(m.imageUrl || "");
-    setMenuImageSmallW(0);
-
-    setMenuAddonIds(uniq((m.addonIds || []).map(toIdString)));
-    setMenuDrinkIds(uniq((m.drinkIds || []).map(toIdString)));
-
-    setQMenuAddon("");
-    setQMenuDrink("");
-
-    // ✅ P1b
-    setMenuCategoryIds(uniq((m.categoryIds || []).map(toIdString)));
-    setMenuPrice(
-      m.price === null || m.price === undefined ? "" : String(m.price),
-    );
-    setMenuDescription(m.description || "");
-    setMenuSortOrder(String(m.sortOrder ?? 0));
-    setMenuOptionGroups(toEditorGroups(m.optionGroups));
-
-    setOpenMenuModal(true);
+    setWizard({ menu: m });
   }
 
-  async function handleSaveMenu(e) {
-    e.preventDefault();
-    if (!menuName.trim()) return alert("กรุณากรอกชื่อเมนู");
-
-    // กันเลือกของที่ถูก disable (กรองด้วย active list)
-    const activeAddonIdSet = new Set(activeAddons.map((a) => String(a._id)));
-    const activeDrinkIdSet = new Set(activeDrinks.map((d) => String(d._id)));
-
-    const cleanAddonIds = uniq(menuAddonIds).filter((id) =>
-      activeAddonIdSet.has(String(id)),
-    );
-    const cleanDrinkIds = uniq(menuDrinkIds).filter((id) =>
-      activeDrinkIdSet.has(String(id)),
-    );
-
-    // ✅ P1b: ตรวจเบื้องต้นฝั่ง client (server ตรวจซ้ำอยู่แล้ว)
-    const priceRaw = String(menuPrice).trim();
-    if (priceRaw !== "") {
-      const n = Number(priceRaw);
-      if (!Number.isFinite(n) || n < 0) {
-        return alert("ราคาต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป");
-      }
-    }
-    for (const g of menuOptionGroups) {
-      if (!String(g.name || "").trim()) {
-        return alert("กรุณากรอกชื่อกลุ่มตัวเลือกให้ครบ");
-      }
-      if (!(g.choices || []).length) {
-        return alert(`กลุ่ม "${g.name}" ต้องมีตัวเลือกอย่างน้อย 1 รายการ`);
-      }
-      for (const c of g.choices || []) {
-        if (!String(c.name || "").trim()) {
-          return alert(`กรุณากรอกชื่อตัวเลือกในกลุ่ม "${g.name}" ให้ครบ`);
-        }
-      }
-    }
-
-    setSavingMenu(true);
-    try {
-      const payload = {
-        restaurantId,
-        name: menuName.trim(),
-        imageUrl: menuImageUrl.trim() || "",
-
-        // ✅ new refs
-        addonIds: cleanAddonIds,
-        drinkIds: cleanDrinkIds,
-
-        // ✅ P1b
-        categoryIds: menuCategoryIds,
-        price: priceRaw === "" ? null : Number(priceRaw),
-        description: menuDescription.trim(),
-        sortOrder: Number(menuSortOrder) || 0,
-        optionGroups: toPayloadGroups(menuOptionGroups),
-      };
-
-      const url = editingMenuId
-        ? `/api/admin/food/menu/${editingMenuId}`
-        : "/api/admin/food/menu";
-      const method = editingMenuId ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const out = await safeJson(res);
-      if (!res.ok) {
-        console.error(out);
-        return alert(out.error || "บันทึกเมนูไม่สำเร็จ");
-      }
-
-      await fetchMenus();
-      setOpenMenuModal(false);
-    } catch (err) {
-      console.error(err);
-      alert("เกิดข้อผิดพลาดในการบันทึกเมนู");
-    } finally {
-      setSavingMenu(false);
-    }
+  async function handleWizardSaved(menuId) {
+    setWizard(null);
+    await fetchMenus();
+    setHighlightMenuId(menuId);
+    setTimeout(() => setHighlightMenuId(""), 2500);
   }
 
   async function handleDeleteMenu(id) {
@@ -974,6 +748,7 @@ function RestaurantDetail({ params }) {
             onEdit={openEditMenu}
             onDelete={(m) => handleDeleteMenu(m._id)}
             onToggleActive={handleToggleMenuActive}
+            highlightId={highlightMenuId}
             onManageCategories={() => setCategoryManagerOpen(true)}
           />
         )}
@@ -1025,337 +800,21 @@ function RestaurantDetail({ params }) {
         />
       )}
 
-      {/* ================= Menu Modal ================= */}
-      <Modal
-        open={openMenuModal}
-        title={editingMenuId ? "แก้ไขเมนู" : "เพิ่มเมนู"}
-        onClose={() => setOpenMenuModal(false)}
-      >
-        <form onSubmit={handleSaveMenu} className="space-y-4">
-          <label className="block text-sm">
-            <span className="text-admin-text">ชื่อเมนู</span>
-            <TextInput
-              value={menuName}
-              onChange={(e) => setMenuName(e.target.value)}
-              placeholder="เช่น สเต็กไก่กรอบเทอริยากิ"
-            />
-          </label>
-
-          {/* ✅ P1b-2: หมวดหมู่เลือกได้หลายหมวด */}
-          <div className="text-sm">
-            <div className="mb-1 flex items-center justify-between">
-              <span className="text-admin-text">
-                หมวดหมู่ (เลือกได้หลายหมวด)
-              </span>
-              {pickedActiveCategoryCount > 0 && (
-                <button
-                  type="button"
-                  className="text-[11px] text-admin-textMuted underline"
-                  onClick={() =>
-                    setMenuCategoryIds((prev) =>
-                      prev.filter((id) => !activeCategoryIdSet.has(id)),
-                    )
-                  }
-                >
-                  ล้างที่เลือก
-                </button>
-              )}
-            </div>
-
-            <div className="max-h-44 overflow-y-auto rounded-xl border border-admin-border bg-white p-2 space-y-1">
-              {activeCategories.map((c) => {
-                const id = String(c._id);
-                return (
-                  <label
-                    key={id}
-                    className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-admin-surfaceMuted/70"
-                  >
-                    <input
-                      type="checkbox"
-                      className="h-3.5 w-3.5"
-                      checked={menuCategoryIds.includes(id)}
-                      onChange={() =>
-                        setMenuCategoryIds((prev) => toggleId(prev, id))
-                      }
-                    />
-                    <span>{c.name}</span>
-                  </label>
-                );
-              })}
-
-              {activeCategories.length === 0 && (
-                <p className="text-[11px] text-admin-textMuted">
-                  ยังไม่มีหมวดหมู่ที่เปิดใช้งานในร้านนี้
-                </p>
-              )}
-            </div>
-
-            <span className="mt-1 block text-[11px] text-admin-textMuted">
-              {pickedActiveCategoryCount === 0
-                ? "ไม่ได้เลือก = ไม่มีหมวดหมู่"
-                : `เลือกแล้ว ${pickedActiveCategoryCount} หมวด — เมนูจะแสดงในทุกหมวดที่เลือก`}
-            </span>
-            {hiddenPickedCategoryCount > 0 && (
-              <span className="mt-0.5 block text-[11px] text-admin-textMuted">
-                เมนูนี้อยู่ในหมวดที่ปิดใช้งานอีก {hiddenPickedCategoryCount} หมวด
-                (ไม่แสดงที่นี่ และยังคงไว้เมื่อบันทึก)
-              </span>
-            )}
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="text-admin-text">ราคา (บาท)</span>
-              <TextInput
-                type="number"
-                min="0"
-                step="1"
-                value={menuPrice}
-                onChange={(e) => setMenuPrice(e.target.value)}
-                placeholder="เว้นว่างได้ถ้าเป็นร้าน set menu"
-              />
-            </label>
-
-            <label className="block text-sm">
-              <span className="text-admin-text">ลำดับ</span>
-              <TextInput
-                type="number"
-                step="1"
-                value={menuSortOrder}
-                onChange={(e) => setMenuSortOrder(e.target.value)}
-                placeholder="0"
-              />
-              <span className="mt-1 block text-[11px] text-admin-textMuted">
-                ใช้ลำดับเดียวกันในทุกหมวดที่เมนูนี้อยู่
-              </span>
-            </label>
-          </div>
-
-          <label className="block text-sm">
-            <span className="text-admin-text">คำอธิบาย (ไม่บังคับ)</span>
-            <TextInput
-              value={menuDescription}
-              onChange={(e) => setMenuDescription(e.target.value)}
-              maxLength={300}
-              placeholder="รายละเอียดสั้น ๆ ที่ผู้เรียนจะเห็นตอนสั่ง"
-            />
-            <span className="mt-1 block text-[11px] text-admin-textMuted">
-              {menuDescription.length}/300
-            </span>
-          </label>
-
-          <OptionGroupsEditor
-            value={menuOptionGroups}
-            onChange={setMenuOptionGroups}
-          />
-
-          <label className="block text-sm">
-            <span className="text-admin-text">รูปเมนู (URL รูป)</span>
-            <TextInput
-              value={menuImageUrl}
-              onChange={(e) => {
-                setMenuImageUrl(e.target.value);
-                setMenuImageSmallW(0);
-              }}
-              placeholder="วางลิงก์รูป หรือกดอัพโหลดด้านล่าง"
-            />
-          </label>
-
-          <div className="flex items-center gap-3">
-            <input
-              id="menuImageFile"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleUploadMenuImage}
-            />
-            <label
-              htmlFor="menuImageFile"
-              className="inline-flex cursor-pointer items-center rounded-lg border border-admin-border bg-white px-3 py-1.5 text-xs font-medium text-admin-text shadow-sm hover:bg-admin-surfaceMuted"
-            >
-              {uploadingMenuImage ? "กำลังอัพโหลด..." : "อัพโหลดรูปจากเครื่อง"}
-            </label>
-          </div>
-
-          {menuImageSmallW ? (
-            <p
-              data-testid="menu-image-small-warning"
-              className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700"
-            >
-              ภาพมีขนาดเล็ก อาจไม่คมชัดบนมือถือ แนะนำความกว้างอย่างน้อย {MIN_MENU_IMAGE_W}px
-              (ภาพนี้กว้าง {menuImageSmallW}px)
-            </p>
-          ) : null}
-
-          {menuImageUrl && (
-            <div className="mt-1 inline-flex items-center gap-3 rounded-xl bg-admin-surfaceMuted px-3 py-2">
-              <div className="relative h-14 w-20 overflow-hidden rounded-lg bg-white/40">
-                <Image
-                  src={menuImageUrl}
-                  alt={menuName || "menu"}
-                  fill
-                  sizes="80px"
-                  className="object-cover"
-                />
-              </div>
-              <span className="text-xs text-front-text">
-                {menuName || "ชื่อเมนู"}
-              </span>
-            </div>
-          )}
-
-          {/* ✅ Add-on selection by id */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm text-admin-text">
-                Add-on (เลือกได้หลายรายการ)
-                <span className="ml-2 text-[11px] text-admin-textMuted">
-                  เลือกแล้ว {menuAddonIds.length}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="text-[11px] text-admin-textMuted underline"
-                onClick={() => setMenuAddonIds([])}
-              >
-                ล้างที่เลือก
-              </button>
-            </div>
-
-            <TextInput
-              value={qMenuAddon}
-              onChange={(e) => setQMenuAddon(e.target.value)}
-              placeholder="ค้นหา add-on ในร้านนี้..."
-            />
-
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-admin-border bg-white p-2 space-y-1">
-              {filteredMenuAddons.map((a) => {
-                const id = String(a._id);
-                const checked = menuAddonIds.includes(id);
-                return (
-                  <label
-                    key={id}
-                    className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-admin-surfaceMuted/70"
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5"
-                        checked={checked}
-                        onChange={() =>
-                          setMenuAddonIds((prev) => toggleId(prev, id))
-                        }
-                      />
-                      <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-admin-surfaceMuted">
-                        {a.imageUrl ? (
-                          <Image
-                            src={a.imageUrl}
-                            alt={a.name || "addon"}
-                            fill
-                            sizes="32px"
-                            className="object-cover"
-                          />
-                        ) : null}
-                      </div>
-                      <span className="text-sm">{a.name}</span>
-                    </div>
-                  </label>
-                );
-              })}
-
-              {!loadingAddons && filteredMenuAddons.length === 0 && (
-                <p className="text-[11px] text-admin-textMuted">
-                  ไม่มี Add-on (หรือถูกปิดการใช้งานทั้งหมด)
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* ✅ Drink selection by id */}
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm text-admin-text">
-                Drink options (หน้าเช็คอินลูกค้าจะเลือกได้ 1 อย่าง)
-                <span className="ml-2 text-[11px] text-admin-textMuted">
-                  เลือกแล้ว {menuDrinkIds.length}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="text-[11px] text-admin-textMuted underline"
-                onClick={() => setMenuDrinkIds([])}
-              >
-                ล้างที่เลือก
-              </button>
-            </div>
-
-            <TextInput
-              value={qMenuDrink}
-              onChange={(e) => setQMenuDrink(e.target.value)}
-              placeholder="ค้นหา drink ในร้านนี้..."
-            />
-
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-admin-border bg-white p-2 space-y-1">
-              {filteredMenuDrinks.map((d) => {
-                const id = String(d._id);
-                const checked = menuDrinkIds.includes(id);
-                return (
-                  <label
-                    key={id}
-                    className="flex items-center justify-between rounded-lg px-2 py-1 hover:bg-admin-surfaceMuted/70"
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5"
-                        checked={checked}
-                        onChange={() =>
-                          setMenuDrinkIds((prev) => toggleId(prev, id))
-                        }
-                      />
-                      <div className="relative h-8 w-8 overflow-hidden rounded-lg bg-admin-surfaceMuted">
-                        {d.imageUrl ? (
-                          <Image
-                            src={d.imageUrl}
-                            alt={d.name || "drink"}
-                            fill
-                            sizes="32px"
-                            className="object-cover"
-                          />
-                        ) : null}
-                      </div>
-                      <span className="text-sm">{d.name}</span>
-                    </div>
-                  </label>
-                );
-              })}
-
-              {!loadingDrinks && filteredMenuDrinks.length === 0 && (
-                <p className="text-[11px] text-admin-textMuted">
-                  ไม่มี Drink (หรือถูกปิดการใช้งานทั้งหมด)
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setOpenMenuModal(false)}
-              className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm hover:bg-admin-surfaceMuted"
-            >
-              ยกเลิก
-            </button>
-            <PrimaryButton type="submit" disabled={savingMenu}>
-              {savingMenu
-                ? "กำลังบันทึก..."
-                : editingMenuId
-                  ? "อัปเดตเมนู"
-                  : "บันทึกเมนู"}
-            </PrimaryButton>
-          </div>
-        </form>
-      </Modal>
+      {wizard && (
+        <MenuWizard
+          restaurantId={restaurantId}
+          menu={wizard.menu}
+          nextSortOrder={
+            menus.reduce((max, m) => Math.max(max, Number(m.sortOrder) || 0), 0) + 1
+          }
+          categories={categories}
+          addons={activeAddons}
+          drinks={activeDrinks}
+          uploadImage={uploadImage}
+          onClose={() => setWizard(null)}
+          onSaved={handleWizardSaved}
+        />
+      )}
 
       {/* ================= Set Modal ================= */}
       <Modal

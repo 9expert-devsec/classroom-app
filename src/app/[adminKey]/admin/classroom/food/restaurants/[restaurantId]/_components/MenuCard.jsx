@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Toggle from "./Toggle";
 import { CategoryChips, MenuActions, MenuImage, StatusLabel } from "./MenuBits";
 import { formatPrice, optionSummary } from "./menuUi";
@@ -12,12 +13,24 @@ export default function MenuCard({
   onEdit,
   onDelete,
   onToggleActive,
+  highlight = false,
 }) {
   const active = menu.isActive !== false;
   const hasPrice = menu.price !== null && menu.price !== undefined;
+  const ref = useRef(null);
+
+  // just saved in the wizard: bring it into view
+  useEffect(() => {
+    if (highlight) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlight]);
 
   return (
-    <div className="flex h-full min-w-0 flex-col rounded-2xl border border-admin-border bg-white transition hover:border-brand-primary hover:shadow-sm">
+    <div
+      ref={ref}
+      className={`flex h-full min-w-0 flex-col rounded-2xl border bg-white transition hover:border-brand-primary hover:shadow-sm ${
+        highlight ? "border-green-400 ring-2 ring-green-400" : "border-admin-border"
+      }`}
+    >
       {/* body: opens the edit form */}
       <div
         role="button"

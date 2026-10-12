@@ -28,6 +28,16 @@ export function makeEmptyGroup() {
   return emptyGroup();
 }
 
+// new group pre-filled with option names, all priced 0 (admin fills prices in)
+export function makeGroupFromNames(name, names, selectType = "multi") {
+  return {
+    ...emptyGroup(),
+    name,
+    selectType: selectType === "single" ? "single" : "multi",
+    choices: names.map((n) => ({ ...emptyChoice(), name: n })),
+  };
+}
+
 // แปลง optionGroups ที่โหลดมาจาก API ให้พร้อมแก้ไขบน UI
 export function toEditorGroups(groups) {
   return (Array.isArray(groups) ? groups : []).map((g) => ({
