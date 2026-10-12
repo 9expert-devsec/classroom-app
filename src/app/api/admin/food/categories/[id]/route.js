@@ -23,7 +23,7 @@ async function safeAudit(payload) {
   }
 }
 
-// PATCH body: { name?, isActive?, sortOrder? }
+// PATCH body: { name?, isActive?, sortOrder?, highlight? }
 export async function PATCH(req, { params }) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -47,6 +47,7 @@ export async function PATCH(req, { params }) {
       });
     }
     if (typeof body?.isActive === "boolean") update.isActive = body.isActive;
+    if (typeof body?.highlight === "boolean") update.highlight = body.highlight;
     if (body?.sortOrder !== undefined) {
       const n = Number(body.sortOrder);
       if (Number.isFinite(n)) update.sortOrder = n;
@@ -70,11 +71,13 @@ export async function PATCH(req, { params }) {
       before: {
         name: before.name,
         isActive: before.isActive,
+        highlight: before.highlight ?? null,
         sortOrder: before.sortOrder,
       },
       after: {
         name: item.name,
         isActive: item.isActive,
+        highlight: item.highlight ?? null,
         sortOrder: item.sortOrder,
       },
       meta: { restaurantId: String(before.restaurant || "") },

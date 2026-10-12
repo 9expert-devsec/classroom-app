@@ -13,6 +13,9 @@ const FoodMenuCategorySchema = new Schema(
     name: { type: String, required: true, trim: true },
     sortOrder: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    // shown as the orange "แนะนำ" chip in admin. No default on purpose:
+    // absent = fall back to the name rule (contains "แนะนำ" / "recommend")
+    highlight: { type: Boolean },
   },
   { timestamps: true },
 );

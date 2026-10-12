@@ -250,7 +250,9 @@ export default function CouponSettingsCard({ restaurant, adminKey, onSaved }) {
         >
           {!couponEnabled ? (
             <p className="mt-2 text-[11px] text-admin-textMuted">
-              เปิดร้านคูปองก่อน จึงจะตั้งค่าคูปอง stock ได้
+              {usesCouponStock
+                ? "บันทึกไว้ว่าใช้คูปอง stock — จะมีผลเมื่อเปิดร้านคูปองอีกครั้ง"
+                : "เปิดร้านคูปองก่อน จึงจะตั้งค่าคูปอง stock ได้"}
             </p>
           ) : usesCouponStock ? (
             <StockSummary restaurant={restaurant} adminKey={adminKey} onSaved={onSaved} />

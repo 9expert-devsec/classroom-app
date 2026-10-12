@@ -44,7 +44,7 @@ export async function GET(req) {
   }
 }
 
-// POST body: { restaurantId, name, sortOrder?, isActive? }
+// POST body: { restaurantId, name, sortOrder?, isActive?, highlight? }
 export async function POST(req) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -74,6 +74,7 @@ export async function POST(req) {
       name,
       sortOrder,
       isActive: typeof body?.isActive === "boolean" ? body.isActive : true,
+      ...(typeof body?.highlight === "boolean" ? { highlight: body.highlight } : {}),
     });
 
     await safeAudit({
@@ -87,6 +88,7 @@ export async function POST(req) {
         name: item.name,
         sortOrder: item.sortOrder,
         isActive: item.isActive,
+        highlight: item.highlight ?? null,
       },
       meta: { restaurantId },
     });

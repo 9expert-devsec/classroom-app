@@ -8,7 +8,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { safeJson } from "./menuUi";
+import Toggle from "./Toggle";
+import { isRecommendedCategory, safeJson } from "./menuUi";
 
 const NAME_MAX = 50;
 
@@ -33,6 +34,8 @@ export default function CategoryFormDialog({
     String(isEdit ? (category.sortOrder ?? 0) + 1 : defaultOrder),
   );
   const [active, setActive] = useState(category ? category.isActive !== false : true);
+  // categories saved before the flag existed start from the name rule
+  const [highlight, setHighlight] = useState(() => isRecommendedCategory(category));
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [serverError, setServerError] = useState("");
@@ -65,7 +68,7 @@ export default function CategoryFormDialog({
     setSaving(true);
     setServerError("");
     try {
-      const body = { name: clean, sortOrder: orderNum - 1, isActive: active };
+      const body = { name: clean, sortOrder: orderNum - 1, isActive: active, highlight };
       const res = await fetch(
         isEdit
           ? `/api/admin/food/categories/${category._id}`
@@ -161,6 +164,15 @@ export default function CategoryFormDialog({
               หากปิดใช้งาน หมวดหมู่จะไม่แสดงในหน้าร้านและฟอร์มเลือกหมวดหมู่
             </p>
           </fieldset>
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-admin-border p-3">
+            <span className="text-sm font-medium">แสดงเป็นหมวดแนะนำ (สีส้ม)</span>
+            <Toggle
+              checked={highlight}
+              onChange={setHighlight}
+              label="แสดงเป็นหมวดแนะนำ (สีส้ม)"
+            />
+          </div>
 
           {serverError && (
             <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{serverError}</p>

@@ -70,9 +70,15 @@ export function sortCategories(categories) {
   );
 }
 
-// no model field for "recommended": it is a category the shop named that way
+// orange "แนะนำ" chip: the category's highlight flag when it has been set,
+// otherwise the old name rule (older categories never had the flag)
+export function isNamedAsRecommended(name) {
+  return /แนะนำ|recommend/i.test(String(name || ""));
+}
+
 export function isRecommendedCategory(c) {
-  return /แนะนำ|recommend/i.test(String(c?.name || ""));
+  if (typeof c?.highlight === "boolean") return c.highlight;
+  return isNamedAsRecommended(c?.name);
 }
 
 export function formatPrice(price) {
