@@ -6,6 +6,7 @@ import FoodMenuCategory from "@/models/FoodMenuCategory";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import { writeAuditLog } from "@/lib/auditLog.server";
+import { validateCategoryName } from "@/lib/foodMenuCategory.server";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export async function GET(req) {
   }
 }
 
-// POST body: { restaurantId, name }
+// POST body: { restaurantId, name, sortOrder?, isActive? }
 export async function POST(req) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -51,21 +52,28 @@ export async function POST(req) {
 
     const body = await req.json().catch(() => ({}));
     const restaurantId = String(body?.restaurantId || "").trim();
-    const name = String(body?.name || "").trim();
 
     if (!restaurantId) return jsonError("กรุณาระบุร้านอาหาร", 400);
-    if (!name) return jsonError("กรุณากรอกชื่อหมวดหมู่", 400);
+    const name = await validateCategoryName({
+      restaurantId,
+      name: body?.name,
+    });
 
-    // ต่อท้ายรายการเดิมเสมอ
-    const last = await FoodMenuCategory.findOne({ restaurant: restaurantId })
-      .sort({ sortOrder: -1 })
-      .select("sortOrder")
-      .lean();
+    // ไม่ส่งลำดับมา = ต่อท้ายรายการเดิม
+    let sortOrder = Number(body?.sortOrder);
+    if (body?.sortOrder === undefined || body?.sortOrder === "" || !Number.isFinite(sortOrder)) {
+      const last = await FoodMenuCategory.findOne({ restaurant: restaurantId })
+        .sort({ sortOrder: -1 })
+        .select("sortOrder")
+        .lean();
+      sortOrder = Number.isFinite(last?.sortOrder) ? last.sortOrder + 1 : 0;
+    }
 
     const item = await FoodMenuCategory.create({
       restaurant: restaurantId,
       name,
-      sortOrder: Number.isFinite(last?.sortOrder) ? last.sortOrder + 1 : 0,
+      sortOrder,
+      isActive: typeof body?.isActive === "boolean" ? body.isActive : true,
     });
 
     await safeAudit({
@@ -75,7 +83,11 @@ export async function POST(req) {
       entityType: "FoodMenuCategory",
       entityId: String(item._id),
       entityLabel: item.name,
-      after: { name: item.name, sortOrder: item.sortOrder },
+      after: {
+        name: item.name,
+        sortOrder: item.sortOrder,
+        isActive: item.isActive,
+      },
       meta: { restaurantId },
     });
 

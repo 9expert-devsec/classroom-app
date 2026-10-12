@@ -7,6 +7,7 @@ import FoodMenu from "@/models/FoodMenu";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import { writeAuditLog } from "@/lib/auditLog.server";
+import { validateCategoryName } from "@/lib/foodMenuCategory.server";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +33,18 @@ export async function PATCH(req, { params }) {
     if (!id) return jsonError("missing id", 400);
 
     const body = await req.json().catch(() => ({}));
+
+    const before = await FoodMenuCategory.findById(id).lean();
+    if (!before) return jsonError("ไม่พบหมวดหมู่", 404);
+
     const update = {};
 
     if (body?.name !== undefined) {
-      const name = String(body.name || "").trim();
-      if (!name) return jsonError("กรุณากรอกชื่อหมวดหมู่", 400);
-      update.name = name;
+      update.name = await validateCategoryName({
+        restaurantId: before.restaurant,
+        name: body.name,
+        excludeId: id,
+      });
     }
     if (typeof body?.isActive === "boolean") update.isActive = body.isActive;
     if (body?.sortOrder !== undefined) {
@@ -48,9 +55,6 @@ export async function PATCH(req, { params }) {
     if (Object.keys(update).length === 0) {
       return jsonError("ไม่มีข้อมูลที่ต้องการแก้ไข", 400);
     }
-
-    const before = await FoodMenuCategory.findById(id).lean();
-    if (!before) return jsonError("ไม่พบหมวดหมู่", 404);
 
     const item = await FoodMenuCategory.findByIdAndUpdate(id, update, {
       new: true,
@@ -93,15 +97,13 @@ export async function DELETE(req, { params }) {
     const before = await FoodMenuCategory.findById(id).lean();
     if (!before) return jsonError("ไม่พบหมวดหมู่", 404);
 
-    // ห้ามลบถ้ายังมีเมนูผูกอยู่ ให้ย้ายเมนูออกก่อน
-    // เมนูอยู่ได้หลายหมวด จึงต้องนับจาก categoryIds ที่ "มี" id นี้อยู่
-    const used = await FoodMenu.countDocuments({ categoryIds: id });
-    if (used > 0) {
-      return jsonError(
-        `ยังมีเมนูใช้หมวดหมู่นี้อยู่ ${used} รายการ กรุณาย้ายเมนูไปหมวดหมู่อื่นก่อนลบ`,
-        409,
-      );
-    }
+    // Menus are kept: only this category is removed from their categoryIds.
+    // Pull first, then delete, so no menu is left pointing at a missing
+    // category (resolveCategoryIds would reject it on the next menu save).
+    const pulled = await FoodMenu.updateMany(
+      { restaurant: before.restaurant, categoryIds: before._id },
+      { $pull: { categoryIds: before._id } },
+    );
 
     await FoodMenuCategory.findByIdAndDelete(id);
 
@@ -113,10 +115,14 @@ export async function DELETE(req, { params }) {
       entityId: String(id),
       entityLabel: before?.name || "",
       before: { name: before.name, sortOrder: before.sortOrder },
+      after: { removedFromMenus: pulled?.modifiedCount ?? 0 },
       meta: { restaurantId: String(before.restaurant || "") },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      removedFromMenus: pulled?.modifiedCount ?? 0,
+    });
   } catch (e) {
     return jsonError(e?.message || "Server error", e?.status || 500);
   }
