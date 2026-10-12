@@ -24,11 +24,12 @@ export async function validateImportTarget({ restaurantId, expiresYMD }) {
   if (!restaurantId) throw new CouponImportError("กรุณาเลือกร้านอาหาร");
 
   const restaurant = await Restaurant.findById(restaurantId)
-    .select("name usesCouponStock")
+    .select("name couponEnabled usesCouponStock")
     .lean();
   if (!restaurant) throw new CouponImportError("ไม่พบร้านอาหาร", 404);
 
-  if (!restaurant.usesCouponStock) {
+  // usesCouponStock is kept when coupon is turned off, so check both
+  if (!restaurant.couponEnabled || !restaurant.usesCouponStock) {
     throw new CouponImportError(
       `ร้าน "${restaurant.name}" ยังไม่ได้เปิดใช้คูปอง stock`,
     );

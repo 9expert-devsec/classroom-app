@@ -376,7 +376,7 @@ export default function FoodCalendarPage() {
                         onChange={() => toggleRestaurant(r._id)}
                       />
                       <span className="truncate">{r.name}</span>
-                      {r.usesCouponStock && (
+                      {r.couponEnabled && r.usesCouponStock && (
                         <span className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700">
                           stock
                         </span>

@@ -207,10 +207,8 @@ export default function CouponSettingsCard({ restaurant, adminKey, onSaved }) {
     if (v) return patch({ couponEnabled: true });
     setConfirm({
       title: "ปิดการใช้งานคูปองของร้านนี้?",
-      // the restaurant API also switches stock off when coupon is turned off
-      body: usesCouponStock
-        ? "ร้านนี้จะเลือกเป็นร้านคูปองใน Food Calendar ไม่ได้ ผู้เรียนจะสั่งล่วงหน้าจากร้านนี้ไม่ได้ และการใช้คูปอง stock จะถูกปิดด้วย"
-        : "ร้านนี้จะเลือกเป็นร้านคูปองใน Food Calendar ไม่ได้ และผู้เรียนจะสั่งล่วงหน้าจากร้านนี้ไม่ได้",
+      // the stored stock setting is kept and applies again when coupon is back on
+      body: "ร้านนี้จะเลือกเป็นร้านคูปองใน Food Calendar ไม่ได้ และผู้เรียนจะสั่งล่วงหน้าจากร้านนี้ไม่ได้",
       patch: { couponEnabled: false },
     });
   }

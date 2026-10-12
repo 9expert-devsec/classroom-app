@@ -66,8 +66,9 @@ export async function PUT(req, { params }) {
 }
 
 // PATCH: ตั้งค่าการใช้งานคูปองของร้าน
-// กติกา: usesCouponStock เป็น true ได้ก็ต่อเมื่อ couponEnabled เป็น true
-//        และถ้าปิด couponEnabled ให้บังคับ usesCouponStock = false
+// กติกา: เปิด usesCouponStock ได้ก็ต่อเมื่อ couponEnabled เป็น true
+//        ปิด couponEnabled แล้ว usesCouponStock เดิมคงไว้ (ไม่บังคับเป็น false)
+//        ทุกจุดที่อ่าน usesCouponStock ของร้านต้องเช็ค couponEnabled ด้วย
 export async function PATCH(req, { params }) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
@@ -104,11 +105,13 @@ export async function PATCH(req, { params }) {
     const nextCouponEnabled =
       couponEnabled === undefined ? !!before.couponEnabled : couponEnabled;
 
-    let nextUsesStock =
+    const nextUsesStock =
       usesCouponStock === undefined ? !!before.usesCouponStock : usesCouponStock;
 
-    // บังคับกติกาไว้ที่ server เสมอ ไม่พึ่ง UI
-    if (!nextCouponEnabled) nextUsesStock = false;
+    // บังคับกติกาไว้ที่ server เสมอ ไม่พึ่ง UI: เปิด stock ตอนร้านคูปองปิดอยู่ไม่ได้
+    if (usesCouponStock === true && !nextCouponEnabled) {
+      return jsonError("ต้องเปิดร้านคูปองก่อน จึงจะเปิดใช้คูปอง stock ได้", 400);
+    }
 
     const update = {
       couponEnabled: nextCouponEnabled,

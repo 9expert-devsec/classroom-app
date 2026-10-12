@@ -357,13 +357,12 @@ export default function VendorsPage() {
               </div>
 
               {/* ✅ P1b: สถานะการใช้งานคูปอง */}
-              {(r.couponEnabled || r.usesCouponStock) && (
+              {r.couponEnabled && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
-                  {r.couponEnabled && (
-                    <span className="inline-flex items-center rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-semibold text-brand-primary">
-                      คูปอง
-                    </span>
-                  )}
+                  <span className="inline-flex items-center rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-semibold text-brand-primary">
+                    คูปอง
+                  </span>
+                  {/* stock flag is kept when coupon is off; only show it with coupon on */}
                   {r.usesCouponStock && (
                     <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                       stock

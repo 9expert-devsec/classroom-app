@@ -44,7 +44,10 @@ function CouponStockPageInner() {
           cache: "no-store",
         });
         const data = await safeJson(res);
-        setRestaurants((data.items || []).filter((r) => r.usesCouponStock));
+        // stock flag is kept when coupon is off, so a stock shop needs both
+        setRestaurants(
+          (data.items || []).filter((r) => r.couponEnabled && r.usesCouponStock),
+        );
       } catch (err) {
         console.error(err);
         setRestaurants([]);

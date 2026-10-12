@@ -279,9 +279,11 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   }
 
   const restaurant = await Restaurant.findById(restaurantId)
-    .select("name logoUrl usesCouponStock")
+    .select("name logoUrl couponEnabled usesCouponStock")
     .lean();
-  if (!restaurant) {
+  // availability already requires couponEnabled; re-check in case it was
+  // switched off in between (usesCouponStock is kept when coupon is off)
+  if (!restaurant || !restaurant.couponEnabled) {
     fail(409, "restaurant_unavailable", "ร้านนี้ไม่เปิดรับคูปองในวันนี้");
   }
 
