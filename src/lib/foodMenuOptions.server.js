@@ -49,6 +49,21 @@ export function normalizePrice(raw) {
   return n;
 }
 
+// "no price" = null / undefined / "" only; a stored 0 is a price
+export function hasMenuPrice(price) {
+  return price !== null && price !== undefined && price !== "";
+}
+
+// coupon shops must price every menu (learners only see priced menus);
+// set-menu shops (coupon off) may leave it blank
+export async function assertPriceRule({ restaurantId, price, Restaurant }) {
+  if (hasMenuPrice(price)) return;
+  const r = await Restaurant.findById(restaurantId).select("couponEnabled").lean();
+  if (r?.couponEnabled) {
+    throw new FoodMenuFieldError("ร้านคูปองต้องระบุราคาเมนู");
+  }
+}
+
 export function normalizeSortOrder(raw) {
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;

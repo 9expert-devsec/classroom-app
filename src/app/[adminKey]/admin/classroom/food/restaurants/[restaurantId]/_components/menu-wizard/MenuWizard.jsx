@@ -78,6 +78,7 @@ export default function MenuWizard({
   restaurantId,
   menu,
   nextSortOrder,
+  couponEnabled = false,
   categories,
   addons,
   drinks,
@@ -111,6 +112,7 @@ export default function MenuWizard({
   const errors = infoErrors(form, {
     activeCategoryIds,
     needsCategory: activeCategories.length > 0,
+    priceRequired: couponEnabled,
   });
   const infoValid = Object.keys(errors).length === 0;
   const dirty = snapshot(form) !== snapshot(initial);
@@ -253,6 +255,7 @@ export default function MenuWizard({
                 activeCategories={activeCategories}
                 hiddenCategoryCount={hiddenCategoryCount}
                 uploadImage={uploadImage}
+                priceRequired={couponEnabled}
               />
             )}
             {step === 2 && (

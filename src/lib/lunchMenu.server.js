@@ -22,7 +22,12 @@ export async function loadRestaurantMenu({ daySet, restaurantId }) {
       .sort({ sortOrder: 1, createdAt: 1 })
       .select("name")
       .lean(),
-    FoodMenu.find({ restaurant: restaurantId, isActive: { $ne: false } })
+    // a menu without a price (null / missing) is not offered to learners
+    FoodMenu.find({
+      restaurant: restaurantId,
+      isActive: { $ne: false },
+      price: { $ne: null },
+    })
       .sort({ sortOrder: 1, name: 1 })
       .select("name imageUrl price description categoryIds optionGroups")
       .lean(),

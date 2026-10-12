@@ -4,6 +4,7 @@ import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 import FoodMenuCategory from "@/models/FoodMenuCategory";
+import Restaurant from "@/models/Restaurant";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -11,6 +12,7 @@ import { writeAuditLog } from "@/lib/auditLog.server";
 import {
   normalizeDescription,
   normalizeOptionGroups,
+  assertPriceRule,
   normalizePrice,
   normalizeSortOrder,
   resolveCategoryIds,
@@ -112,6 +114,7 @@ export async function POST(req) {
     }
     if (body?.sortOrder !== undefined) doc.sortOrder = normalizeSortOrder(body.sortOrder);
     if (body?.price !== undefined) doc.price = normalizePrice(body.price);
+    await assertPriceRule({ restaurantId, price: doc.price, Restaurant });
     if (body?.description !== undefined) {
       doc.description = normalizeDescription(body.description);
     }

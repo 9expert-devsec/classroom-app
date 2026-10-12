@@ -1,8 +1,8 @@
 "use client";
 
 import Toggle from "./Toggle";
-import { CategoryChips, MenuActions, MenuImage, StatusLabel } from "./MenuBits";
-import { formatPrice, optionSummary } from "./menuUi";
+import { CategoryChips, MenuActions, MenuImage, PriceOrMissing, StatusLabel } from "./MenuBits";
+import { optionSummary } from "./menuUi";
 
 export default function MenuTable({
   menus,
@@ -55,7 +55,7 @@ export default function MenuTable({
                   />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right">
-                  {formatPrice(m.price) || "—"}
+                  <PriceOrMissing price={m.price} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-admin-textMuted">
                   {optionSummary(m)}

@@ -32,7 +32,7 @@ export default function StepReview({ form, categories, addons, drinks, onEditInf
   const addonNames = pick(addons, form.addonIds);
   const drinkNames = pick(drinks, form.drinkIds);
   const preview = { imageUrl: form.imageUrl, name: form.name };
-  const price = form.price === "" ? "—" : formatPrice(Number(form.price));
+  const price = String(form.price).trim() === "" ? "ยังไม่มีราคา" : formatPrice(Number(form.price));
 
   return (
     <div className="space-y-4">

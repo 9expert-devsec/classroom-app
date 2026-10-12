@@ -723,6 +723,7 @@ function RestaurantDetail({ params }) {
         <CouponSettingsCard
           restaurant={restaurant}
           adminKey={adminKey}
+          menus={menus}
           onSaved={(item) => setRestaurant(item)}
         />
       </div>
@@ -741,7 +742,6 @@ function RestaurantDetail({ params }) {
             menus={menus}
             categories={categories}
             loading={loadingMenus}
-            couponEnabled={!!restaurant?.couponEnabled}
             params={listParams}
             setParams={setListParams}
             onAdd={openNewMenu}
@@ -807,6 +807,7 @@ function RestaurantDetail({ params }) {
           nextSortOrder={
             menus.reduce((max, m) => Math.max(max, Number(m.sortOrder) || 0), 0) + 1
           }
+          couponEnabled={!!restaurant?.couponEnabled}
           categories={categories}
           addons={activeAddons}
           drinks={activeDrinks}

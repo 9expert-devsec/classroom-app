@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { isRecommendedCategory, menuCategoryIds } from "./menuUi";
+import { formatPrice, hasPrice, isRecommendedCategory, menuCategoryIds } from "./menuUi";
 
 export function MenuImage({ menu, sizes, className = "" }) {
   return (
@@ -62,6 +62,17 @@ export function CategoryChips({ menu, categoryById, orderedCategoryIds }) {
         );
       })}
     </div>
+  );
+}
+
+/** price, or the amber "ยังไม่มีราคา" chip (learners never see unpriced menus) */
+export function PriceOrMissing({ price }) {
+  return hasPrice(price) ? (
+    <span>{formatPrice(price)}</span>
+  ) : (
+    <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+      ยังไม่มีราคา
+    </span>
   );
 }
 

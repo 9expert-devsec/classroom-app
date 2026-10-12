@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import Toggle from "./Toggle";
+import { hasPrice } from "./menuUi";
 
 async function safeJson(res) {
   const t = await res.text().catch(() => "");
@@ -170,13 +171,15 @@ function StockSummary({ restaurant, adminKey, onSaved }) {
   );
 }
 
-export default function CouponSettingsCard({ restaurant, adminKey, onSaved }) {
+export default function CouponSettingsCard({ restaurant, adminKey, menus = [], onSaved }) {
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(null); // { title, body, patch }
 
   const restaurantId = String(restaurant?._id || "");
   const couponEnabled = !!restaurant?.couponEnabled;
   const usesCouponStock = !!restaurant?.usesCouponStock;
+  // learners only see priced menus, so flag active menus that have none
+  const unpricedCount = menus.filter((m) => m.isActive !== false && !hasPrice(m.price)).length;
 
   async function patch(next) {
     if (!restaurantId) return;
@@ -204,7 +207,15 @@ export default function CouponSettingsCard({ restaurant, adminKey, onSaved }) {
 
   // turning ON saves right away; turning OFF asks first
   function onCouponChange(v) {
-    if (v) return patch({ couponEnabled: true });
+    if (v) {
+      // still allowed; just say which menus learners won't see yet
+      if (unpricedCount > 0) {
+        toast.warning(
+          `มีเมนูที่ยังไม่มีราคา ${unpricedCount} รายการ — จะไม่แสดงให้ผู้เรียนจนกว่าจะใส่ราคา`,
+        );
+      }
+      return patch({ couponEnabled: true });
+    }
     setConfirm({
       title: "ปิดการใช้งานคูปองของร้านนี้?",
       // the stored stock setting is kept and applies again when coupon is back on
@@ -237,7 +248,13 @@ export default function CouponSettingsCard({ restaurant, adminKey, onSaved }) {
           disabled={saving || !restaurantId}
           label="เปิดให้เลือกเป็นร้านคูปอง"
           onChange={onCouponChange}
-        />
+        >
+          {couponEnabled && unpricedCount > 0 && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              มีเมนูที่ยังไม่มีราคา {unpricedCount} รายการ — จะไม่แสดงให้ผู้เรียนจนกว่าจะใส่ราคา
+            </p>
+          )}
+        </SettingRow>
 
         <SettingRow
           title="ร้านนี้ใช้คูปอง stock (คูปองกระดาษของร้าน)"

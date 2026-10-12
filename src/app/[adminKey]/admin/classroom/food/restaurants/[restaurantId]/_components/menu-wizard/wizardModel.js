@@ -37,8 +37,11 @@ export function initialForm(menu, nextSortOrder) {
   };
 }
 
-/** step 1 field errors ({} = valid). needsCategory: shop has active categories */
-export function infoErrors(form, { activeCategoryIds, needsCategory }) {
+/**
+ * step 1 field errors ({} = valid).
+ * needsCategory: shop has active categories. priceRequired: coupon shop.
+ */
+export function infoErrors(form, { activeCategoryIds, needsCategory, priceRequired }) {
   const e = {};
   const name = form.name.trim();
   if (!name) e.name = "กรุณากรอกชื่อเมนู";
@@ -46,8 +49,11 @@ export function infoErrors(form, { activeCategoryIds, needsCategory }) {
 
   const priceRaw = String(form.price).trim();
   const price = Number(priceRaw);
-  if (priceRaw === "") e.price = "กรุณากรอกราคา";
-  else if (!Number.isFinite(price) || price < 0) e.price = "ราคาต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป";
+  if (priceRaw === "") {
+    if (priceRequired) e.price = "กรุณากรอกราคา (ร้านคูปองต้องมีราคา)";
+  } else if (!Number.isFinite(price) || price < 0) {
+    e.price = "ราคาต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป";
+  }
 
   const orderRaw = String(form.sortOrder).trim();
   if (orderRaw !== "" && !Number.isInteger(Number(orderRaw))) {
@@ -96,7 +102,8 @@ export function buildPayload(form, { restaurantId, activeAddonIds, activeDrinkId
     addonIds: uniq(form.addonIds).filter((id) => activeAddonIds.has(id)),
     drinkIds: uniq(form.drinkIds).filter((id) => activeDrinkIds.has(id)),
     categoryIds: uniq(form.categoryIds),
-    price: Number(String(form.price).trim()),
+    // blank = no price (null), allowed for shops without coupon
+    price: String(form.price).trim() === "" ? null : Number(String(form.price).trim()),
     description: form.description.trim(),
     sortOrder: Number(form.sortOrder) || 0,
     optionGroups: toPayloadGroups(form.optionGroups),

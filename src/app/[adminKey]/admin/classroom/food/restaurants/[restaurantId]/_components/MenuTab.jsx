@@ -14,7 +14,6 @@ export default function MenuTab({
   menus,
   categories,
   loading,
-  couponEnabled,
   params,
   setParams,
   onAdd,
@@ -130,7 +129,6 @@ export default function MenuTab({
             <MenuCard
               key={String(m._id)}
               menu={m}
-              couponEnabled={couponEnabled}
               highlight={highlightId === String(m._id)}
               {...shared}
             />

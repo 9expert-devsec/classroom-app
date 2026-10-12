@@ -4,6 +4,7 @@ import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 import FoodMenuCategory from "@/models/FoodMenuCategory";
+import Restaurant from "@/models/Restaurant";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -11,6 +12,7 @@ import { writeAuditLog } from "@/lib/auditLog.server";
 import {
   normalizeDescription,
   normalizeOptionGroups,
+  assertPriceRule,
   normalizePrice,
   normalizeSortOrder,
   resolveCategoryIds,
@@ -98,7 +100,15 @@ export async function PUT(req, { params }) {
     if (body?.sortOrder !== undefined) {
       update.sortOrder = normalizeSortOrder(body.sortOrder);
     }
-    if (body?.price !== undefined) update.price = normalizePrice(body.price);
+    // only when the price is being saved (an on/off toggle sends no price)
+    if (body?.price !== undefined) {
+      update.price = normalizePrice(body.price);
+      await assertPriceRule({
+        restaurantId: ownerRestaurantId,
+        price: update.price,
+        Restaurant,
+      });
+    }
     if (body?.description !== undefined) {
       update.description = normalizeDescription(body.description);
     }

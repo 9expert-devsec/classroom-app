@@ -2,21 +2,19 @@
 
 import { useEffect, useRef } from "react";
 import Toggle from "./Toggle";
-import { CategoryChips, MenuActions, MenuImage, StatusLabel } from "./MenuBits";
-import { formatPrice, optionSummary } from "./menuUi";
+import { CategoryChips, MenuActions, MenuImage, PriceOrMissing, StatusLabel } from "./MenuBits";
+import { optionSummary } from "./menuUi";
 
 export default function MenuCard({
   menu,
   categoryById,
   orderedCategoryIds,
-  couponEnabled,
   onEdit,
   onDelete,
   onToggleActive,
   highlight = false,
 }) {
   const active = menu.isActive !== false;
-  const hasPrice = menu.price !== null && menu.price !== undefined;
   const ref = useRef(null);
 
   // just saved in the wizard: bring it into view
@@ -56,15 +54,7 @@ export default function MenuCard({
             {menu.name}
           </div>
           <div className="text-sm text-admin-text">
-            {hasPrice ? (
-              formatPrice(menu.price)
-            ) : couponEnabled ? (
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                ยังไม่ใส่ราคา
-              </span>
-            ) : (
-              <span className="text-xs text-admin-textMuted">ไม่กำหนดราคา</span>
-            )}
+            <PriceOrMissing price={menu.price} />
           </div>
           <CategoryChips
             menu={menu}

@@ -192,6 +192,7 @@ export default function StepInfo({
   activeCategories,
   hiddenCategoryCount,
   uploadImage,
+  priceRequired,
 }) {
   const err = (k) => (showErrors[k] ? errors[k] : "");
 
@@ -214,7 +215,12 @@ export default function StepInfo({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="ราคา (บาท)" required error={err("price")}>
+          <Field
+            label="ราคา (บาท)"
+            required={priceRequired}
+            error={err("price")}
+            hint={priceRequired ? "" : "เว้นว่างได้ (ร้านนี้ไม่ได้เปิดคูปอง)"}
+          >
             <input
               type="number"
               min="0"

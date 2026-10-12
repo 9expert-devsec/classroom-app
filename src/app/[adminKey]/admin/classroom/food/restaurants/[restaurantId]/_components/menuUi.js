@@ -81,8 +81,13 @@ export function isRecommendedCategory(c) {
   return isNamedAsRecommended(c?.name);
 }
 
+// "no price" = null / undefined / "" only; a stored 0 is a price
+export function hasPrice(price) {
+  return price !== null && price !== undefined && price !== "";
+}
+
 export function formatPrice(price) {
-  if (price === null || price === undefined) return "";
+  if (!hasPrice(price)) return "";
   return `${Number(price).toLocaleString()} บาท`;
 }
 
