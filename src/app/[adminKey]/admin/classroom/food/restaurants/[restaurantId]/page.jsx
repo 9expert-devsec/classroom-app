@@ -1,16 +1,23 @@
 // src/app/admin/classroom/food/restaurants/[restaurantId]/page.jsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import TextInput from "@/components/ui/TextInput";
 import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsCard from "./_components/CouponSettingsCard";
 import CouponStockCard from "./_components/CouponStockCard";
-import CategoryPanel from "./_components/CategoryPanel";
+import RestaurantTabs from "./_components/RestaurantTabs";
+import MenuTab from "./_components/MenuTab";
+import SetsTab from "./_components/SetsTab";
+import LibraryTab from "./_components/LibraryTab";
+import CategoryManagerModal from "./_components/CategoryManagerModal";
+import { useListParams } from "./_components/menuUi";
 import OptionGroupsEditor, {
   toEditorGroups,
   toPayloadGroups,
@@ -95,8 +102,18 @@ async function safeJson(res) {
 }
 
 export default function RestaurantDetailPage({ params }) {
+  return (
+    <Suspense fallback={null}>
+      <RestaurantDetail params={params} />
+    </Suspense>
+  );
+}
+
+function RestaurantDetail({ params }) {
   const router = useRouter();
   const restaurantId = params.restaurantId;
+  const [listParams, setListParams] = useListParams();
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
   // P1c follow-up: adminKey มาจาก route ไม่ฮาร์ดโค้ดอีกต่อไป
   const routeParams = useParams();
@@ -174,7 +191,6 @@ export default function RestaurantDetailPage({ params }) {
   const [savingDrink, setSavingDrink] = useState(false);
 
   // search/filter (page)
-  const [q, setQ] = useState("");
   const [qAddon, setQAddon] = useState("");
   const [qDrink, setQDrink] = useState("");
 
@@ -365,62 +381,21 @@ export default function RestaurantDetailPage({ params }) {
 
   /* ---------------- derived ---------------- */
 
-  const filteredMenus = useMemo(() => {
-    const kw = q.trim().toLowerCase();
-    if (!kw) return menus;
-    return menus.filter((m) =>
-      String(m.name || "")
-        .toLowerCase()
-        .includes(kw),
-    );
-  }, [menus, q]);
-
-  const categoryNameById = useMemo(
-    () => new Map(categories.map((c) => [String(c._id), c.name])),
+  // the menu form only offers active categories; ids of disabled ones the
+  // menu already has stay in menuCategoryIds and are saved unchanged
+  const activeCategories = useMemo(
+    () => categories.filter((c) => c.isActive !== false),
     [categories],
   );
-
-  // ✅ P1b: จัดกลุ่มเมนูตามหมวดหมู่ (ตามลำดับหมวด, ไม่มีหมวดหมู่ไว้ท้ายสุด)
-  const groupedMenus = useMemo(() => {
-    // ✅ P1b-2: 1 เมนูโผล่ได้หลายหมวด จึง push เข้าไปทุกหมวดที่มันสังกัด
-    const byCat = new Map();
-    for (const m of filteredMenus) {
-      const keys = uniq((m.categoryIds || []).map(toIdString));
-      if (keys.length === 0) keys.push("");
-      for (const key of keys) {
-        if (!byCat.has(key)) byCat.set(key, []);
-        byCat.get(key).push(m);
-      }
-    }
-
-    const sortMenus = (list) =>
-      [...list].sort(
-        (a, b) =>
-          (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
-          String(a.name || "").localeCompare(String(b.name || "")),
-      );
-
-    const groups = categories
-      .map((c) => ({
-        id: String(c._id),
-        name: c.name,
-        isActive: c.isActive !== false,
-        items: sortMenus(byCat.get(String(c._id)) || []),
-      }))
-      .filter((g) => g.items.length > 0);
-
-    const uncategorised = sortMenus(byCat.get("") || []);
-    if (uncategorised.length > 0) {
-      groups.push({
-        id: "",
-        name: "ไม่มีหมวดหมู่",
-        isActive: true,
-        items: uncategorised,
-      });
-    }
-
-    return groups;
-  }, [filteredMenus, categories]);
+  const activeCategoryIdSet = useMemo(
+    () => new Set(activeCategories.map((c) => String(c._id))),
+    [activeCategories],
+  );
+  const pickedActiveCategoryCount = menuCategoryIds.filter((id) =>
+    activeCategoryIdSet.has(id),
+  ).length;
+  const hiddenPickedCategoryCount =
+    menuCategoryIds.length - pickedActiveCategoryCount;
 
   const filteredAddons = useMemo(() => {
     const kw = qAddon.trim().toLowerCase();
@@ -621,6 +596,35 @@ export default function RestaurantDetailPage({ params }) {
       console.error(err);
       alert("เกิดข้อผิดพลาดในการลบเมนู");
     }
+  }
+
+  // optimistic on/off; rolls back if the save fails
+  async function handleToggleMenuActive(m, next) {
+    const id = String(m._id);
+    const setActive = (value) =>
+      setMenus((prev) =>
+        prev.map((x) => (String(x._id) === id ? { ...x, isActive: value } : x)),
+      );
+
+    setActive(next);
+    try {
+      const res = await fetch(`/api/admin/food/menu/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: next }),
+      });
+      const out = await safeJson(res);
+      if (!res.ok) throw new Error(out.error || "เปลี่ยนสถานะเมนูไม่สำเร็จ");
+    } catch (err) {
+      console.error(err);
+      setActive(m.isActive !== false);
+      toast.error(err?.message || "เปลี่ยนสถานะเมนูไม่สำเร็จ");
+    }
+  }
+
+  // category changes can also change menus (delete detaches them)
+  async function refreshCategoriesAndMenus() {
+    await Promise.all([fetchCategories(), fetchMenus()]);
   }
 
   /* ---------------- set actions ---------------- */
@@ -891,489 +895,143 @@ export default function RestaurantDetailPage({ params }) {
   }
 
   /* ---------------- render ---------------- */
+  const tabCounts = {
+    menus: menus.length,
+    sets: sets.length,
+    addons: addonsList.length,
+    drinks: drinksList.length,
+  };
+
   return (
     // ✅ P1b-fix: layout แม่ (<main>) เป็น overflow-hidden และส่ง slot ที่สูงคงที่มาให้
     // (flex-1 min-h-0) หน้านี้จึงต้องสูงเท่า slot แล้วเลื่อนในตัวเอง
-    // ถ้าใช้ min-h เนื้อหาส่วนล่างจะถูก clip จนกดไม่ถึง
-    <div className="flex h-full flex-col gap-6 overflow-y-auto overscroll-contain pr-1">
-      {/* Top bar */}
-      <div className="flex shrink-0 items-start justify-between gap-3">
-        <div>
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/${adminKey}/admin/classroom/food/restaurants`)
-            }
-            className="text-xs text-admin-textMuted hover:underline"
-          >
-            ← กลับไปร้านทั้งหมด
-          </button>
-
-          <h1 className="mt-2 text-xl font-semibold">
-            {loadingRestaurant ? "กำลังโหลด..." : restaurant?.name || "Vendor"}
-          </h1>
-          <p className="text-sm text-admin-textMuted">
-            จัดการ Menu Set / Menu และ Add-on / Drink (ผูกต่อเมนู)
-          </p>
+    <div className="flex h-full flex-col gap-5 overflow-y-auto overflow-x-hidden overscroll-contain pr-1">
+      {/* Header */}
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          {restaurant?.logoUrl && (
+            <div className="relative mt-6 h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-white/40">
+              <Image
+                src={restaurant.logoUrl}
+                alt={restaurant.name || "logo"}
+                fill
+                sizes="48px"
+                className="object-cover"
+              />
+            </div>
+          )}
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/${adminKey}/admin/classroom/food/restaurants`)
+              }
+              className="text-xs text-admin-textMuted hover:underline"
+            >
+              ← กลับไปร้านทั้งหมด
+            </button>
+            <h1 className="mt-1 truncate text-2xl font-bold">
+              {loadingRestaurant ? "กำลังโหลด..." : restaurant?.name || "Vendor"}
+            </h1>
+            <p className="text-sm text-admin-textMuted">
+              จัดการเมนูอาหาร ชุดอาหาร และตัวเลือกเพิ่มเติม
+            </p>
+          </div>
         </div>
 
-        {restaurant?.logoUrl && (
-          <div className="relative h-12 w-12 overflow-hidden rounded-xl bg-white/40">
-            <Image
-              src={restaurant.logoUrl}
-              alt={restaurant.name || "logo"}
-              fill
-              sizes="48px"
-              className="object-cover"
-            />
-          </div>
-        )}
+        <PrimaryButton onClick={openNewMenu}>
+          <Plus className="h-4 w-4" />
+          เพิ่มเมนู
+        </PrimaryButton>
       </div>
 
-      {/* ✅ P1b: การใช้งานคูปอง + หมวดหมู่เมนู */}
-      <div className="grid shrink-0 auto-rows-[minmax(0,22rem)] gap-6 lg:grid-cols-2">
+      {/* coupon settings (existing) */}
+      <div className="grid shrink-0 gap-5 lg:grid-cols-2">
         <CouponSettingsCard
           restaurant={restaurant}
           onSaved={(item) => setRestaurant(item)}
         />
-        <CategoryPanel
-          restaurantId={restaurantId}
-          categories={categories}
-          loading={loadingCategories}
-          onChanged={fetchCategories}
-        />
-      </div>
-
-      {/* P2: คลังคูปองกระดาษ แสดงเฉพาะร้านที่เปิดใช้ stock */}
-      {restaurant?.usesCouponStock && (
-        <div className="shrink-0">
+        {/* P2: คลังคูปองกระดาษ แสดงเฉพาะร้านที่เปิดใช้ stock */}
+        {restaurant?.usesCouponStock && (
           <CouponStockCard
             restaurant={restaurant}
             adminKey={adminKey}
             onSaved={(item) => setRestaurant(item)}
           />
-        </div>
-      )}
-
-      {/* TOP: Set + Menu */}
-      {/* ✅ P1b-fix: หน้าเลื่อนเองแล้ว แถวจึงต้องมีความสูงชัดเจน (ไม่ใช่ flex-1)
-          เพื่อให้ list ในแต่ละ panel ยังเลื่อนของตัวเองได้เหมือนเดิม */}
-      <div className="grid shrink-0 auto-rows-[minmax(0,28rem)] gap-6 lg:grid-cols-2">
-        {/* LEFT: MENU SET */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">MENU SET</h2>
-            <div className="flex items-center gap-2">
-              {loadingSets && (
-                <span className="text-xs text-admin-textMuted">
-                  กำลังโหลด...
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={openNewSet}
-                className="rounded-xl bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-              >
-                New Set
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
-            {sets.map((s) => {
-              const menuNames =
-                (s.menuIds || [])
-                  .map((id) => {
-                    const key =
-                      typeof id === "string" ? id : String(id._id || id);
-                    return menus.find((m) => String(m._id) === key)?.name;
-                  })
-                  .filter(Boolean) || [];
-
-              return (
-                <div
-                  key={s._id}
-                  className="rounded-2xl border border-admin-border bg-white p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-admin-text">
-                        {s.name}
-                      </div>
-                      <div className="mt-1 text-[11px] text-admin-textMuted">
-                        {menuNames.length
-                          ? `เมนูในชุด: ${menuNames.join(", ")}`
-                          : "ยังไม่ได้เลือกเมนูในชุด"}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        type="button"
-                        className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
-                        onClick={() => openEditSet(s)}
-                      >
-                        edit
-                      </button>
-                      <button
-                        type="button"
-                        className="flex p-2 items-center justify-center rounded-full bg-red-50 text-red-500"
-                        onClick={() => handleDeleteSet(s._id)}
-                        title="ลบชุด"
-                      >
-                        delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {!loadingSets && sets.length === 0 && (
-              <p className="text-xs text-admin-textMuted">ยังไม่มีชุดเมนู</p>
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT: MENU LIST */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-semibold">MENU LIST</h2>
-
-            <button
-              type="button"
-              onClick={openNewMenu}
-              className="rounded-xl bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-            >
-              Add Menu
-            </button>
-          </div>
-
-          <div className="mb-3">
-            <TextInput
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ค้นหาเมนู..."
-            />
-            {loadingMenus && (
-              <div className="mt-2 text-xs text-admin-textMuted">
-                กำลังโหลดเมนู...
-              </div>
-            )}
-          </div>
-
-          {/* ✅ P1b: จัดกลุ่มตามหมวดหมู่ + แสดงราคา */}
-          <div className="min-h-0 flex-1 overflow-y-auto space-y-4">
-            {groupedMenus.map((g) => (
-              <div key={g.id || "__none"} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-admin-text">
-                    {g.name}
-                  </span>
-                  <span className="text-[11px] text-admin-textMuted">
-                    {g.items.length} เมนู
-                  </span>
-                  {!g.isActive && (
-                    <span className="rounded-full bg-admin-surfaceMuted px-2 py-0.5 text-[10px] text-admin-textMuted">
-                      ปิดใช้งาน
-                    </span>
-                  )}
-                </div>
-
-                {g.items.map((m) => {
-                  const hasPrice = m.price !== null && m.price !== undefined;
-                  const needsPrice = !!restaurant?.couponEnabled && !hasPrice;
-
-                  // ✅ P1b-2: เมนูนี้อยู่หมวดอื่นอีกไหม (อธิบายว่าทำไมโผล่ซ้ำ)
-                  const otherCategoryNames = uniq(
-                    (m.categoryIds || []).map(toIdString),
-                  )
-                    .filter((cid) => cid !== g.id)
-                    .map((cid) => categoryNameById.get(cid))
-                    .filter(Boolean);
-
-                  return (
-                    <div
-                      key={m._id}
-                      className="flex items-start gap-3 rounded-2xl border border-admin-border bg-white p-3"
-                    >
-                      <div className="relative h-12 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-white/40">
-                        {m.imageUrl && (
-                          <Image
-                            src={m.imageUrl}
-                            alt={m.name || "menu"}
-                            fill
-                            sizes="64px"
-                            className="object-cover"
-                          />
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-admin-text">
-                            {m.name}
-                          </span>
-
-                          {hasPrice && (
-                            <span className="rounded-full bg-admin-surfaceMuted px-2 py-0.5 text-[11px] font-semibold text-admin-text">
-                              {m.price} บาท
-                            </span>
-                          )}
-
-                          {needsPrice && (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                              ยังไม่ใส่ราคา
-                            </span>
-                          )}
-                        </div>
-
-                        {otherCategoryNames.length > 0 && (
-                          <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] text-admin-textMuted">
-                              อยู่ในหมวดอื่นด้วย:
-                            </span>
-                            {otherCategoryNames.map((n) => (
-                              <span
-                                key={n}
-                                className="inline-flex items-center rounded-full bg-brand-primary/10 px-2 py-0.5 text-[10px] font-medium text-brand-primary"
-                              >
-                                {n}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="mt-1 text-[11px] text-admin-textMuted">
-                          Add-on: {(m.addonIds || []).length || 0} • Drinks:{" "}
-                          {(m.drinkIds || []).length || 0} • Option:{" "}
-                          {(m.optionGroups || []).length || 0}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs">
-                        <button
-                          type="button"
-                          className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
-                          onClick={() => openEditMenu(m)}
-                        >
-                          edit
-                        </button>
-                        <button
-                          type="button"
-                          className="flex p-2 items-center justify-center rounded-full bg-red-50 text-red-500"
-                          onClick={() => handleDeleteMenu(m._id)}
-                          title="ลบเมนู"
-                        >
-                          delete
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-
-            {!loadingMenus && filteredMenus.length === 0 && (
-              <p className="text-xs text-admin-textMuted">ยังไม่มีเมนู</p>
-            )}
-          </div>
-        </div>
-
-        {/* ADD-ON */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold">ADD-ON</h2>
-              <p className="text-xs text-admin-textMuted">
-                สร้าง Add-on (พร้อมรูป) แล้วนำไปผูกกับเมนู
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={openNewAddon}
-              className="rounded-xl bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-            >
-              add
-            </button>
-          </div>
-
-          <div className="mb-3">
-            <TextInput
-              value={qAddon}
-              onChange={(e) => setQAddon(e.target.value)}
-              placeholder="ค้นหา Add-on..."
-            />
-            {loadingAddons && (
-              <div className="mt-2 text-xs text-admin-textMuted">
-                กำลังโหลด...
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
-            {filteredAddons.map((a) => (
-              <div
-                key={a._id}
-                className="flex items-center gap-3 rounded-2xl border border-admin-border bg-white p-3"
-              >
-                <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-admin-surfaceMuted">
-                  {a.imageUrl ? (
-                    <Image
-                      src={a.imageUrl}
-                      alt={a.name || "addon"}
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] text-admin-textMuted">
-                      no image
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="truncate font-semibold text-admin-text">
-                    {a.name}
-                  </div>
-                  <div className="text-[11px] text-admin-textMuted">
-                    {a.isActive === false ? "disabled" : "active"}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
-                    onClick={() => openEditAddon(a)}
-                  >
-                    edit
-                  </button>
-                  {/* <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-50"
-                    onClick={() => handleDisableAddon(a)}
-                    title="ปิดการใช้งาน"
-                  >
-                    disable
-                  </button> */}
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-red-600 hover:bg-red-50"
-                    onClick={() => handleDeleteAddon(a)}
-                    title="ลบ"
-                  >
-                    delete
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {!loadingAddons && filteredAddons.length === 0 && (
-              <p className="text-xs text-admin-textMuted">ยังไม่มี Add-on</p>
-            )}
-          </div>
-        </div>
-
-        {/* DRINK */}
-        <div className="min-h-0 rounded-2xl bg-admin-surface p-4 shadow-slate-950/20 flex flex-col overflow-hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-semibold">DRINK</h2>
-              <p className="text-xs text-admin-textMuted">
-                สร้าง Drink (พร้อมรูป) แล้วนำไปผูกกับเมนู
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={openNewDrink}
-              className="rounded-xl bg-brand-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
-            >
-              add
-            </button>
-          </div>
-
-          <div className="mb-3">
-            <TextInput
-              value={qDrink}
-              onChange={(e) => setQDrink(e.target.value)}
-              placeholder="ค้นหา Drink..."
-            />
-            {loadingDrinks && (
-              <div className="mt-2 text-xs text-admin-textMuted">
-                กำลังโหลด...
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 overscroll-contain">
-            {filteredDrinks.map((d) => (
-              <div
-                key={d._id}
-                className="flex items-center gap-3 rounded-2xl border border-admin-border bg-white p-3"
-              >
-                <div className="relative h-10 w-10 overflow-hidden rounded-xl bg-admin-surfaceMuted">
-                  {d.imageUrl ? (
-                    <Image
-                      src={d.imageUrl}
-                      alt={d.name || "drink"}
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] text-admin-textMuted">
-                      no image
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="truncate font-semibold text-admin-text">
-                    {d.name}
-                  </div>
-                  <div className="text-[11px] text-admin-textMuted">
-                    {d.isActive === false ? "disabled" : "active"}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-brand-primary hover:bg-brand-primary/10"
-                    onClick={() => openEditDrink(d)}
-                  >
-                    edit
-                  </button>
-                  {/* <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-50"
-                    onClick={() => handleDisableDrink(d)}
-                    title="ปิดการใช้งาน"
-                  >
-                    disable
-                  </button> */}
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-[11px] text-red-600 hover:bg-red-50"
-                    onClick={() => handleDeleteDrink(d)}
-                    title="ลบ"
-                  >
-                    delete
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {!loadingDrinks && filteredDrinks.length === 0 && (
-              <p className="text-xs text-admin-textMuted">ยังไม่มี Drink</p>
-            )}
-          </div>
-        </div>
+        )}
       </div>
+
+      <div className="shrink-0 space-y-4 rounded-2xl bg-admin-surface p-4 shadow-sm">
+        <RestaurantTabs
+          tab={listParams.tab}
+          counts={tabCounts}
+          onChange={(tab) =>
+            setListParams({ tab: tab === "menus" ? "" : tab, q: "", cat: "", status: "" })
+          }
+        />
+
+        {listParams.tab === "menus" && (
+          <MenuTab
+            menus={menus}
+            categories={categories}
+            loading={loadingMenus}
+            couponEnabled={!!restaurant?.couponEnabled}
+            params={listParams}
+            setParams={setListParams}
+            onAdd={openNewMenu}
+            onEdit={openEditMenu}
+            onDelete={(m) => handleDeleteMenu(m._id)}
+            onToggleActive={handleToggleMenuActive}
+            onManageCategories={() => setCategoryManagerOpen(true)}
+          />
+        )}
+        {listParams.tab === "sets" && (
+          <SetsTab
+            sets={sets}
+            menus={menus}
+            loading={loadingSets}
+            onNew={openNewSet}
+            onEdit={openEditSet}
+            onDelete={handleDeleteSet}
+          />
+        )}
+        {listParams.tab === "addons" && (
+          <LibraryTab
+            label="Add-on"
+            description="สร้าง Add-on (พร้อมรูป) แล้วนำไปผูกกับเมนู"
+            items={filteredAddons}
+            q={qAddon}
+            setQ={setQAddon}
+            loading={loadingAddons}
+            onNew={openNewAddon}
+            onEdit={openEditAddon}
+            onDelete={handleDeleteAddon}
+          />
+        )}
+        {listParams.tab === "drinks" && (
+          <LibraryTab
+            label="Drink"
+            description="สร้าง Drink (พร้อมรูป) แล้วนำไปผูกกับเมนู"
+            items={filteredDrinks}
+            q={qDrink}
+            setQ={setQDrink}
+            loading={loadingDrinks}
+            onNew={openNewDrink}
+            onEdit={openEditDrink}
+            onDelete={handleDeleteDrink}
+          />
+        )}
+      </div>
+
+      {categoryManagerOpen && (
+        <CategoryManagerModal
+          restaurantId={restaurantId}
+          categories={categories}
+          menus={menus}
+          onClose={() => setCategoryManagerOpen(false)}
+          onChanged={refreshCategoriesAndMenus}
+        />
+      )}
 
       {/* ================= Menu Modal ================= */}
       <Modal
@@ -1397,11 +1055,15 @@ export default function RestaurantDetailPage({ params }) {
               <span className="text-admin-text">
                 หมวดหมู่ (เลือกได้หลายหมวด)
               </span>
-              {menuCategoryIds.length > 0 && (
+              {pickedActiveCategoryCount > 0 && (
                 <button
                   type="button"
                   className="text-[11px] text-admin-textMuted underline"
-                  onClick={() => setMenuCategoryIds([])}
+                  onClick={() =>
+                    setMenuCategoryIds((prev) =>
+                      prev.filter((id) => !activeCategoryIdSet.has(id)),
+                    )
+                  }
                 >
                   ล้างที่เลือก
                 </button>
@@ -1409,9 +1071,8 @@ export default function RestaurantDetailPage({ params }) {
             </div>
 
             <div className="max-h-44 overflow-y-auto rounded-xl border border-admin-border bg-white p-2 space-y-1">
-              {categories.map((c) => {
+              {activeCategories.map((c) => {
                 const id = String(c._id);
-                const off = c.isActive === false;
                 return (
                   <label
                     key={id}
@@ -1425,26 +1086,29 @@ export default function RestaurantDetailPage({ params }) {
                         setMenuCategoryIds((prev) => toggleId(prev, id))
                       }
                     />
-                    <span className={off ? "text-admin-textMuted" : ""}>
-                      {c.name}
-                      {off ? " (ปิดใช้งาน)" : ""}
-                    </span>
+                    <span>{c.name}</span>
                   </label>
                 );
               })}
 
-              {categories.length === 0 && (
+              {activeCategories.length === 0 && (
                 <p className="text-[11px] text-admin-textMuted">
-                  ยังไม่มีหมวดหมู่ในร้านนี้
+                  ยังไม่มีหมวดหมู่ที่เปิดใช้งานในร้านนี้
                 </p>
               )}
             </div>
 
             <span className="mt-1 block text-[11px] text-admin-textMuted">
-              {menuCategoryIds.length === 0
+              {pickedActiveCategoryCount === 0
                 ? "ไม่ได้เลือก = ไม่มีหมวดหมู่"
-                : `เลือกแล้ว ${menuCategoryIds.length} หมวด — เมนูจะแสดงในทุกหมวดที่เลือก`}
+                : `เลือกแล้ว ${pickedActiveCategoryCount} หมวด — เมนูจะแสดงในทุกหมวดที่เลือก`}
             </span>
+            {hiddenPickedCategoryCount > 0 && (
+              <span className="mt-0.5 block text-[11px] text-admin-textMuted">
+                เมนูนี้อยู่ในหมวดที่ปิดใช้งานอีก {hiddenPickedCategoryCount} หมวด
+                (ไม่แสดงที่นี่ และยังคงไว้เมื่อบันทึก)
+              </span>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
