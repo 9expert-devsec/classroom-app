@@ -2,10 +2,15 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Student from "@/models/Student";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
+  const denied = await adminGuard(PERM.CLASSES_IMPORT);
+  if (denied) return denied;
+
   await dbConnect();
 
   let body;

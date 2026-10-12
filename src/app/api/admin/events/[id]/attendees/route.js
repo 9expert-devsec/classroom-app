@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Event from "@/models/Event";
 import EventAttendee from "@/models/EventAttendee";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +16,9 @@ function escapeRegExp(s) {
 }
 
 export async function GET(req, { params }) {
+  const denied = await adminGuard(PERM.EVENTS_READ);
+  if (denied) return denied;
+
   try {
     await dbConnect();
     const eventId = String(params?.id || "");
@@ -60,6 +65,9 @@ export async function GET(req, { params }) {
 }
 
 export async function POST(req, { params }) {
+  const denied = await adminGuard(PERM.EVENTS_WRITE);
+  if (denied) return denied;
+
   try {
     await dbConnect();
     const eventId = String(params?.id || "");

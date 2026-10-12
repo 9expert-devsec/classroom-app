@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Class from "@/models/Class";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 // ❗ TODO: เปลี่ยนชื่อ Model ให้ตรงของจริง
 // เช่น "@/models/Registration" หรือ "@/models/Register"
 // import Registration from "@/models/Registration";
@@ -12,6 +14,9 @@ export const dynamic = "force-dynamic";
  * ดึงรายชื่อนักเรียนจากระบบลงทะเบียน แล้ว map เข้า Class.students
  */
 export async function POST(req, { params }) {
+  const denied = await adminGuard(PERM.CLASSES_WRITE);
+  if (denied) return denied;
+
   await dbConnect();
   const { id } = params;
 

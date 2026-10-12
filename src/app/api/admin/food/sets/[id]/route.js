@@ -2,10 +2,15 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import FoodSet from "@/models/FoodSet";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 
 export async function PUT(req, { params }) {
+  const denied = await adminGuard(PERM.FOOD_WRITE);
+  if (denied) return denied;
+
   await dbConnect();
   const { id } = params;
   const body = await req.json();
@@ -32,6 +37,9 @@ export async function PUT(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
+  const denied = await adminGuard(PERM.FOOD_WRITE);
+  if (denied) return denied;
+
   await dbConnect();
   const { id } = params;
 

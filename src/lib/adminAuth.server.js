@@ -85,3 +85,22 @@ export async function requirePerm(perm) {
   if (!ctx.permSet?.has?.(perm)) throw forbidden();
   return ctx;
 }
+
+/**
+ * For route handlers whose own catch would turn a thrown 401/403 into 500:
+ *   const denied = await adminGuard(PERM.X); if (denied) return denied;
+ * Returns null when allowed, otherwise the 401/403 JSON response.
+ * perm omitted = any signed-in admin (same as requireAdmin).
+ */
+export async function adminGuard(perm) {
+  try {
+    await requirePerm(perm);
+    return null;
+  } catch (e) {
+    const status = e?.status === 403 ? 403 : 401;
+    return Response.json(
+      { ok: false, error: status === 403 ? "Forbidden" : "Unauthorized" },
+      { status },
+    );
+  }
+}

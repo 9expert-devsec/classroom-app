@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Event from "@/models/Event";
 import EventAttendee from "@/models/EventAttendee";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +36,9 @@ function ageBucket(age) {
 }
 
 export async function GET(req) {
+  const denied = await adminGuard(PERM.EVENTS_READ);
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

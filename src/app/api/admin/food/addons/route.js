@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import FoodAddon from "@/models/FoodAddon";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
+  const denied = await adminGuard(PERM.FOOD_READ);
+  if (denied) return denied;
+
   await dbConnect();
   const { searchParams } = new URL(req.url);
   const restaurantId = searchParams.get("restaurantId");
@@ -26,6 +31,9 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  const denied = await adminGuard(PERM.FOOD_WRITE);
+  if (denied) return denied;
+
   await dbConnect();
   const body = await req.json().catch(() => ({}));
   const { restaurantId, name, imageUrl, imagePublicId } = body || {};

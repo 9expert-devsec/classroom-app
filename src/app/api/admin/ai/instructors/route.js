@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import AiInstructor from "@/models/AiInstructor";
+import { adminGuard } from "@/lib/adminAuth.server";
 
 const RAW_BASE = process.env.AI_API_BASE;
 const KEY = process.env.AI_API_KEY;
@@ -94,6 +95,9 @@ async function syncFromUpstream() {
 }
 
 export async function GET(req) {
+  const denied = await adminGuard();
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const denied = await adminGuard(PERM.EVENTS_IMPORT);
+  if (denied) return denied;
+
   const headersTH = [
     "ชื่อ-นามสกุล",
     "เบอร์โทร",

@@ -11,6 +11,8 @@ import {
   uniqSortYMD,
   ymdToUTCDate,
 } from "@/lib/classDates";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +134,9 @@ function pickStudentName(stu) {
 /* ---------------- GET ---------------- */
 
 export async function GET(req) {
+  const denied = await adminGuard(PERM.CLASSES_READ);
+  if (denied) return denied;
+
   await dbConnect();
   const { searchParams } = new URL(req.url);
 
@@ -343,6 +348,9 @@ export async function GET(req) {
 /* ---------------- POST ---------------- */
 
 export async function POST(req) {
+  const denied = await adminGuard(PERM.CLASSES_WRITE);
+  if (denied) return denied;
+
   await dbConnect();
 
   const body = await req.json();

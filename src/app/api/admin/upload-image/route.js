@@ -1,6 +1,8 @@
 // src/app/api/admin/upload-image/route.js
 import { NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // ต้องใช้ Node runtime เพราะมี Buffer
@@ -13,6 +15,9 @@ cloudinary.config({
 });
 
 export async function POST(req) {
+  const denied = await adminGuard(PERM.CLASSES_WRITE);
+  if (denied) return denied;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file");

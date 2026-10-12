@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import Class from "@/models/Class";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +105,9 @@ async function nextRunNumber(titlePrefix) {
 /* ---------- Route ---------- */
 
 export async function GET() {
+  const denied = await adminGuard(PERM.CLASSES_IMPORT);
+  if (denied) return denied;
+
   await dbConnect();
 
   const API_URL = process.env.AI_API_BASE

@@ -1,5 +1,7 @@
 // src/app/api/admin/classroom/dashboard/route.js
 import { getClassroomDashboardData } from "@/lib/classroomDashboard.server";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +26,9 @@ function parseIncludeFromSearchParams(sp) {
 }
 
 export async function GET(req) {
+  const denied = await adminGuard(PERM.DASHBOARD_VIEW);
+  if (denied) return denied;
+
   const u = new URL(req.url);
   const sp = u.searchParams;
 

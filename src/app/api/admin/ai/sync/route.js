@@ -14,6 +14,7 @@ import {
   tryFetchUpstream,
   pickSingleItem,
 } from "@/lib/aiUpstream.server";
+import { adminGuard } from "@/lib/adminAuth.server";
 
 // export const runtime = "nodejs"; // ถ้าต้องการ
 export const dynamic = "force-dynamic";
@@ -271,6 +272,9 @@ async function syncProgram({ id = "", program_id = "" } = {}) {
 /* ---------------- POST handler ---------------- */
 
 export async function POST(req) {
+  const denied = await adminGuard();
+  if (denied) return denied;
+
   try {
     await dbConnect();
 

@@ -7,6 +7,7 @@ import {
   buildProgramCandidates,
   tryFetchUpstream,
 } from "@/lib/aiUpstream.server";
+import { adminGuard } from "@/lib/adminAuth.server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ function cleanStr(x) {
 }
 
 export async function GET(req) {
+  const denied = await adminGuard();
+  if (denied) return denied;
+
   await dbConnect();
   const { BASE } = requireAiEnv();
 

@@ -1,6 +1,8 @@
 // src/app/api/admin/food/upload/route.js
 import { NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
+import { adminGuard } from "@/lib/adminAuth.server";
+import { PERM } from "@/lib/acl";
 
 export const runtime = "nodejs"; // ให้รันบน Node (ใช้ Buffer ได้)
 
@@ -11,6 +13,9 @@ cloudinary.config({
 });
 
 export async function POST(req) {
+  const denied = await adminGuard(PERM.FOOD_WRITE);
+  if (denied) return denied;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file");
