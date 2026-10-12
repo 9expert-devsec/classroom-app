@@ -11,7 +11,6 @@ import { MIN_MENU_IMAGE_W } from "@/lib/menuImage";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsCard from "./_components/CouponSettingsCard";
-import CouponStockCard from "./_components/CouponStockCard";
 import RestaurantTabs from "./_components/RestaurantTabs";
 import MenuTab from "./_components/MenuTab";
 import SetsTab from "./_components/SetsTab";
@@ -945,20 +944,13 @@ function RestaurantDetail({ params }) {
         </PrimaryButton>
       </div>
 
-      {/* coupon settings (existing) */}
-      <div className="grid shrink-0 gap-5 lg:grid-cols-2">
+      {/* coupon settings; stock summary shows inside when stock is on */}
+      <div className="shrink-0">
         <CouponSettingsCard
           restaurant={restaurant}
+          adminKey={adminKey}
           onSaved={(item) => setRestaurant(item)}
         />
-        {/* P2: คลังคูปองกระดาษ แสดงเฉพาะร้านที่เปิดใช้ stock */}
-        {restaurant?.usesCouponStock && (
-          <CouponStockCard
-            restaurant={restaurant}
-            adminKey={adminKey}
-            onSaved={(item) => setRestaurant(item)}
-          />
-        )}
       </div>
 
       <div className="shrink-0 space-y-4 rounded-2xl bg-admin-surface p-4 shadow-sm">

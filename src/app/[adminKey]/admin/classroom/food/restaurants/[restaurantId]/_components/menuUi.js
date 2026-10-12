@@ -80,12 +80,16 @@ export function formatPrice(price) {
   return `${Number(price).toLocaleString()} บาท`;
 }
 
+// option groups are only mentioned when the menu has some
 export function optionSummary(m) {
+  const groups = (m.optionGroups || []).length;
   return [
     `Add-on ${(m.addonIds || []).length}`,
     `Drink ${(m.drinkIds || []).length}`,
-    `ตัวเลือก ${(m.optionGroups || []).length} กลุ่ม`,
-  ].join(" · ");
+    groups > 0 ? `ตัวเลือก ${groups} กลุ่ม` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export async function safeJson(res) {

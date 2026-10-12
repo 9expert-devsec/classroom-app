@@ -1,7 +1,7 @@
 "use client";
 
 import Toggle from "./Toggle";
-import { CategoryChips, MenuActions, MenuImage } from "./MenuBits";
+import { CategoryChips, MenuActions, MenuImage, StatusLabel } from "./MenuBits";
 import { formatPrice, optionSummary } from "./menuUi";
 
 export default function MenuCard({
@@ -17,75 +17,68 @@ export default function MenuCard({
   const hasPrice = menu.price !== null && menu.price !== undefined;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onEdit(menu)}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onEdit(menu);
-        }
-      }}
-      className={[
-        "relative flex min-w-0 cursor-pointer gap-3 rounded-2xl border border-admin-border bg-white p-3 text-left transition hover:border-brand-primary hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50",
-        active ? "" : "bg-slate-50",
-      ].join(" ")}
-    >
-      <MenuImage
-        menu={menu}
-        sizes="96px"
-        className={`aspect-square w-24 flex-shrink-0 ${active ? "" : "opacity-50 grayscale"}`}
-      />
+    <div className="flex h-full min-w-0 flex-col rounded-2xl border border-admin-border bg-white transition hover:border-brand-primary hover:shadow-sm">
+      {/* body: opens the edit form */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onEdit(menu)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onEdit(menu);
+          }
+        }}
+        className={`flex flex-1 cursor-pointer gap-3 rounded-t-2xl p-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 ${
+          active ? "" : "opacity-50 grayscale"
+        }`}
+      >
+        <MenuImage menu={menu} sizes="112px" className="aspect-square w-28 flex-shrink-0 self-start" />
 
-      <div className={`flex min-w-0 flex-1 flex-col ${active ? "" : "opacity-60"}`}>
-        <div className="pr-16 text-sm font-semibold leading-snug text-admin-text line-clamp-2">
-          {menu.name}
-        </div>
-        <div className="mt-0.5 text-sm text-admin-text">
-          {hasPrice ? (
-            formatPrice(menu.price)
-          ) : couponEnabled ? (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-              ยังไม่ใส่ราคา
-            </span>
-          ) : (
-            <span className="text-xs text-admin-textMuted">ไม่กำหนดราคา</span>
-          )}
-        </div>
-        <div className="mt-1.5">
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <div
+            title={menu.name}
+            className="line-clamp-2 break-words text-sm font-semibold leading-snug text-admin-text"
+          >
+            {menu.name}
+          </div>
+          <div className="text-sm text-admin-text">
+            {hasPrice ? (
+              formatPrice(menu.price)
+            ) : couponEnabled ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                ยังไม่ใส่ราคา
+              </span>
+            ) : (
+              <span className="text-xs text-admin-textMuted">ไม่กำหนดราคา</span>
+            )}
+          </div>
           <CategoryChips
             menu={menu}
             categoryById={categoryById}
             orderedCategoryIds={orderedCategoryIds}
           />
-        </div>
-        <div className="mt-auto truncate pr-8 pt-1.5 text-[11px] text-admin-textMuted">
-          {optionSummary(menu)}
+          <div className="text-[11px] text-admin-textMuted">{optionSummary(menu)}</div>
         </div>
       </div>
 
-      {/* toggle + ⋮ (top-right) */}
-      <div
-        className="absolute right-2 top-2 flex items-center gap-0.5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Toggle
-          checked={active}
-          onChange={(next) => onToggleActive(menu, next)}
-          label={active ? "ปิดใช้งานเมนู" : "เปิดใช้งานเมนู"}
-        />
-        <MenuActions menu={menu} onEdit={onEdit} onDelete={onDelete} />
+      {/* footer: full contrast even when the menu is off */}
+      <div className="flex items-center justify-between gap-2 border-t border-admin-border px-3 py-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <StatusLabel active={active} />
+          <span className="whitespace-nowrap text-[11px] text-admin-textMuted">
+            ลำดับ {menu.sortOrder ?? 0}
+          </span>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          <Toggle
+            checked={active}
+            onChange={(next) => onToggleActive(menu, next)}
+            label={active ? "ปิดใช้งานเมนู" : "เปิดใช้งานเมนู"}
+          />
+          <MenuActions menu={menu} onEdit={onEdit} onDelete={onDelete} />
+        </div>
       </div>
-
-      {/* display order (bottom-right) */}
-      <span
-        className="absolute bottom-2 right-2 inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-admin-surfaceMuted px-1.5 text-[11px] font-semibold text-admin-textMuted"
-        title="ลำดับการแสดงผล"
-      >
-        {menu.sortOrder ?? 0}
-      </span>
     </div>
   );
 }

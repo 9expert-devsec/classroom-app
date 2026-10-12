@@ -124,7 +124,7 @@ export default function MenuTab({
       ) : params.view === "list" ? (
         <MenuTable menus={pageItems} {...shared} />
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {pageItems.map((m) => (
             <MenuCard key={String(m._id)} menu={m} couponEnabled={couponEnabled} {...shared} />
           ))}

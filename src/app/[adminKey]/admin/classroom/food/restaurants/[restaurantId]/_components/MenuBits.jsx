@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ImageOff, MoreVertical } from "lucide-react";
+import { Check, ImageOff, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +62,18 @@ export function CategoryChips({ menu, categoryById, orderedCategoryIds }) {
         );
       })}
     </div>
+  );
+}
+
+/** "✓ เปิดใช้งาน" (green) / "ปิดใช้งาน" (muted), next to the active toggle */
+export function StatusLabel({ active }) {
+  return active ? (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-green-700">
+      <Check className="h-3.5 w-3.5" />
+      เปิดใช้งาน
+    </span>
+  ) : (
+    <span className="whitespace-nowrap text-xs text-admin-textMuted">ปิดใช้งาน</span>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Toggle from "./Toggle";
-import { CategoryChips, MenuActions, MenuImage } from "./MenuBits";
+import { CategoryChips, MenuActions, MenuImage, StatusLabel } from "./MenuBits";
 import { formatPrice, optionSummary } from "./menuUi";
 
 export default function MenuTable({
@@ -68,7 +68,7 @@ export default function MenuTable({
                       onChange={(next) => onToggleActive(m, next)}
                       label={active ? "ปิดใช้งานเมนู" : "เปิดใช้งานเมนู"}
                     />
-                    <span className="text-xs">{active ? "เปิดใช้งาน" : "ปิดใช้งาน"}</span>
+                    <StatusLabel active={active} />
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
