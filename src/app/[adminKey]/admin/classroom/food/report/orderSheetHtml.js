@@ -100,7 +100,14 @@ export function kitchenSummary(orderedRows) {
 }
 
 export const CSS = `
-  @page { size: A4 portrait;  margin: 10mm 9mm 10mm 17mm;  }
+  @page {
+    size: A4 portrait;  margin: 10mm 9mm 10mm 17mm;
+    @bottom-right {
+      content: "หน้า " counter(page);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 9px; color: #6b7280;
+    }
+  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 12px;
@@ -130,8 +137,25 @@ export const CSS = `
   .lines div + div { margin-top: 2px; }
   .footer { margin-top: 10px; font-size: 12px; font-weight: 700; text-align: right; }
   .empty { margin-top: 40px; text-align: center; font-size: 14px; color: #6b7280; }
+  /* page 1 of a shop = header + kitchen summary; the order list starts on the next page */
+  .summary-page { break-inside: avoid; page-break-inside: avoid; }
+  .summary-page.has-list { break-after: page; page-break-after: always; }
+  .head-compact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 4px; font-size: 12px; color: #374151; }
+  .head-compact b { font-size: 14px; color: #111827; }
   @media print { body { margin: 0; } }
 `;
+
+// top of the list pages — so a list page can't be mixed up with another shop / day
+export function compactHeaderHtml({ shop, dateYMD, afterHHMM = "" }) {
+  return `
+    <div class="head-compact">
+      <b>${esc(shop?.name || "-")}</b>
+      <span>วันที่ ${esc(thaiDate(dateYMD))}</span>
+      <span>รายการสั่ง</span>
+      ${isHHMM(afterHHMM) ? `<span class="after">เฉพาะออร์เดอร์หลัง ${esc(afterHHMM)} น.</span>` : ""}
+    </div>
+  `;
+}
 
 export function headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin }) {
   const shopLogo = absUrl(shop?.logoUrl, origin);
@@ -258,23 +282,36 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
       </table>`
     : `<div class="sub">ไม่มี</div>`;
 
+  const footerHtml = `
+      <div class="footer">
+        สั่งผ่านแอป ${ordered.length} · สั่งที่ร้านเอง ${atShop.length} · รวม ${ordered.length + atShop.length}
+      </div>`;
+  const hasList = ordered.length + atShop.length > 0;
+
+  // page 1: header + kitchen summary · page 2+: compact header, both lists (same order), footer
   return `
-    <div class="page">
+    <div class="page summary-page${hasList ? " has-list" : ""}">
       ${headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin })}
 
       <h3>สรุปสำหรับครัว</h3>
       ${kitchenHtml}
+      ${hasList ? "" : footerHtml}
+    </div>
+    ${
+      hasList
+        ? `
+    <div class="page list-page">
+      ${compactHeaderHtml({ shop, dateYMD, afterHHMM })}
 
       <h3>รายการสั่ง (${ordered.length})</h3>
       ${orderListHtml}
 
       <h3>สั่งที่ร้านเอง (${atShop.length})</h3>
       ${atShopHtml}
-
-      <div class="footer">
-        สั่งผ่านแอป ${ordered.length} · สั่งที่ร้านเอง ${atShop.length} · รวม ${ordered.length + atShop.length}
-      </div>
-    </div>
+      ${footerHtml}
+    </div>`
+        : ""
+    }
   `;
 }
 

@@ -3,7 +3,7 @@
 //   - หน้าตาเดียวกับใบสั่งร้านคูปอง (CSS + header เดียวกัน) ไม่มีราคา
 //   - แถว = Food Report rows type "set" ของร้านนั้นในวันนั้น (ไม่รับอาหาร / คูปอง ไม่อยู่ใน sheet)
 //   - สรุปครัว: นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
-import { CSS, esc, headerHtml } from "./orderSheetHtml";
+import { CSS, compactHeaderHtml, esc, headerHtml } from "./orderSheetHtml";
 
 function addonList(r) {
   // addons อาจอยู่ทั้ง r.addons และ r.food.addons (array หรือ string คั่นด้วย "/")
@@ -111,19 +111,31 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
       </table>`
     : `<div class="sub">ไม่มี</div>`;
 
+  const footerHtml = `<div class="footer">รวม ${list.length} ที่</div>`;
+  const hasList = list.length > 0;
+
+  // page 1: header + kitchen summary · page 2+: compact header, learner list, footer
   const body = `
-    <div class="page">
+    <div class="page summary-page${hasList ? " has-list" : ""}">
       ${headerHtml({ shop, dateYMD, printedAt, afterHHMM: "", origin })}
 
       ${countTable("เมนู", menus, "ไม่มีรายการ")}
       ${countTable("Add-on", addons, "ไม่มี Add-on")}
       ${countTable("เครื่องดื่ม", drinks, "ไม่มีเครื่องดื่ม")}
+      ${hasList ? "" : footerHtml}
+    </div>
+    ${
+      hasList
+        ? `
+    <div class="page list-page">
+      ${compactHeaderHtml({ shop, dateYMD })}
 
       <h3>รายชื่อผู้เรียน (${list.length})</h3>
       ${listHtml}
-
-      <div class="footer">รวม ${list.length} ที่</div>
-    </div>
+      ${footerHtml}
+    </div>`
+        : ""
+    }
   `;
 
   return `<!DOCTYPE html>
