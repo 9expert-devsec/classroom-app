@@ -85,18 +85,81 @@ export function sheetRowsForShop(rows, shopId, dateYMD, afterHHMM) {
     );
 }
 
-/** สรุปครัว: จำนวนรวมต่อ เมนู + ตัวเลือก จาก ordered เท่านั้น เรียงมาก → น้อย */
-export function kitchenSummary(orderedRows) {
+
+/**
+ * สรุปเมนูที่ต้องเตรียม: 1 แถวต่อเมนู (จำนวนรวม = ผลรวม qty ของบรรทัดที่สั่งผ่านแอป)
+ * หมายเหตุ = ชุดตัวเลือกของเมนูนั้น นับตาม qty — ชุดเดียวกับบรรทัด "เมนู · ตัวเลือก" ของสรุปเดิม
+ */
+export function menuSummary(orderedRows) {
   const m = new Map();
   for (const r of orderedRows) {
     for (const l of r.lines || []) {
-      const k = lineLabel(l);
-      m.set(k, (m.get(k) || 0) + (Number(l.qty) || 1));
+      const name = l?.name || "-";
+      const qty = Number(l.qty) || 1;
+      const opts = Array.isArray(l?.options) ? l.options.filter(Boolean) : [];
+      const x = m.get(name) || { qty: 0, combos: new Map() };
+      x.qty += qty;
+      if (opts.length) {
+        const k = opts.join(", ");
+        x.combos.set(k, (x.combos.get(k) || 0) + qty);
+      }
+      m.set(name, x);
     }
   }
   return [...m.entries()]
-    .map(([label, qty]) => ({ label, qty }))
+    .map(([label, x]) => ({ label, qty: x.qty, note: countsNote(x.combos) }))
     .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
+}
+
+/** Map(label → n) → "a ×2 · b ×1" (มาก → น้อย), "" เมื่อว่าง */
+export function countsNote(map) {
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "th"))
+    .map(([k, n]) => `${k} ×${n}`)
+    .join(" · ");
+}
+
+const UTENSILS_SVG = `<svg class="sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`;
+
+/**
+ * numbered summary table (page 1 of a sheet): # · item · จำนวนรวม · หมายเหตุ + แถวรวมทั้งหมด
+ * @param items [{ label, qty, note }]
+ */
+export function summaryTableHtml({ num, title, itemHeader, items, icon = false, emptyText = "" }) {
+  const head = `<h3 class="sec-title">${icon ? UTENSILS_SVG : ""}${num}. ${esc(title)}</h3>`;
+  if (!items.length) return `<div class="sum-block">${head}<div class="sub">${esc(emptyText)}</div></div>`;
+  const total = items.reduce((n, x) => n + x.qty, 0);
+  return `
+    <div class="sum-block">
+      ${head}
+      <div class="sum-wrap">
+        <table class="sum-table">
+          <colgroup><col style="width:7%" /><col style="width:43%" /><col style="width:14%" /><col style="width:36%" /></colgroup>
+          <thead>
+            <tr><th class="st-th st-num">#</th><th class="st-th">${esc(itemHeader)}</th><th class="st-th st-qty">จำนวนรวม</th><th class="st-th">หมายเหตุ</th></tr>
+          </thead>
+          <tbody>
+            ${items
+              .map(
+                (x, i) => `
+              <tr>
+                <td class="st-td st-num">${i + 1}</td>
+                <td class="st-td">${esc(x.label)}</td>
+                <td class="st-td st-qty">${x.qty}</td>
+                <td class="st-td st-note">${esc(x.note || "-")}</td>
+              </tr>`,
+              )
+              .join("")}
+            <tr class="st-total">
+              <td class="st-td"></td>
+              <td class="st-td">รวมทั้งหมด</td>
+              <td class="st-td st-qty">${total}</td>
+              <td class="st-td"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 export const CSS = `
@@ -133,12 +196,24 @@ export const CSS = `
   .meta { font-size: 12px; color: #374151; margin-top: 2px; }
   .after { font-weight: 800; color: #111827; }
   h3 { font-size: 13px; margin: 14px 0 6px; }
-  .kitchen .td.qty { width: 70px; text-align: center; font-weight: 800; font-size: 14px; }
   .lines div + div { margin-top: 2px; }
   .footer { margin-top: 10px; font-size: 12px; font-weight: 700; text-align: right; }
   .empty { margin-top: 40px; text-align: center; font-size: 14px; color: #6b7280; }
   /* page 1 of a shop = header + kitchen summary; the order list starts on the next page */
   .summary-page { break-inside: avoid; page-break-inside: avoid; }
+  /* numbered summary tables (page 1) — readable in black & white: borders + bold total row */
+  .sum-block { break-inside: avoid; page-break-inside: avoid; }
+  .sec-title { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 16px 0 8px; }
+  .sec-icon { width: 16px; height: 16px; flex: none; }
+  .sum-wrap { border: 1px solid #9ca3af; border-radius: 8px; overflow: hidden; }
+  .sum-table { border-collapse: collapse; }
+  .st-th, .st-td { padding: 7px 10px; font-size: 12px; vertical-align: top; text-align: left; word-break: break-word; }
+  .st-th { background: #f3f4f6; font-weight: 700; border-bottom: 1px solid #9ca3af; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .st-td { border-top: 1px solid #e5e7eb; }
+  .st-num { text-align: right; color: #4b5563; }
+  .st-qty { text-align: center; font-weight: 800; font-size: 14px; }
+  .st-note { color: #374151; font-size: 11px; }
+  .st-total .st-td { background: #e0f2fe; font-weight: 800; border-top: 2px solid #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .summary-page.has-list { break-after: page; page-break-after: always; }
   .head-compact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 4px; font-size: 12px; color: #374151; }
   .head-compact b { font-size: 14px; color: #111827; }
@@ -178,27 +253,21 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
   const showCode = shop.source === "ecoupon";
   const ordered = rows.filter((r) => r.couponState === "ordered");
   const atShop = rows.filter((r) => r.couponState === "at_shop");
-  const kitchen = kitchenSummary(ordered);
+  // coupon lines carry their options inline (no separate add-on / drink) → one numbered table
+  const kitchenHtml = summaryTableHtml({
+    num: 1,
+    title: "สรุปเมนูที่ต้องเตรียม (รวมทั้งหมด)",
+    itemHeader: "เมนูอาหาร",
+    items: menuSummary(ordered),
+    icon: true,
+    emptyText: "ไม่มีรายการที่สั่งผ่านแอป",
+  });
 
   const noCheckin = (r) =>
     (r.flags || []).includes("no_checkin")
       ? `<div class="warn">ไม่ได้เช็คอินวันนี้</div>`
       : "";
 
-  const kitchenHtml = kitchen.length
-    ? `
-      <table class="kitchen">
-        <thead><tr><th class="th">เมนู · ตัวเลือก</th><th class="th" style="width:70px;text-align:center;">จำนวน</th></tr></thead>
-        <tbody>
-          ${kitchen
-            .map(
-              (k) =>
-                `<tr><td class="td">${esc(k.label)}</td><td class="td qty">×${k.qty}</td></tr>`,
-            )
-            .join("")}
-        </tbody>
-      </table>`
-    : `<div class="sub">ไม่มีรายการที่สั่งผ่านแอป</div>`;
 
   const orderCols = showCode
     ? `<col style="width:5%" /><col style="width:11%" /><col style="width:18%" /><col style="width:8%" /><col style="width:28%" /><col style="width:13%" /><col style="width:7%" /><col style="width:10%" />`
@@ -293,7 +362,7 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
     <div class="page summary-page${hasList ? " has-list" : ""}">
       ${headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin })}
 
-      <h3>สรุปสำหรับครัว</h3>
+
       ${kitchenHtml}
       ${hasList ? "" : footerHtml}
     </div>

@@ -2,8 +2,8 @@
 // ใบสั่งร้าน (ร้าน Set) — อาหารที่ผู้เรียนเลือกตอนเช็คอิน, 1 ร้าน / 1 วันต่อใบ
 //   - หน้าตาเดียวกับใบสั่งร้านคูปอง (CSS + header เดียวกัน) ไม่มีราคา
 //   - แถว = Food Report rows type "set" ของร้านนั้นในวันนั้น (ไม่รับอาหาร / คูปอง ไม่อยู่ใน sheet)
-//   - สรุปครัว: นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
-import { CSS, compactHeaderHtml, esc, headerHtml } from "./orderSheetHtml";
+//   - สรุปครัว: ตารางเลข 1–3 นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
+import { CSS, compactHeaderHtml, countsNote, esc, headerHtml, summaryTableHtml } from "./orderSheetHtml";
 
 function addonList(r) {
   // addons อาจอยู่ทั้ง r.addons และ r.food.addons (array หรือ string คั่นด้วย "/")
@@ -27,31 +27,26 @@ function menuOf(r) {
   return String(r.menuName || r.food?.menuName || "-").trim() || "-";
 }
 
-function countBy(rows, labelsOf) {
-  const m = new Map();
-  rows.forEach((r) =>
-    labelsOf(r).forEach((label) => {
-      const k = String(label || "").trim();
-      if (k) m.set(k, (m.get(k) || 0) + 1);
-    }),
-  );
-  return [...m.entries()]
-    .map(([label, qty]) => ({ label, qty }))
-    .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
-}
+const cleanLabels = (labels) => labels.map((x) => String(x || "").trim()).filter(Boolean);
 
-function countTable(title, items, emptyText) {
-  if (!items.length) return `<h3>${esc(title)}</h3><div class="sub">${esc(emptyText)}</div>`;
-  return `
-    <h3>${esc(title)}</h3>
-    <table class="kitchen">
-      <thead><tr><th class="th">${esc(title)}</th><th class="th" style="width:70px;text-align:center;">จำนวน</th></tr></thead>
-      <tbody>
-        ${items
-          .map((k) => `<tr><td class="td">${esc(k.label)}</td><td class="td qty">×${k.qty}</td></tr>`)
-          .join("")}
-      </tbody>
-    </table>`;
+/**
+ * count rows per label (same rule as before: 1 per row per label, blanks skipped)
+ * note = what came with it, counted — e.g. a menu's add-ons, or the menus an add-on / drink went with
+ */
+function countWithNote(rows, labelsOf, noteLabelsOf) {
+  const m = new Map();
+  rows.forEach((r) => {
+    const notes = cleanLabels(noteLabelsOf(r));
+    cleanLabels(labelsOf(r)).forEach((k) => {
+      const x = m.get(k) || { qty: 0, notes: new Map() };
+      x.qty += 1;
+      notes.forEach((n) => x.notes.set(n, (x.notes.get(n) || 0) + 1));
+      m.set(k, x);
+    });
+  });
+  return [...m.entries()]
+    .map(([label, x]) => ({ label, qty: x.qty, note: countsNote(x.notes) }))
+    .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
 }
 
 /**
@@ -64,9 +59,17 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
   const list = (rows || []).filter((r) => r?.type === "set");
   const shop = { name: shopName };
 
-  const menus = countBy(list, (r) => [menuOf(r)]);
-  const addons = countBy(list, addonList);
-  const drinks = countBy(list, (r) => [drinkOf(r)]);
+  const menus = countWithNote(list, (r) => [menuOf(r)], addonList);
+  const addons = countWithNote(list, addonList, (r) => [menuOf(r)]);
+  const drinks = countWithNote(list, (r) => [drinkOf(r)], (r) => [menuOf(r)]);
+
+  // 1. เมนู (always) · then Add-on / เครื่องดื่ม only when there are any, numbered consecutively
+  const sections = [
+    { title: "สรุปเมนูที่ต้องเตรียม (รวมทั้งหมด)", itemHeader: "เมนูอาหาร", items: menus, icon: true, emptyText: "ไม่มีรายการ" },
+    ...(addons.length ? [{ title: "Add-on", itemHeader: "รายการ", items: addons }] : []),
+    ...(drinks.length ? [{ title: "เครื่องดื่ม", itemHeader: "รายการ", items: drinks }] : []),
+  ];
+  const summaryHtml = sections.map((s, i) => summaryTableHtml({ num: i + 1, ...s })).join("");
 
   const listHtml = list.length
     ? `
@@ -119,9 +122,7 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
     <div class="page summary-page${hasList ? " has-list" : ""}">
       ${headerHtml({ shop, dateYMD, printedAt, afterHHMM: "", origin })}
 
-      ${countTable("เมนู", menus, "ไม่มีรายการ")}
-      ${countTable("Add-on", addons, "ไม่มี Add-on")}
-      ${countTable("เครื่องดื่ม", drinks, "ไม่มีเครื่องดื่ม")}
+      ${summaryHtml}
       ${hasList ? "" : footerHtml}
     </div>
     ${
