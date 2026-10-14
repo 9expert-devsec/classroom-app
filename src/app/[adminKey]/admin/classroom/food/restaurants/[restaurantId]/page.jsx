@@ -16,7 +16,7 @@ import SetsTab from "./_components/sets/SetsTab";
 import SetFormModal from "./_components/sets/SetFormModal";
 import SetDetailModal from "./_components/sets/SetDetailModal";
 import SetDeleteDialog from "./_components/sets/SetDeleteDialog";
-import { setMenus } from "./_components/sets/setUi";
+import { menusInSet } from "./_components/sets/setUi";
 import LibraryTab from "./_components/LibraryTab";
 import CategoryManagerModal from "./_components/CategoryManagerModal";
 import { useListParams } from "./_components/menuUi";
@@ -60,6 +60,16 @@ function Modal({ open, title, children, onClose }) {
 }
 
 /* ---------------- helpers ---------------- */
+
+// GET a list endpoint; throws (instead of returning a non-array) on any
+// error status or unexpected body, so callers never store a wrong shape
+async function loadList(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!Array.isArray(data.items)) throw new Error("รูปแบบข้อมูลไม่ถูกต้อง");
+  return data.items;
+}
 
 async function safeJson(res) {
   const t = await res.text().catch(() => "");
@@ -216,15 +226,14 @@ function RestaurantDetail({ params }) {
   async function fetchMenus() {
     setLoadingMenus(true);
     try {
-      const res = await fetch(
+      const items = await loadList(
         `/api/admin/food/menu?restaurantId=${encodeURIComponent(restaurantId)}`,
-        { cache: "no-store" },
       );
-      const data = await safeJson(res);
-      setMenus(data.items || []);
+      setMenus(items);
     } catch (err) {
+      // keep the current list; never write an error body into state
       console.error(err);
-      alert("โหลดรายการเมนูไม่สำเร็จ");
+      toast.error(err?.message || "โหลดรายการเมนูไม่สำเร็จ");
     } finally {
       setLoadingMenus(false);
     }
@@ -233,15 +242,14 @@ function RestaurantDetail({ params }) {
   async function fetchSets() {
     setLoadingSets(true);
     try {
-      const res = await fetch(
+      const items = await loadList(
         `/api/admin/food/sets?restaurantId=${encodeURIComponent(restaurantId)}`,
-        { cache: "no-store" },
       );
-      const data = await safeJson(res);
-      setSets(data.items || []);
+      setSets(items);
     } catch (err) {
+      // keep the current list; never write an error body into state
       console.error(err);
-      alert("โหลดชุดเมนูไม่สำเร็จ");
+      toast.error(err?.message || "โหลดชุดเมนูไม่สำเร็จ");
     } finally {
       setLoadingSets(false);
     }
@@ -250,15 +258,14 @@ function RestaurantDetail({ params }) {
   async function fetchAddons() {
     setLoadingAddons(true);
     try {
-      const res = await fetch(
+      const items = await loadList(
         `/api/admin/food/addons?restaurantId=${encodeURIComponent(restaurantId)}`,
-        { cache: "no-store" },
       );
-      const data = await safeJson(res);
-      setAddonsList(data.items || []);
+      setAddonsList(items);
     } catch (err) {
+      // keep the current list; never write an error body into state
       console.error(err);
-      alert("โหลด Add-on ไม่สำเร็จ");
+      toast.error(err?.message || "โหลด Add-on ไม่สำเร็จ");
     } finally {
       setLoadingAddons(false);
     }
@@ -267,15 +274,14 @@ function RestaurantDetail({ params }) {
   async function fetchDrinks() {
     setLoadingDrinks(true);
     try {
-      const res = await fetch(
+      const items = await loadList(
         `/api/admin/food/drinks?restaurantId=${encodeURIComponent(restaurantId)}`,
-        { cache: "no-store" },
       );
-      const data = await safeJson(res);
-      setDrinksList(data.items || []);
+      setDrinksList(items);
     } catch (err) {
+      // keep the current list; never write an error body into state
       console.error(err);
-      alert("โหลด Drink ไม่สำเร็จ");
+      toast.error(err?.message || "โหลด Drink ไม่สำเร็จ");
     } finally {
       setLoadingDrinks(false);
     }
@@ -615,7 +621,8 @@ function RestaurantDetail({ params }) {
   }
 
   /* ---------------- render ---------------- */
-  const menuById = new Map(menus.map((m) => [String(m._id), m]));
+  // defensive: a bad value must never blank the page
+  const menuById = new Map((Array.isArray(menus) ? menus : []).map((m) => [String(m._id), m]));
   const viewSet = viewSetId ? sets.find((s) => String(s._id) === viewSetId) : null;
   const tabCounts = {
     menus: menus.length,
@@ -791,7 +798,7 @@ function RestaurantDetail({ params }) {
       {viewSet && !setForm && !deletingSet && (
         <SetDetailModal
           set={viewSet}
-          items={setMenus(viewSet, menuById)}
+          items={menusInSet(viewSet, menuById)}
           onClose={() => setViewSetId("")}
           onEdit={() => {
             setViewSetId("");
@@ -803,7 +810,7 @@ function RestaurantDetail({ params }) {
       {deletingSet && (
         <SetDeleteDialog
           set={deletingSet}
-          menuCount={setMenus(deletingSet, menuById).length}
+          menuCount={menusInSet(deletingSet, menuById).length}
           onClose={() => setDeletingSet(null)}
           onDeleted={handleSetDeleted}
         />

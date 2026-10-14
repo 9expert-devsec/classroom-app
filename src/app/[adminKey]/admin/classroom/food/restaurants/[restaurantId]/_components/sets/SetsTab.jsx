@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGrid, LayoutList, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import SetCard from "./SetCard";
-import { SetAvatar, setMenus } from "./setUi";
+import { SetAvatar, menusInSet } from "./setUi";
 
 const collator = new Intl.Collator("th");
 
@@ -135,7 +135,7 @@ export default function SetsTab({
   const rows = useMemo(() => {
     const kw = params.q.toLowerCase();
     const list = sets
-      .map((set) => ({ set, items: setMenus(set, menuById) }))
+      .map((set) => ({ set, items: menusInSet(set, menuById) }))
       // set name OR any menu name in the set
       .filter(
         ({ set, items }) =>

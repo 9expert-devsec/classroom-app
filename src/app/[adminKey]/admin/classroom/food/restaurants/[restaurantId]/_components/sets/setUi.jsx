@@ -14,7 +14,7 @@ export function setAvatarLetter(name) {
 }
 
 /** set's menus in stored order; ids of deleted menus are skipped */
-export function setMenus(set, menuById) {
+export function menusInSet(set, menuById) {
   return (set?.menuIds || []).map((x) => menuById.get(idOf(x))).filter(Boolean);
 }
 
