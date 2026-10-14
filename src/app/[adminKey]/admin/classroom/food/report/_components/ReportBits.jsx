@@ -35,10 +35,10 @@ export function StatusPill({ status }) {
 }
 
 /** card with a header that collapses its body */
-export function CollapsibleCard({ title, right, collapsedHint, defaultOpen = true, children }) {
+export function CollapsibleCard({ id, title, right, collapsedHint, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="rounded-2xl border border-admin-border bg-white">
+    <section id={id} className="scroll-mt-4 rounded-2xl border border-admin-border bg-white">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

@@ -19,8 +19,9 @@ function countsLine(c) {
 /**
  * One collapsible section per group (shop or type), each with its rows in the detail-table format.
  * @param groups [{ key, title, types: string[], counts, rows, action? }]
+ * @param focusKey group that starts open (e.g. the shop picked in สรุปตามร้านค้า); idPrefix + key = section id
  */
-export default function GroupSections({ groups, tableProps, empty }) {
+export default function GroupSections({ groups, tableProps, empty, idPrefix, focusKey }) {
   if (!groups.length) {
     return (
       <div className="rounded-2xl border border-admin-border bg-white py-10 text-center text-sm text-admin-textMuted">
@@ -33,7 +34,8 @@ export default function GroupSections({ groups, tableProps, empty }) {
       {groups.map((g) => (
         <CollapsibleCard
           key={g.key}
-          defaultOpen={groups.length === 1}
+          id={idPrefix ? `${idPrefix}${g.key}` : undefined}
+          defaultOpen={groups.length === 1 || g.key === focusKey}
           title={
             <span className="flex flex-wrap items-center gap-2">
               <span>{g.title}</span>

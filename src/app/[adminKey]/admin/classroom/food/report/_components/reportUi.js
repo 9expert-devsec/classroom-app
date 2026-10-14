@@ -36,9 +36,10 @@ function pick(value, allowed, fallback) {
 }
 
 /**
- * Range / shop / tab / table filters / page live in the URL.
+ * Range / tab / table filters / page live in the URL.
  * Values are read straight from the search params (never mirrored into state).
- * Legacy ?date=YYYY-MM-DD is read as a one-day range.
+ * Old URLs: ?from/?to (former header range) keep working, legacy ?date= is a one-day range,
+ * ?shop= and ?day= (removed filters) are ignored and dropped on the next change.
  */
 export function useReportParams(todayYMD) {
   const router = useRouter();
@@ -51,14 +52,11 @@ export function useReportParams(todayYMD) {
   if (from > to) [from, to] = [to, from];
   if (rangeDays(from, to).length > MAX_RANGE_DAYS) to = addDaysYMD(from, MAX_RANGE_DAYS - 1);
 
-  const day = sp.get("day") || "";
   const size = Number(sp.get("size"));
   const params = {
     from,
     to,
-    shop: sp.get("shop") || "",
     tab: pick(sp.get("tab"), TABS, "overview"),
-    day: isYMD(day) && day >= from && day <= to ? day : "",
     cls: sp.get("class") || "",
     type: pick(sp.get("type"), Object.keys(TYPE_META), ""),
     status: pick(sp.get("status"), [...Object.keys(STATUS_META), "flagged"], ""),
@@ -73,6 +71,8 @@ export function useReportParams(todayYMD) {
     (patch) => {
       const next = new URLSearchParams(sp.toString());
       if ("from" in patch || "to" in patch) next.delete("date");
+      next.delete("shop");
+      next.delete("day");
       for (const [k, v] of Object.entries(patch)) {
         if (v === "" || v === null || v === undefined) next.delete(k);
         else next.set(k, String(v));

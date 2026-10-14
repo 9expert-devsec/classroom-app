@@ -14,8 +14,6 @@ import { MAX_RANGE_DAYS, addDaysYMD, formatDateDMY, isYMD, rangeDays } from "./r
 
 const MENU_CONTENT = "min-w-56 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5";
 const MENU_ITEM = "cursor-pointer px-3 py-2 text-xs focus:bg-admin-surfaceMuted";
-const SELECT =
-  "h-10 rounded-xl border border-admin-border bg-white px-3 text-sm text-admin-text shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-primary";
 
 function DateRangePicker({ from, to, todayYMD, onChange }) {
   const [open, setOpen] = useState(false);
@@ -31,7 +29,7 @@ function DateRangePicker({ from, to, todayYMD, onChange }) {
     ["วันนี้", todayYMD, todayYMD],
     ["เมื่อวาน", addDaysYMD(todayYMD, -1), addDaysYMD(todayYMD, -1)],
     ["7 วันล่าสุด", addDaysYMD(todayYMD, -6), todayYMD],
-    ["30 วันล่าสุด", addDaysYMD(todayYMD, -29), todayYMD],
+    ["เดือนนี้", `${todayYMD.slice(0, 7)}-01`, todayYMD], // ≤ 31 days
   ];
 
   function apply(f, t) {
@@ -59,7 +57,7 @@ function DateRangePicker({ from, to, todayYMD, onChange }) {
           <ChevronDown className="h-4 w-4 shrink-0 text-admin-textMuted" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3">
+      <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3">
         <div className="flex flex-wrap gap-1.5">
           {presets.map(([label, f, t]) => (
             <button
@@ -109,7 +107,7 @@ function DateRangePicker({ from, to, todayYMD, onChange }) {
   );
 }
 
-export function ReportHeader({ params, setParams, shopOptions, todayYMD }) {
+export function ReportHeader({ printItems, exportItems }) {
   return (
     <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
@@ -118,35 +116,24 @@ export function ReportHeader({ params, setParams, shopOptions, todayYMD }) {
           รายงานการใช้งานชุดอาหาร, คูปองอาหาร และการสั่งอาหารของผู้เรียน
         </p>
       </div>
+      <ReportActions printItems={printItems} exportItems={exportItems} />
+    </div>
+  );
+}
 
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <label className="flex min-w-0 items-center gap-2 text-sm text-admin-textMuted">
-          <span className="shrink-0">ร้านค้า</span>
-          <select
-            className={`${SELECT} min-w-0 max-w-[14rem]`}
-            value={params.shop}
-            onChange={(e) => setParams({ shop: e.target.value })}
-          >
-            <option value="">ทั้งหมด</option>
-            {shopOptions.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <DateRangePicker
-          from={params.from}
-          to={params.to}
-          todayYMD={todayYMD}
-          onChange={(from, to) => setParams({ from, to, day: "" })}
-        />
+/** the page's only date filter — same place on every tab, summary text right after it */
+export function DateRangeBar({ from, to, todayYMD, onChange, children }) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+      <DateRangePicker from={from} to={to} todayYMD={todayYMD} onChange={onChange} />
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-admin-textMuted">
+        {children}
       </div>
     </div>
   );
 }
 
-export function ReportActions({ printItems, exportItems }) {
+function ReportActions({ printItems, exportItems }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <DropdownMenu>

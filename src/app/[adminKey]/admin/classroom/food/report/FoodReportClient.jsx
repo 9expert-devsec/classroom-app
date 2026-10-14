@@ -5,7 +5,7 @@
 // statuses, counting rules, the 15:00 rules, admin edit and the print templates are unchanged.
 import { useEffect, useMemo, useState } from "react";
 
-import { ReportActions, ReportHeader } from "./_components/ReportHeader";
+import { DateRangeBar, ReportHeader } from "./_components/ReportHeader";
 import { ReportTabs } from "./_components/ReportBits";
 import KpiCards from "./_components/KpiCards";
 import ShopSummary from "./_components/ShopSummary";
@@ -28,7 +28,6 @@ import {
   countRows,
   downloadBlob,
   matchesSearch,
-  rangeDays,
   rangeLabel,
   rowId,
   rowType,
@@ -40,6 +39,7 @@ import {
 } from "./_components/reportUi";
 
 const TYPE_ORDER = Object.keys(TYPE_META);
+const SHOP_SECTION_ID = "shop-section-";
 
 // เปิดหน้าต่างพิมพ์ (ใช้ร่วมกันทั้ง per-class print และใบสั่งร้าน)
 function openAndPrint(html) {
@@ -111,9 +111,16 @@ export default function FoodReportClient({ todayYMD }) {
 
   const reload = () => setReloadTick((n) => n + 1);
 
-  /* ---------------- derived ---------------- */
-  const days = useMemo(() => rangeDays(from, to), [from, to]);
+  // shop picked in สรุปตามร้านค้า → ตามร้านค้า opens and scrolls to its section (UI focus, not a filter)
+  const [focusShop, setFocusShop] = useState("");
+  useEffect(() => {
+    if (params.tab !== "shops" || !focusShop) return;
+    document
+      .getElementById(`${SHOP_SECTION_ID}${focusShop}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [params.tab, focusShop]);
 
+  /* ---------------- derived ---------------- */
   // day → class → server order (stable)
   const allRows = useMemo(() => {
     const withTitle = data.rows.map((o, i) => ({
@@ -130,27 +137,8 @@ export default function FoodReportClient({ todayYMD }) {
     return withTitle.map((x) => x.o);
   }, [data.rows]);
 
-  const shopOptions = useMemo(() => {
-    const map = new Map();
-    allRows.forEach((o) => {
-      const s = shopOf(o);
-      if (s && !map.has(s.key)) map.set(s.key, s);
-    });
-    const list = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "th"));
-    if (allRows.some((o) => !shopOf(o))) list.push({ key: NO_SHOP_KEY, name: NO_SHOP_LABEL });
-    if (params.shop && !list.some((s) => s.key === params.shop)) {
-      list.push({ key: params.shop, name: "(ร้านที่เลือก — ไม่มีข้อมูลในช่วงนี้)" });
-    }
-    return list;
-  }, [allRows, params.shop]);
-
-  // header filters (shop + range) — everything on the page uses these rows
-  const headerRows = useMemo(() => {
-    if (!params.shop) return allRows;
-    return allRows.filter((o) => (shopOf(o)?.key || NO_SHOP_KEY) === params.shop);
-  }, [allRows, params.shop]);
-
-  const counts = useMemo(() => countRows(headerRows), [headerRows]);
+  // the date range is the only page-level filter: KPIs, summaries, every tab, export and print use allRows
+  const counts = useMemo(() => countRows(allRows), [allRows]);
 
   // stock extras from the per-day server summary (awaiting return / missing code)
   const stockExtras = useMemo(() => {
@@ -168,7 +156,7 @@ export default function FoodReportClient({ todayYMD }) {
   }, [data.days]);
 
   const shopGroups = useMemo(() => {
-    const groups = [...groupBy(headerRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
+    const groups = [...groupBy(allRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
       ([key, rows]) => {
         const x = stockExtras.get(key);
         const extras = x
@@ -193,10 +181,10 @@ export default function FoodReportClient({ todayYMD }) {
       (a, b) =>
         (a.key === NO_SHOP_KEY) - (b.key === NO_SHOP_KEY) || a.name.localeCompare(b.name, "th"),
     );
-  }, [headerRows, stockExtras]);
+  }, [allRows, stockExtras]);
 
   const typeGroups = useMemo(() => {
-    const map = groupBy(headerRows, typeKeyOf);
+    const map = groupBy(allRows, typeKeyOf);
     return TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({
       key: t,
       title: TYPE_META[t].hint ? `${TYPE_META[t].label} — ${TYPE_META[t].hint}` : TYPE_META[t].label,
@@ -204,11 +192,11 @@ export default function FoodReportClient({ todayYMD }) {
       counts: countRows(map.get(t)),
       rows: map.get(t),
     }));
-  }, [headerRows]);
+  }, [allRows]);
 
   const topMenus = useMemo(() => {
     const counter = new Map();
-    headerRows.forEach((o) => {
+    allRows.forEach((o) => {
       if (rowType(o) !== "set") return;
       const label = setMenuLabel(o);
       counter.set(label, (counter.get(label) || 0) + 1);
@@ -216,24 +204,23 @@ export default function FoodReportClient({ todayYMD }) {
     return [...counter.entries()]
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "th"));
-  }, [headerRows]);
+  }, [allRows]);
 
   const classOptions = useMemo(() => {
     const map = new Map();
-    headerRows.forEach((o) => {
+    allRows.forEach((o) => {
       const id = o.classId || o.className || "unknown";
       if (!map.has(id)) {
         map.set(id, { id, name: cleanClassTitle(o.className || o.classTitle || "-", o.courseCode) });
       }
     });
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "th"));
-  }, [headerRows]);
+  }, [allRows]);
 
   // table filters
   const listRows = useMemo(
     () =>
-      headerRows.filter((o) => {
-        if (params.day && o.dayYMD !== params.day) return false;
+      allRows.filter((o) => {
         if (params.cls && (o.classId || o.className || "unknown") !== params.cls) return false;
         if (params.type && typeKeyOf(o) !== params.type) return false;
         if (params.status === "flagged") {
@@ -241,7 +228,7 @@ export default function FoodReportClient({ todayYMD }) {
         } else if (params.status && statusKeyOf(o) !== params.status) return false;
         return matchesSearch(o, params.q);
       }),
-    [headerRows, params.day, params.cls, params.type, params.status, params.q],
+    [allRows, params.cls, params.type, params.status, params.q],
   );
 
   const totalPages = Math.max(1, Math.ceil(listRows.length / params.size));
@@ -333,9 +320,9 @@ export default function FoodReportClient({ todayYMD }) {
     onEdit: setEditingRow,
   };
 
-  const filtersActive = params.day || params.cls || params.type || params.status || params.q;
-  const listEmpty = !headerRows.length
-    ? "ไม่มีข้อมูลในช่วงวันที่ / ร้านที่เลือก"
+  const filtersActive = params.cls || params.type || params.status || params.q;
+  const listEmpty = !allRows.length
+    ? "ไม่มีข้อมูลในช่วงวันที่ที่เลือก"
     : filtersActive
       ? "ไม่พบรายการที่ตรงกับตัวกรอง"
       : "ไม่มีรายการ";
@@ -354,7 +341,7 @@ export default function FoodReportClient({ todayYMD }) {
           </button>
         )}
       </div>
-      <ReportFilters params={params} setParams={setParams} days={days} classOptions={classOptions} />
+      <ReportFilters params={params} setParams={setParams} classOptions={classOptions} />
       <ReportTable
         rows={overview ? listRows.slice(0, params.size) : pageRows}
         startIndex={overview ? 0 : pageStart}
@@ -380,21 +367,36 @@ export default function FoodReportClient({ todayYMD }) {
   return (
     // layout แม่ (<main>) เป็น overflow-hidden — หน้านี้ scroll เอง
     <div className="flex h-full min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden overscroll-contain pr-1">
-      <ReportHeader params={params} setParams={setParams} shopOptions={shopOptions} todayYMD={todayYMD} />
+      <ReportHeader printItems={printItems} exportItems={exportItems} />
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <ReportTabs tab={params.tab} onTab={(tab) => setParams({ tab })} />
-        <ReportActions printItems={printItems} exportItems={exportItems} />
+      <div className="shrink-0">
+        <ReportTabs
+          tab={params.tab}
+          onTab={(tab) => {
+            setFocusShop("");
+            setParams({ tab });
+          }}
+        />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-admin-textMuted">
-        <span>
-          {rangeLabel(from, to)} • รวม <b className="text-admin-text">{counts.total}</b> รายการ
-        </span>
-        <span>ไม่รับอาหาร {counts.byType.none}</span>
-        {loading && <span>กำลังโหลดข้อมูล...</span>}
-        {data.error && !loading && <span className="text-red-600">{data.error}</span>}
-      </div>
+      <DateRangeBar
+        from={from}
+        to={to}
+        todayYMD={todayYMD}
+        onChange={(f, t) => setParams({ from: f, to: t })}
+      >
+        {/* counts of the previous range are never shown while the new one loads */}
+        {loading ? (
+          <span>กำลังโหลดข้อมูล...</span>
+        ) : data.error ? (
+          <span className="text-red-600">{data.error}</span>
+        ) : (
+          <span>
+            รวม <b className="text-admin-text">{counts.total}</b> รายการ · ไม่รับอาหาร{" "}
+            <b className="text-admin-text">{counts.byType.none}</b>
+          </span>
+        )}
+      </DateRangeBar>
 
       {pastDayNote && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -418,7 +420,10 @@ export default function FoodReportClient({ todayYMD }) {
           <KpiCards counts={counts} />
           <ShopSummary
             shops={shopGroups}
-            onPick={(shop) => setParams({ tab: "list", shop })}
+            onPick={(shop) => {
+              setFocusShop(shop);
+              setParams({ tab: "shops" });
+            }}
           />
           <TopMenus items={topMenus} />
           {detailCard(true)}
@@ -427,8 +432,10 @@ export default function FoodReportClient({ todayYMD }) {
 
       {params.tab === "shops" && (
         <GroupSections
-          empty="ไม่มีข้อมูลในช่วงวันที่ / ร้านที่เลือก"
+          empty="ไม่มีข้อมูลในช่วงวันที่ที่เลือก"
           tableProps={tableProps}
+          idPrefix={SHOP_SECTION_ID}
+          focusKey={focusShop}
           groups={shopGroups.map((g) => ({
             ...g,
             title: g.name,
@@ -447,7 +454,7 @@ export default function FoodReportClient({ todayYMD }) {
 
       {params.tab === "types" && (
         <GroupSections
-          empty="ไม่มีข้อมูลในช่วงวันที่ / ร้านที่เลือก"
+          empty="ไม่มีข้อมูลในช่วงวันที่ที่เลือก"
           tableProps={tableProps}
           groups={typeGroups}
         />
