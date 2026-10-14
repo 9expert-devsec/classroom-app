@@ -88,7 +88,7 @@ export function sheetRowsForShop(rows, shopId, dateYMD, afterHHMM) {
 
 /**
  * สรุปเมนูที่ต้องเตรียม: 1 แถวต่อเมนู (จำนวนรวม = ผลรวม qty ของบรรทัดที่สั่งผ่านแอป)
- * หมายเหตุ = ชุดตัวเลือกของเมนูนั้น นับตาม qty — ชุดเดียวกับบรรทัด "เมนู · ตัวเลือก" ของสรุปเดิม
+ * หมายเหตุ = "ปกติ ×N" (ไม่มีตัวเลือก — เฉพาะเมื่อมีชุดตัวเลือกด้วย) + ชุดตัวเลือกของเมนูนั้น นับตาม qty
  */
 export function menuSummary(orderedRows) {
   const m = new Map();
@@ -107,7 +107,12 @@ export function menuSummary(orderedRows) {
     }
   }
   return [...m.entries()]
-    .map(([label, x]) => ({ label, qty: x.qty, note: countsNote(x.combos) }))
+    .map(([label, x]) => {
+      // "ปกติ ×N" (orders without options) leads only when the menu also has option combos
+      const plain = x.qty - [...x.combos.values()].reduce((n, q) => n + q, 0);
+      const combos = countsNote(x.combos);
+      return { label, qty: x.qty, note: combos && plain > 0 ? `ปกติ ×${plain} · ${combos}` : combos };
+    })
     .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
 }
 
@@ -125,7 +130,7 @@ const UTENSILS_SVG = `<svg class="sec-icon" viewBox="0 0 24 24" fill="none" stro
  * numbered summary table (page 1 of a sheet): # · item · จำนวนรวม · หมายเหตุ + แถวรวมทั้งหมด
  * @param items [{ label, qty, note }]
  */
-export function summaryTableHtml({ num, title, itemHeader, items, icon = false, emptyText = "" }) {
+export function summaryTableHtml({ num, title, itemHeader, items, icon = false, emptyText = "", showNote = true }) {
   const head = `<h3 class="sec-title">${icon ? UTENSILS_SVG : ""}${num}. ${esc(title)}</h3>`;
   if (!items.length) return `<div class="sum-block">${head}<div class="sub">${esc(emptyText)}</div></div>`;
   const total = items.reduce((n, x) => n + x.qty, 0);
@@ -134,9 +139,13 @@ export function summaryTableHtml({ num, title, itemHeader, items, icon = false, 
       ${head}
       <div class="sum-wrap">
         <table class="sum-table">
-          <colgroup><col style="width:7%" /><col style="width:43%" /><col style="width:14%" /><col style="width:36%" /></colgroup>
+          <colgroup>${
+            showNote
+              ? `<col style="width:7%" /><col style="width:43%" /><col style="width:14%" /><col style="width:36%" />`
+              : `<col style="width:8%" /><col style="width:74%" /><col style="width:18%" />`
+          }</colgroup>
           <thead>
-            <tr><th class="st-th st-num">#</th><th class="st-th">${esc(itemHeader)}</th><th class="st-th st-qty">จำนวนรวม</th><th class="st-th">หมายเหตุ</th></tr>
+            <tr><th class="st-th st-num">#</th><th class="st-th">${esc(itemHeader)}</th><th class="st-th st-qty">จำนวนรวม</th>${showNote ? `<th class="st-th">หมายเหตุ</th>` : ""}</tr>
           </thead>
           <tbody>
             ${items
@@ -146,7 +155,7 @@ export function summaryTableHtml({ num, title, itemHeader, items, icon = false, 
                 <td class="st-td st-num">${i + 1}</td>
                 <td class="st-td">${esc(x.label)}</td>
                 <td class="st-td st-qty">${x.qty}</td>
-                <td class="st-td st-note">${esc(x.note || "-")}</td>
+                ${showNote ? `<td class="st-td st-note">${esc(x.note || "-")}</td>` : ""}
               </tr>`,
               )
               .join("")}
@@ -154,7 +163,7 @@ export function summaryTableHtml({ num, title, itemHeader, items, icon = false, 
               <td class="st-td"></td>
               <td class="st-td">รวมทั้งหมด</td>
               <td class="st-td st-qty">${total}</td>
-              <td class="st-td"></td>
+              ${showNote ? `<td class="st-td"></td>` : ""}
             </tr>
           </tbody>
         </table>
