@@ -39,7 +39,7 @@ function thaiDate(dateYMD) {
   });
 }
 
-const esc = (s) =>
+export const esc = (s) =>
   String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -99,7 +99,7 @@ export function kitchenSummary(orderedRows) {
     .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
 }
 
-const CSS = `
+export const CSS = `
   @page { size: A4 portrait;  margin: 10mm 9mm 10mm 17mm;  }
   body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -133,7 +133,7 @@ const CSS = `
   @media print { body { margin: 0; } }
 `;
 
-function headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin }) {
+export function headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin }) {
   const shopLogo = absUrl(shop?.logoUrl, origin);
   return `
     <div class="head">

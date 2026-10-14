@@ -17,6 +17,8 @@ import SelectionBar from "./_components/SelectionBar";
 import GroupSections from "./_components/GroupSections";
 import EditFoodModal from "./_components/EditFoodModal";
 import OrderSheetModal from "./_components/OrderSheetModal";
+import SetSheetModal from "./_components/SetSheetModal";
+import { buildSetSheetHtml } from "./setSheetHtml";
 import { buildClassPrintHtml } from "./_components/classPrintHtml";
 import {
   NO_SHOP_KEY,
@@ -91,6 +93,7 @@ export default function FoodReportClient({ todayYMD }) {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [editingRow, setEditingRow] = useState(null);
   const [sheet, setSheet] = useState(null); // { day, shopId }
+  const [setSheetShop, setSetSheet] = useState(null); // shop group (set shop) picking a day
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -296,6 +299,38 @@ export default function FoodReportClient({ todayYMD }) {
     openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to)));
   }
 
+  // ใบสั่งร้าน Set: rows of that shop section (set only), one day per sheet
+  function setSheetDaysOf(group) {
+    const byDay = groupBy(
+      group.rows.filter((o) => rowType(o) === "set"),
+      (o) => o.dayYMD,
+    );
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dayYMD, rows]) => ({ dayYMD, rows, count: rows.length }));
+  }
+
+  function printSetSheet(group, dayYMD) {
+    const day = setSheetDaysOf(group).find((d) => d.dayYMD === dayYMD);
+    if (!day) return;
+    const html = buildSetSheetHtml({
+      rows: day.rows,
+      shopName: group.name,
+      dateYMD: dayYMD,
+      printedAt: new Date(),
+      origin: window.location.origin,
+      classTitle: (o) => cleanClassTitle(o.className || o.classTitle || "-", o.courseCode),
+    });
+    if (!openAndPrint(html)) return alert("เปิดหน้าต่างพิมพ์ไม่ได้ (ตรวจสอบ pop-up blocker)");
+    setSetSheet(null);
+  }
+
+  function openSetSheet(group) {
+    const sheetDaysOfShop = setSheetDaysOf(group);
+    if (sheetDaysOfShop.length === 1) printSetSheet(group, sheetDaysOfShop[0].dayYMD);
+    else if (sheetDaysOfShop.length > 1) setSetSheet(group);
+  }
+
   function openOrderSheet(shopId = "all") {
     if (!sheetDays.length) return alert("ช่วงวันที่นี้ยังไม่มีออร์เดอร์คูปองของร้านใด");
     const day =
@@ -447,6 +482,14 @@ export default function FoodReportClient({ todayYMD }) {
               >
                 พิมพ์ใบสั่งร้าน
               </button>
+            ) : g.types.includes("set") ? (
+              <button
+                type="button"
+                onClick={() => openSetSheet(g)}
+                className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100"
+              >
+                พิมพ์ใบสั่งร้าน
+              </button>
             ) : null,
           }))}
         />
@@ -461,6 +504,15 @@ export default function FoodReportClient({ todayYMD }) {
       )}
 
       {params.tab === "list" && detailCard(false)}
+
+      {setSheetShop && (
+        <SetSheetModal
+          shopName={setSheetShop.name}
+          days={setSheetDaysOf(setSheetShop)}
+          onPrint={(dayYMD) => printSetSheet(setSheetShop, dayYMD)}
+          onClose={() => setSetSheet(null)}
+        />
+      )}
 
       {sheet && (
         <OrderSheetModal
