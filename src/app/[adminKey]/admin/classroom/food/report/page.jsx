@@ -1,4 +1,4 @@
-// src/app/admin/classroom/food/report/page.jsx
+// src/app/[adminKey]/admin/classroom/food/report/page.jsx
 
 import FoodReportClient from "./FoodReportClient";
 
@@ -12,11 +12,7 @@ function getBangkokYMD() {
   return String(s || "").slice(0, 10);
 }
 
-export default function Page({ searchParams }) {
-  const initialDate =
-    (searchParams && typeof searchParams.date === "string" && searchParams.date) ||
-    getBangkokYMD();
-
-  // ให้ FoodReportClient เป็นคน load เองผ่าน /api/admin/food-orders ตาม date
-  return <FoodReportClient initialDate={initialDate} initialOrders={[]} />;
+export default function Page() {
+  // range / shop / tab / filters อยู่ใน URL (FoodReportClient อ่านเอง) — ค่าเริ่มต้น = วันนี้ (Asia/Bangkok)
+  return <FoodReportClient todayYMD={getBangkokYMD()} />;
 }
