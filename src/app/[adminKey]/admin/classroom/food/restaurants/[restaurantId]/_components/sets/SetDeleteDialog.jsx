@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, CalendarDays, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,11 +13,16 @@ import {
 } from "@/components/ui/dialog";
 import { safeJson } from "../menuUi";
 
-/** Mounted only while open. Delete itself is unchanged (calendar days keep their reference). */
+/**
+ * Mounted only while open. A set used by a Food Calendar day from today on
+ * can't be deleted (the API refuses with 409); past days don't block.
+ */
 export default function SetDeleteDialog({ set, menuCount, onClose, onDeleted }) {
+  const { adminKey } = useParams();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [upcomingDays, setUpcomingDays] = useState(null);
+  // null = still checking
+  const [blockingDates, setBlockingDates] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -23,9 +30,10 @@ export default function SetDeleteDialog({ set, menuCount, onClose, onDeleted }) 
       try {
         const res = await fetch(`/api/admin/food/sets/${set._id}`, { cache: "no-store" });
         const out = await safeJson(res);
-        if (!ignore && res.ok) setUpcomingDays(out.upcomingDays ?? 0);
+        if (!ignore) setBlockingDates(res.ok ? out.upcomingDates || [] : []);
       } catch (err) {
         console.error(err);
+        if (!ignore) setBlockingDates([]);
       }
     })();
     return () => {
@@ -33,13 +41,20 @@ export default function SetDeleteDialog({ set, menuCount, onClose, onDeleted }) 
     };
   }, [set._id]);
 
+  const blocked = (blockingDates?.length || 0) > 0;
+
   async function confirmDelete() {
-    if (busy) return;
+    if (busy || blocked) return;
     setBusy(true);
     setError("");
     try {
       const res = await fetch(`/api/admin/food/sets/${set._id}`, { method: "DELETE" });
       const out = await safeJson(res);
+      if (res.status === 409 && Array.isArray(out.upcomingDates)) {
+        // a calendar day started using the set since the check
+        setBlockingDates(out.upcomingDates);
+        return;
+      }
       if (!res.ok) {
         setError(out.error || "ลบชุดเมนูไม่สำเร็จ");
         return;
@@ -72,11 +87,25 @@ export default function SetDeleteDialog({ set, menuCount, onClose, onDeleted }) 
           </div>
         </div>
 
-        {upcomingDays > 0 && (
-          <div className="flex gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
-            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-            ชุดนี้ถูกใช้ใน Food Calendar อีก {upcomingDays} วัน (ตั้งแต่วันนี้) — หลังลบ
-            หน้าเช็คอินของวันเหล่านั้นจะแสดงทุกเมนูของร้านแทน จนกว่าจะเลือกชุดใหม่ใน Food Calendar
+        {blocked && (
+          <div className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <div className="font-medium">
+              ชุดนี้ถูกใช้ใน Food Calendar {blockingDates.length} วัน — เปลี่ยนชุดในวันดังกล่าวก่อนจึงจะลบได้
+            </div>
+            <ul className="max-h-32 space-y-0.5 overflow-y-auto pl-1 text-xs">
+              {blockingDates.map((d) => (
+                <li key={d} className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5 flex-shrink-0" />
+                  {d}
+                </li>
+              ))}
+            </ul>
+            <Link
+              href={`/${adminKey}/admin/classroom/food/calendar`}
+              className="inline-block text-xs font-semibold text-brand-primaryDark hover:underline"
+            >
+              ไปที่ Food Calendar →
+            </Link>
           </div>
         )}
 
@@ -94,10 +123,10 @@ export default function SetDeleteDialog({ set, menuCount, onClose, onDeleted }) 
           <button
             type="button"
             onClick={confirmDelete}
-            disabled={busy}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            disabled={busy || blocked || blockingDates === null}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {(busy || blockingDates === null) && <Loader2 className="h-4 w-4 animate-spin" />}
             ลบชุดเมนู
           </button>
         </div>

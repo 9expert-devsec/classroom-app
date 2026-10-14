@@ -3,74 +3,125 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import mongoose from "mongoose";
 import FoodSet from "@/models/FoodSet";
-import FoodDaySet from "@/models/FoodDaySet";
-import { toBkkYMD } from "@/lib/lunchConfig";
-import { adminGuard } from "@/lib/adminAuth.server";
+import { adminGuard, requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
+import { writeAuditLog } from "@/lib/auditLog.server";
+import { upcomingSetDays, validateSetName } from "@/lib/foodSet.server";
 
 export const dynamic = "force-dynamic";
 
-// GET -> { item, upcomingDays }: how many Food Calendar days from today on
-// point at this set (shown before delete; delete itself is unchanged)
+function jsonError(message, status = 400, extra = {}) {
+  return NextResponse.json({ ok: false, error: message, ...extra }, { status });
+}
+
+async function safeAudit(payload) {
+  try {
+    await writeAuditLog(payload);
+  } catch (e) {
+    console.error("writeAuditLog failed:", e);
+  }
+}
+
+// GET -> { item, upcomingDays, upcomingDates }: Food Calendar days from
+// today (Asia/Bangkok) on that use this set; any of them blocks delete
 export async function GET(req, { params }) {
   const denied = await adminGuard(PERM.FOOD_READ);
   if (denied) return denied;
 
   await dbConnect();
   const { id } = params;
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json({ ok: false, error: "Set not found" }, { status: 404 });
-  }
+  if (!mongoose.Types.ObjectId.isValid(id)) return jsonError("Set not found", 404);
 
   const item = await FoodSet.findById(id).lean();
-  if (!item) {
-    return NextResponse.json({ ok: false, error: "Set not found" }, { status: 404 });
-  }
+  if (!item) return jsonError("Set not found", 404);
 
-  const upcomingDays = await FoodDaySet.countDocuments({
-    "entries.set": item._id,
-    dayYMD: { $gte: toBkkYMD(new Date()) },
+  const upcomingDates = await upcomingSetDays(item._id);
+  return NextResponse.json({
+    ok: true,
+    item,
+    upcomingDays: upcomingDates.length,
+    upcomingDates,
   });
-
-  return NextResponse.json({ ok: true, item, upcomingDays });
 }
 
+// PUT body: { name, menuIds }
 export async function PUT(req, { params }) {
-  const denied = await adminGuard(PERM.FOOD_WRITE);
-  if (denied) return denied;
+  try {
+    const ctx = await requirePerm(PERM.FOOD_WRITE);
+    await dbConnect();
+    const { id } = params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return jsonError("Set not found", 404);
 
-  await dbConnect();
-  const { id } = params;
-  const body = await req.json();
+    const before = await FoodSet.findById(id).lean();
+    if (!before) return jsonError("Set not found", 404);
 
-  const updated = await FoodSet.findByIdAndUpdate(
-    id,
-    {
-      $set: {
-        name: body.name,
-        menuIds: body.menuIds || [],
-      },
-    },
-    { new: true }
-  );
+    const body = await req.json().catch(() => ({}));
+    const name = await validateSetName({
+      restaurantId: before.restaurant,
+      name: body.name,
+      excludeId: before._id,
+    });
 
-  if (!updated) {
-    return NextResponse.json(
-      { ok: false, error: "Set not found" },
-      { status: 404 }
+    const updated = await FoodSet.findByIdAndUpdate(
+      id,
+      { $set: { name, menuIds: body.menuIds || [] } },
+      { new: true },
     );
-  }
 
-  return NextResponse.json({ ok: true, item: updated });
+    await safeAudit({
+      ctx,
+      req,
+      action: "update",
+      entityType: "FoodSet",
+      entityId: String(id),
+      entityLabel: updated.name,
+      before: { name: before.name, menuIds: (before.menuIds || []).map(String) },
+      after: { name: updated.name, menuIds: (updated.menuIds || []).map(String) },
+      meta: { restaurantId: String(before.restaurant || "") },
+    });
+
+    return NextResponse.json({ ok: true, item: updated });
+  } catch (e) {
+    return jsonError(e?.message || "Server error", e?.status || 500);
+  }
 }
 
+// DELETE: refused (409) while a Food Calendar day from today on uses the
+// set; past days don't block. Response lists the blocking dates.
 export async function DELETE(req, { params }) {
-  const denied = await adminGuard(PERM.FOOD_WRITE);
-  if (denied) return denied;
+  try {
+    const ctx = await requirePerm(PERM.FOOD_WRITE);
+    await dbConnect();
+    const { id } = params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return jsonError("Set not found", 404);
 
-  await dbConnect();
-  const { id } = params;
+    const before = await FoodSet.findById(id).lean();
+    if (!before) return jsonError("Set not found", 404);
 
-  await FoodSet.findByIdAndDelete(id);
-  return NextResponse.json({ ok: true });
+    const upcomingDates = await upcomingSetDays(before._id);
+    if (upcomingDates.length > 0) {
+      return jsonError(
+        `ชุดนี้ถูกใช้ใน Food Calendar ${upcomingDates.length} วัน — เปลี่ยนชุดในวันดังกล่าวก่อนจึงจะลบได้`,
+        409,
+        { upcomingDates },
+      );
+    }
+
+    await FoodSet.findByIdAndDelete(id);
+
+    await safeAudit({
+      ctx,
+      req,
+      action: "delete",
+      entityType: "FoodSet",
+      entityId: String(id),
+      entityLabel: before.name,
+      before: { name: before.name, menuIds: (before.menuIds || []).map(String) },
+      meta: { restaurantId: String(before.restaurant || "") },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return jsonError(e?.message || "Server error", e?.status || 500);
+  }
 }
