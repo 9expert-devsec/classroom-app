@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Minus, ChevronLeft, ImageOff, Ticket } from "lucide-react";
+import { Plus, ChevronLeft, ImageOff, Ticket } from "lucide-react";
 
 import {
   readCart,
   writeCart,
   addLine,
-  setLineQty,
-  removeLine,
   reconcile,
   cartTotals,
   newRequestId,
@@ -24,15 +22,17 @@ import ChangeShopSheet, { SwitchConfirmSheet } from "../../_components/ChangeSho
 import { shopTypeText } from "../../_components/ShopChips";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
+import ShellScroll from "../../_components/ShellScroll";
 import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
+import ItemSheet from "../../_components/ItemSheet";
 
 /* ---------------- menu row ---------------- */
 
 /**
  * qty = จำนวนรวมของเมนูนี้ทุกบรรทัดในตะกร้า (เมนูเดียวกันในหลายหมวดจึงเห็นเลขเท่ากัน)
- * 0 = ปุ่ม "+" เดียว / ≥ 1 = กรอบน้ำเงิน + [−] n [+]
+ * 0 = ปุ่ม "+" วงกลม / ≥ 1 = กรอบน้ำเงิน + วงกลมตัวเลข n (แตะ = ชีตของเมนูนี้)
  */
-function MenuRow({ m, qty, locked, onInc, onDec, onOpen }) {
+function MenuRow({ m, qty, locked, onInc, onOpenSheet, onOpen }) {
   const out = m.unavailableToday;
   const inCart = qty > 0;
 
@@ -74,32 +74,18 @@ function MenuRow({ m, qty, locked, onInc, onDec, onOpen }) {
       </button>
 
       {inCart ? (
-        <div className="flex shrink-0 items-center gap-1" data-testid="row-stepper">
-          <button
-            type="button"
-            disabled={locked}
-            onClick={() => !locked && onDec(m)}
-            aria-label={`ลด ${m.name}`}
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[color:var(--gray-light)] bg-white text-[color:var(--gray)] transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <span
-            data-testid="row-qty"
-            className="min-w-[22px] text-center text-[17px] font-bold tabular-nums text-[color:var(--navy)]"
-          >
-            {qty}
-          </span>
-          <button
-            type="button"
-            disabled={locked}
-            onClick={() => !locked && onInc(m)}
-            aria-label={`เพิ่ม ${m.name}`}
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[color:var(--blue)] text-white transition hover:bg-[color:var(--blue-deep)] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
+        // อยู่ในตะกร้าแล้ว: วงกลมตัวเลข -> เปิดชีตของเมนูนี้ (แก้ไข / สั่งเพิ่ม)
+        <button
+          type="button"
+          disabled={locked}
+          onClick={(e) => !locked && onOpenSheet(m, e.currentTarget)}
+          aria-label={`${m.name} เลือกแล้ว ${qty} รายการ แตะเพื่อแก้ไข`}
+          aria-haspopup="dialog"
+          data-testid="row-count"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-[color:var(--blue)] bg-white text-[17px] font-bold tabular-nums text-[color:var(--blue)] transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {qty}
+        </button>
       ) : (
         <button
           type="button"
@@ -107,7 +93,7 @@ function MenuRow({ m, qty, locked, onInc, onDec, onOpen }) {
           onClick={() => !out && !locked && onInc(m)}
           aria-label={`เพิ่ม ${m.name}`}
           data-testid="add-button"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[color:var(--blue)] text-white shadow-sm transition hover:bg-[color:var(--blue-deep)] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[color:var(--blue)] text-white shadow-sm transition hover:bg-[color:var(--blue-deep)] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           <Plus className="h-5 w-5" />
         </button>
@@ -157,7 +143,6 @@ function buildSections(categories, menus) {
  */
 export default function MenuClient({
   token,
-  testTimes = "",
   restaurant,
   others,
   shops,
@@ -166,6 +151,8 @@ export default function MenuClient({
   deadlineLabel,
   categories,
   menus,
+  // ?sheet=<menuId> — กลับจากหน้าแก้ไขบรรทัดแล้วเปิดชีตของเมนูนั้นต่อ
+  openSheetMenuId = "",
 }) {
   const router = useRouter();
 
@@ -176,6 +163,8 @@ export default function MenuClient({
   const [switchTarget, setSwitchTarget] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [noOrderOpen, setNoOrderOpen] = useState(false);
+  // ชีตของเมนูที่อยู่ในตะกร้า ("" = ปิด)
+  const [itemSheetId, setItemSheetId] = useState("");
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -197,6 +186,13 @@ export default function MenuClient({
     setConflict(false);
     setRemovedNotice(removed);
     writeCart(token, state);
+    // กลับจากหน้าแก้ไขบรรทัด (?sheet=<menuId>) -> เปิดชีตของเมนูนั้นต่อ ถ้ายังมีบรรทัดเหลือ
+    if (
+      openSheetMenuId &&
+      (state.lines || []).some((l) => String(l.menuId) === String(openSheetMenuId))
+    ) {
+      setItemSheetId(String(openSheetMenuId));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, restaurant.id]);
 
@@ -206,6 +202,11 @@ export default function MenuClient({
   }
 
   const cartLines = cart.lines || [];
+  // ชีตของเมนู: บรรทัดของเมนูนั้นในตะกร้า (ไม่เหลือบรรทัดแล้ว = ชีตปิดเอง)
+  const itemSheetMenu = itemSheetId ? menus.find((m) => String(m.id) === itemSheetId) : null;
+  const itemSheetLines = itemSheetMenu
+    ? cartLines.filter((l) => String(l.menuId) === itemSheetId)
+    : [];
   const cartQty = cartLines.reduce((s, l) => s + (l.qty || 0), 0);
   const cartShop =
     cart.restaurantId === restaurant.id
@@ -381,20 +382,37 @@ export default function MenuClient({
     persist(addLine(cart, { menuId: m.id, qty: 1 }));
   }
 
-  // "−": มีบรรทัดเดียว -> ลด 1 (ถึง 0 = ลบบรรทัด) / หลายบรรทัด (ตัวเลือกต่างกัน) -> ไปตะกร้า ไม่เดา
-  function dec(m) {
-    const lines = cartLines.filter((l) => String(l.menuId) === String(m.id));
-    if (lines.length === 0) return;
-    if (lines.length > 1) {
-      goCart();
+  /* ---- ชีตของเมนู (วงกลมตัวเลข) ---- */
+
+  const sheetOpener = useRef(null);
+
+  function openItemSheet(m, el) {
+    sheetOpener.current = el || null;
+    setItemSheetId(String(m.id));
+  }
+
+  function closeItemSheet() {
+    setItemSheetId("");
+    // Safari ไม่โฟกัสปุ่มตอนแตะ -> คืนโฟกัสให้วงกลมที่เปิดชีตเอง
+    const el = sheetOpener.current;
+    if (el?.isConnected) requestAnimationFrame(() => el.focus());
+  }
+
+  // แถวในชีต -> หน้ารายละเอียดโหมดแก้ไขของบรรทัดนั้น (กลับมาแล้วเปิดชีตเดิม)
+  function editLine(m, line) {
+    saveMenuScroll(token, restaurant.id, scrollRef.current?.scrollTop);
+    const q = new URLSearchParams({ line: line.lineKey, from: "sheet" });
+    router.push(`/lunch/${token}/r/${restaurant.id}/m/${m.id}?${q}`);
+  }
+
+  // "สั่งรายการนี้เพิ่ม": มีตัวเลือก -> หน้ารายละเอียดสร้างบรรทัดใหม่ / ไม่มี -> เพิ่ม 1 (ชีตเปิดค้าง)
+  function addMore(m) {
+    if ((m.optionGroups || []).length > 0) {
+      setItemSheetId("");
+      goDetail(m);
       return;
     }
-    const line = lines[0];
-    persist(
-      (line.qty || 0) > 1
-        ? setLineQty(cart, line.lineKey, line.qty - 1)
-        : removeLine(cart, line.lineKey),
-    );
+    persist(addLine(cart, { menuId: m.id, qty: 1 }));
   }
 
   // ชีตคืนโฟกัสให้ปุ่ม "เปลี่ยนร้าน" เอง
@@ -463,6 +481,14 @@ export default function MenuClient({
     <>
       {/* หัว: ไม่เลื่อนตามรายการ */}
       <div className="z-10 flex-none border-b border-black/[.08] bg-white">
+        {/* แถบใกล้ปิดรับ = ลูกตัวแรกของแถบบน */}
+        {closing ? (
+          <CountdownBanner
+            secondsLeft={windowInfo.secondsLeft}
+            deadlineLabel={deadlineLabel}
+          />
+        ) : null}
+
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -500,13 +526,6 @@ export default function MenuClient({
             </button>
           ) : null}
         </div>
-
-        {closing ? (
-          <CountdownBanner
-            secondsLeft={windowInfo.secondsLeft}
-            deadlineLabel={deadlineLabel}
-          />
-        ) : null}
 
         {/* แถว 2: งบ */}
         <BudgetBar budget={budget} selected={total} slim />
@@ -549,12 +568,7 @@ export default function MenuClient({
       </div>
 
       {/* รายการ: ตัวเลื่อนแนวตั้งตัวเดียวของหน้า */}
-      <div
-        ref={scrollRef}
-        data-testid="menu-scroll"
-        className="min-h-0 flex-auto overflow-y-auto overscroll-contain"
-        style={{ WebkitOverflowScrolling: "touch" }}
-      >
+      <ShellScroll ref={scrollRef} data-testid="menu-scroll">
         <div className="flex flex-col px-4 pb-6 pt-1">
           {removedNotice > 0 ? (
             <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
@@ -625,7 +639,7 @@ export default function MenuClient({
                       qty={qtyByMenu.get(String(m.id)) || 0}
                       locked={conflict}
                       onInc={inc}
-                      onDec={dec}
+                      onOpenSheet={openItemSheet}
                       onOpen={goDetail}
                     />
                   ))}
@@ -640,16 +654,7 @@ export default function MenuClient({
             </p>
           ) : null}
         </div>
-        {/* TEST TIMES อยู่ท้ายรายการ (layout ซ่อนบรรทัดของตัวเองบนหน้านี้) */}
-        {testTimes ? (
-          <p
-            data-testid="lunch-test-times"
-            className="pb-1 text-center font-mono text-[10px] text-slate-400"
-          >
-            {testTimes}
-          </p>
-        ) : null}
-      </div>
+      </ShellScroll>
 
       {count > 0 && !conflict ? (
         <StickyBottom className="flex-none">
@@ -689,6 +694,16 @@ export default function MenuClient({
           cartCount={cartQty}
           onSwitch={pickFromSheet}
           onClose={closeSheet}
+        />
+      ) : null}
+
+      {itemSheetMenu && itemSheetLines.length > 0 && !conflict ? (
+        <ItemSheet
+          menu={itemSheetMenu}
+          lines={itemSheetLines}
+          onEditLine={(line) => editLine(itemSheetMenu, line)}
+          onAddMore={() => addMore(itemSheetMenu)}
+          onClose={closeItemSheet}
         />
       ) : null}
 

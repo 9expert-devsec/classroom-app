@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ticket } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
 } from "@/lib/lunchCart.client";
 import { clearMenuScrolls } from "@/lib/lunchScroll.client";
 import { LogoTile } from "./_components/Shell";
+import ShellScroll from "./_components/ShellScroll";
 import CountdownBanner from "./_components/CountdownBanner";
 import { SwitchConfirmSheet } from "./_components/ChangeShopSheet";
 import { ShopTypeChip, BlockedChip, shopBlockedText } from "./_components/ShopChips";
@@ -267,9 +268,10 @@ export default function ChooseRestaurantClient({
   const value = draft ?? nickname;
   const [switchTarget, setSwitchTarget] = useState(null);
 
-  // เปลี่ยนขั้น (ชื่อเล่น <-> เลือกร้าน) -> เริ่มบนสุดของจอใหม่
+  // เปลี่ยนขั้น (ชื่อเล่น <-> เลือกร้าน) -> กล่องเนื้อหาเริ่มบนสุดใหม่
+  const scrollRef = useRef(null);
   useEffect(() => {
-    if (ready) window.scrollTo(0, 0);
+    if (ready && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [ready, confirmed]);
 
   function persist(next) {
@@ -328,20 +330,22 @@ export default function ChooseRestaurantClient({
         />
       ) : null}
 
-      {!ready ? null : confirmed ? (
-        <ShopStep
-          session={session}
-          headerLine={headerLine}
-          nickname={nickname}
-          notice={notice}
-          short={short}
-          finalLabel={finalLabel}
-          onEdit={edit}
-          onPick={pick}
-        />
-      ) : (
-        <NicknameStep value={value} onChange={setDraft} onSubmit={submit} />
-      )}
+      <ShellScroll ref={scrollRef}>
+        {!ready ? null : confirmed ? (
+          <ShopStep
+            session={session}
+            headerLine={headerLine}
+            nickname={nickname}
+            notice={notice}
+            short={short}
+            finalLabel={finalLabel}
+            onEdit={edit}
+            onPick={pick}
+          />
+        ) : (
+          <NicknameStep value={value} onChange={setDraft} onSubmit={submit} />
+        )}
+      </ShellScroll>
 
       {switchTarget ? (
         <SwitchConfirmSheet

@@ -20,6 +20,7 @@ import {
 } from "@/lib/lunchCart.client";
 import { LogoTile, StickyBottom } from "../_components/Shell";
 import CountdownBanner from "../_components/CountdownBanner";
+import ShellScroll from "../_components/ShellScroll";
 import QtyStepper from "../_components/QtyStepper";
 import OptionLines, { groupsFromCartLine } from "../_components/OptionLines";
 
@@ -81,7 +82,7 @@ function FinalConfirmModal({ restaurant, count, total, budget, busy, error, onEd
 
 /* ---------------- line ---------------- */
 
-function LineCard({ line, menu, bad, onQty, onRemove }) {
+function LineCard({ line, menu, bad, onQty, onRemove, onEdit }) {
   const groups = groupsFromCartLine(line, menu);
   const lineTotal = unitPriceOf(line, menu) * line.qty;
 
@@ -107,7 +108,17 @@ function LineCard({ line, menu, bad, onQty, onRemove }) {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-[14px] font-medium text-[#0d1b2a]">{menu.name}</p>
+          {/* ชื่อ + ตัวเลือก = ปุ่มเดียว -> หน้ารายละเอียดโหมดแก้ไขบรรทัดนี้ */}
+          <button
+            type="button"
+            onClick={onEdit}
+            data-testid="summary-line-edit"
+            aria-label={`แก้ไข ${menu.name} จำนวน ${line.qty}`}
+            className="min-w-0 flex-1 text-left"
+          >
+            <span className="block text-[14px] font-medium text-[#0d1b2a]">{menu.name}</span>
+            <OptionLines groups={groups} note={line.note} className="mt-0.5" inline />
+          </button>
           <button
             type="button"
             onClick={onRemove}
@@ -117,7 +128,6 @@ function LineCard({ line, menu, bad, onQty, onRemove }) {
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        <OptionLines groups={groups} note={line.note} className="mt-0.5" />
         <div className="mt-2 flex items-center justify-between">
           <QtyStepper
             qty={line.qty}
@@ -329,10 +339,9 @@ export default function SummaryClient({
 
   /* ---------- render ---------- */
 
+  // แถบใกล้ปิดรับ = ลูกตัวแรกของแถบบน (ไม่เลื่อน)
   const top = closing ? (
-    <div className="sticky top-0 z-10">
-      <CountdownBanner secondsLeft={windowInfo.secondsLeft} deadlineLabel={deadlineLabel} />
-    </div>
+    <CountdownBanner secondsLeft={windowInfo.secondsLeft} deadlineLabel={deadlineLabel} />
   ) : null;
 
   if (!cart) return null;
@@ -340,39 +349,41 @@ export default function SummaryClient({
   if (!restaurant || !hasLines) {
     return (
       <>
-        {top}
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center">
-          {pageError ? (
-            <p className="rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]">
-              {pageError}
-            </p>
-          ) : null}
-          {removedNotice > 0 ? (
-            <p className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
-              มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
-            </p>
-          ) : null}
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
-            <ShoppingCart aria-hidden="true" className="h-8 w-8" />
+        <div className="z-10 flex-none">{top}</div>
+        <ShellScroll>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center">
+            {pageError ? (
+              <p className="rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]">
+                {pageError}
+              </p>
+            ) : null}
+            {removedNotice > 0 ? (
+              <p className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
+                มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
+              </p>
+            ) : null}
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
+              <ShoppingCart aria-hidden="true" className="h-8 w-8" />
+            </div>
+            <h1 className="text-[18px] font-bold text-[#0d1b2a]">ยังไม่มีรายการในตะกร้า</h1>
+            <button
+              type="button"
+              onClick={() => router.replace(menuHref)}
+              className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold text-white shadow-sm"
+            >
+              {restaurant ? "กลับไปหน้าเมนู" : "กลับไปเลือกร้าน"}
+            </button>
           </div>
-          <h1 className="text-[18px] font-bold text-[#0d1b2a]">ยังไม่มีรายการในตะกร้า</h1>
-          <button
-            type="button"
-            onClick={() => router.replace(menuHref)}
-            className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold text-white shadow-sm"
-          >
-            {restaurant ? "กลับไปหน้าเมนู" : "กลับไปเลือกร้าน"}
-          </button>
-        </div>
+        </ShellScroll>
       </>
     );
   }
 
   return (
     <>
-      {top}
-
-      <div className="flex-1">
+      {/* แถบบน: ใกล้ปิดรับ -> หัวร้าน (ไม่เลื่อน) */}
+      <div className="z-10 flex-none">
+        {top}
         <div className="flex items-center gap-3 border-b border-black/5 bg-white px-4 py-3">
           <LogoTile src={restaurant.logo} alt={restaurant.name} size={44} />
           <div className="min-w-0 flex-1">
@@ -387,7 +398,9 @@ export default function SummaryClient({
             </span>
           ) : null}
         </div>
+      </div>
 
+      <ShellScroll>
         <div className="flex flex-col gap-3 px-4 py-4 pb-6">
           {pageError ? (
             <p
@@ -432,6 +445,11 @@ export default function SummaryClient({
                     bad={badLine === i}
                     onQty={(q) => persist(setLineQty(cart, l.lineKey, q))}
                     onRemove={() => persist(removeLine(cart, l.lineKey))}
+                    onEdit={() =>
+                      router.push(
+                        `/lunch/${token}/r/${cart.restaurantId}/m/${l.menuId}?${new URLSearchParams({ line: l.lineKey, from: "cart" })}`,
+                      )
+                    }
                   />
                 );
               })}
@@ -466,7 +484,7 @@ export default function SummaryClient({
             </>
           )}
         </div>
-      </div>
+      </ShellScroll>
 
       <StickyBottom className="flex gap-3">
         <button

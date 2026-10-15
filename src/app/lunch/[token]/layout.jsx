@@ -1,10 +1,12 @@
 // src/app/lunch/[token]/layout.jsx
 //
 // เปลือกฟอนต์ของหน้าสั่งอาหารบนมือถือ
-// root layout ตั้ง body เป็น h-screen overflow-hidden ไว้ — lunch.css ปลดออกให้ตัวเอกสารเลื่อนเอง
+// root layout ตั้ง body เป็น h-screen overflow-hidden ไว้ — lunch.css ปลดออก
+// แต่ละหน้าเป็น app shell สูงเท่าจอ (Shell + ShellScroll) ตัวเอกสารเองจึงไม่เลื่อน
 import localFont from "next/font/local";
 import { lunchTestTimesLabel } from "@/lib/lunchConfig";
 import "./lunch.css";
+import { TestTimesProvider } from "./_components/ShellScroll";
 
 const googleSans = localFont({
   src: [
@@ -52,16 +54,9 @@ export default function LunchLayout({ children }) {
         <p className="text-[14px] text-[color:var(--gray-light)]">หน้านี้ใช้งานได้ในแนวตั้งเท่านั้น</p>
       </div>
 
+      {/* TEST TIMES วาดท้ายเนื้อหาในกล่องเลื่อน (ShellScroll) ของแต่ละหน้า */}
       <div className="lunch-page">
-        {children}
-        {testTimes ? (
-          <p
-            data-testid="lunch-test-times"
-            className="lunch-test-times bg-[#f8fafd] py-1 text-center font-mono text-[10px] text-slate-400"
-          >
-            {testTimes}
-          </p>
-        ) : null}
+        <TestTimesProvider value={testTimes}>{children}</TestTimesProvider>
       </div>
     </div>
   );

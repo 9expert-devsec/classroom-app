@@ -10,6 +10,7 @@ import {
   expiredKindOf,
 } from "@/lib/lunchGuards.server";
 import { NoticeScreen, Shell } from "./Shell";
+import ShellScroll from "./ShellScroll";
 
 /** C1: ถึง 15:00 แล้ว — 2 แบบตามว่าเคยสั่งหรือยัง */
 export function ExpiredScreen({ kind }) {
@@ -62,22 +63,24 @@ export default function GateNotice({ gate, session }) {
 export function BackNotice({ icon: Icon = Ban, title, body, href, label }) {
   return (
     <Shell>
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 text-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
-          <Icon aria-hidden="true" className="h-8 w-8" />
+      <ShellScroll>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
+            <Icon aria-hidden="true" className="h-8 w-8" />
+          </div>
+          <h1 className="text-[19px] font-bold text-[#0d1b2a]">{title}</h1>
+          {body ? (
+            <p className="text-[14px] leading-relaxed text-slate-500">{body}</p>
+          ) : null}
+          <Link
+            href={href}
+            replace
+            className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold leading-[44px] text-white shadow-sm"
+          >
+            {label}
+          </Link>
         </div>
-        <h1 className="text-[19px] font-bold text-[#0d1b2a]">{title}</h1>
-        {body ? (
-          <p className="text-[14px] leading-relaxed text-slate-500">{body}</p>
-        ) : null}
-        <Link
-          href={href}
-          replace
-          className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold leading-[44px] text-white shadow-sm"
-        >
-          {label}
-        </Link>
-      </div>
+      </ShellScroll>
     </Shell>
   );
 }

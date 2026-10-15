@@ -15,6 +15,7 @@ import {
 } from "@/lib/lunchGuards.server";
 
 import { Shell, NoticeScreen } from "./_components/Shell";
+import ShellScroll from "./_components/ShellScroll";
 import { ExpiredScreen } from "./_components/GateNotice";
 import { finalCloseLabel } from "@/lib/lunchConfig";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
@@ -65,11 +66,13 @@ export default async function LunchPage({ params, searchParams }) {
     const dateLabel = thaiDateLabel(session.order?.dayYMD);
     return (
       <Shell>
-        {String(searchParams?.done || "") === "1" ? (
-          <ThankYouView order={session.order} dateLabel={dateLabel} token={token} />
-        ) : (
-          <RescanView order={session.order} dateLabel={dateLabel} token={token} />
-        )}
+        <ShellScroll>
+          {String(searchParams?.done || "") === "1" ? (
+            <ThankYouView order={session.order} dateLabel={dateLabel} token={token} />
+          ) : (
+            <RescanView order={session.order} dateLabel={dateLabel} token={token} />
+          )}
+        </ShellScroll>
       </Shell>
     );
   }

@@ -220,6 +220,31 @@ export function setLineQty(state, lineKey, qty) {
   return withContent(state, { lines });
 }
 
+/**
+ * แก้บรรทัดเดิม (หน้ารายละเอียดโหมดแก้ไข) — แทนที่ตำแหน่งเดิม ไม่สร้างบรรทัดใหม่
+ * แก้แล้วตรงกับอีกบรรทัดของเมนูเดียวกัน (ตัวเลือก + โน้ตเดียวกัน = lineKey เดียวกัน)
+ * -> รวมจำนวนเข้าบรรทัดนี้ แล้วลบบรรทัดซ้ำทิ้ง ไม่ให้มีสองบรรทัดที่เหมือนกัน
+ */
+export function replaceLine(state, lineKey, { menuId, qty, choices = [], note = "" }) {
+  const lines = [...(state.lines || [])];
+  const idx = lines.findIndex((l) => l.lineKey === lineKey);
+  if (idx < 0) return state;
+
+  const nextKey = makeLineKey(menuId, choices, note);
+  const dup = lines.findIndex((l, i) => i !== idx && l.lineKey === nextKey);
+  const total = (Number(qty) || 0) + (dup >= 0 ? lines[dup].qty || 0 : 0);
+
+  lines[idx] = {
+    lineKey: nextKey,
+    menuId: String(menuId),
+    qty: clampQty(total),
+    choices: normChoices(choices),
+    note: String(note || "").trim(),
+  };
+  if (dup >= 0) lines.splice(dup, 1);
+  return withContent(state, { lines });
+}
+
 export function removeLine(state, lineKey) {
   return withContent(state, {
     lines: (state.lines || []).filter((l) => l.lineKey !== lineKey),

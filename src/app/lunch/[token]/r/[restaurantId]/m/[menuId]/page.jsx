@@ -1,6 +1,7 @@
 // src/app/lunch/[token]/r/[restaurantId]/m/[menuId]/page.jsx
 //
 // หน้ารายละเอียดเมนู: ตัวเลือก / หมายเหตุ / จำนวน แล้วเพิ่มลงตะกร้า
+// ?line=<lineKey>&from=sheet|cart = แก้บรรทัดเดิมในตะกร้า (โหมดแก้ไข)
 import { redirect } from "next/navigation";
 
 import dbConnect from "@/lib/mongoose";
@@ -18,7 +19,7 @@ import MenuDetailClient from "./MenuDetailClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function MenuDetailPage({ params }) {
+export default async function MenuDetailPage({ params, searchParams }) {
   await dbConnect();
 
   const token = String(params?.token || "");
@@ -75,6 +76,8 @@ export default async function MenuDetailPage({ params }) {
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
         menu={menu}
         menus={menus}
+        editLineKey={String(searchParams?.line || "")}
+        from={String(searchParams?.from || "")}
       />
     </Shell>
   );

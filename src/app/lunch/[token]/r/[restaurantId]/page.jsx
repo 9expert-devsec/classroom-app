@@ -14,15 +14,16 @@ import {
 } from "@/lib/lunchGuards.server";
 import { getDaySet } from "@/lib/couponAvailability.server";
 import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
-import { lunchTestTimesLabel } from "@/lib/lunchConfig";
 
 import { Shell, NoticeScreen } from "../../_components/Shell";
+import ShellScroll from "../../_components/ShellScroll";
 import GateNotice from "../../_components/GateNotice";
 import MenuClient from "./MenuClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function RestaurantMenuPage({ params }) {
+// ?sheet=<menuId> — กลับจากหน้าแก้ไขบรรทัด แล้วเปิดชีตของเมนูนั้นต่อ
+export default async function RestaurantMenuPage({ params, searchParams }) {
   await dbConnect();
 
   const token = String(params?.token || "");
@@ -54,22 +55,24 @@ export default async function RestaurantMenuPage({ params }) {
   if (restaurant.state !== "open") {
     return (
       <Shell>
-        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
-            <Ban aria-hidden="true" className="h-8 w-8" />
+        <ShellScroll>
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-200/60 text-slate-500">
+              <Ban aria-hidden="true" className="h-8 w-8" />
+            </div>
+            <h1 className="text-[19px] font-bold text-[#0d1b2a]">
+              {restaurant.state === "closed"
+                ? `ร้าน ${restaurant.name} ปิดวันนี้`
+                : `คูปองของร้าน ${restaurant.name} หมดแล้ว`}
+            </h1>
+            <Link
+              href={`/lunch/${token}`}
+              className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold leading-[44px] text-white shadow-sm"
+            >
+              เลือกร้านอื่น
+            </Link>
           </div>
-          <h1 className="text-[19px] font-bold text-[#0d1b2a]">
-            {restaurant.state === "closed"
-              ? `ร้าน ${restaurant.name} ปิดวันนี้`
-              : `คูปองของร้าน ${restaurant.name} หมดแล้ว`}
-          </h1>
-          <Link
-            href={`/lunch/${token}`}
-            className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold leading-[44px] text-white shadow-sm"
-          >
-            เลือกร้านอื่น
-          </Link>
-        </div>
+        </ShellScroll>
       </Shell>
     );
   }
@@ -79,9 +82,8 @@ export default async function RestaurantMenuPage({ params }) {
   const { categories, menus } = await loadRestaurantMenu({ daySet, restaurantId });
 
   return (
-    <Shell app>
+    <Shell>
       <MenuClient
-        testTimes={lunchTestTimesLabel()}
         token={token}
         restaurant={restaurant}
         others={(session.restaurants || []).filter((r) => r.id !== restaurantId)}
@@ -90,6 +92,7 @@ export default async function RestaurantMenuPage({ params }) {
         windowInfo={session.window}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
         categories={categories}
+        openSheetMenuId={String(searchParams?.sheet || "")}
         menus={menus}
       />
     </Shell>

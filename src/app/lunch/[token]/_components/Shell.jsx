@@ -3,25 +3,25 @@
 // เปลือกจอมือถือของหน้าสั่งอาหาร + หน้า error/ปิดรับ
 // mobile-first: เต็มความกว้าง เนื้อหาอยู่กลางที่ max-w-[480px]
 //
-// โครงของหน้าที่มีแถบล่าง: คอลัมน์สูงเต็มจอเป็น flex-col
-//   [แถบบน sticky] [เนื้อหา flex-1] [StickyBottom]
-// เนื้อหาสั้นก็ยังดันแถบล่างไปติดขอบล่างของจอ ไม่ลอยอยู่ใต้รายการ
-// (ไม่ใช้ position:fixed เพราะ body ของ root layout เป็น h-screen overflow-hidden)
+// app shell ทุกหน้า: เปลือกสูงเท่าจอพอดี ตัวเอกสารไม่เลื่อน
+//   [แถบบน flex-none: แถบใกล้ปิดรับ -> หัว/ปุ่มกลับ -> แถบงบ]
+//   [ShellScroll — ตัวเลื่อนแนวตั้งตัวเดียว]
+//   [StickyBottom flex-none]
+// scrollbar จึงเริ่มใต้แถบบนและชิดขอบขวาจริง ไม่วิ่งทับหัวหน้า
 import Image from "next/image";
+
+import ShellScroll from "./ShellScroll";
 
 // โลโก้ 2026 (แนวนอน 900×295 พื้นโปร่ง) — ใช้สูงเท่าเดิม ความกว้างตามสัดส่วน
 export const LOGO = "/signature_logo_9expert2026_01-ninebule.png";
 export const LOGO_W = 900;
 export const LOGO_H = 295;
 
-// app = เปลือกสูงเท่าจอพอดี ไม่ให้ตัวเอกสารเลื่อน (หน้าเมนู: เลื่อนเฉพาะรายการข้างใน)
-export function Shell({ children, app = false }) {
+export function Shell({ children }) {
   return (
-    <div
-      className={`flex flex-col bg-[#f8fafd] text-[#0d1b2a] ${app ? "lunch-app-shell h-dvh overflow-hidden" : "min-h-dvh"}`}
-    >
+    <div className="lunch-app-shell flex h-dvh flex-col overflow-hidden bg-[#f8fafd] text-[#0d1b2a]">
       <div
-        className={`mx-auto flex w-full max-w-[480px] flex-1 flex-col ${app ? "min-h-0" : ""}`}
+        className="mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         {children}
@@ -30,12 +30,12 @@ export function Shell({ children, app = false }) {
   );
 }
 
-/** แถบล่างติดขอบจอ — ต้องเป็นลูกตัวสุดท้ายของ Shell และเนื้อหาข้างบนต้องเป็น flex-1 */
+/** แถบปุ่มล่าง — ลูกตัวสุดท้ายของ Shell ต่อจาก ShellScroll (ไม่เลื่อน) */
 export function StickyBottom({ children, className = "" }) {
   return (
     <div
       data-testid="sticky-bottom"
-      className={`sticky bottom-0 z-10 border-t border-black/5 bg-white px-4 pt-3 ${className}`}
+      className={`z-10 flex-none border-t border-black/5 bg-white px-4 pt-3 ${className}`}
       style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
     >
       {children}
@@ -57,25 +57,27 @@ export function NoticeScreen({ icon: Icon, tone = "red", title, body }) {
 
   return (
     <Shell>
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-8 py-16 text-center">
-        <div
-          data-testid="notice-icon"
-          className={`flex h-16 w-16 items-center justify-center rounded-full ${ring}`}
-        >
-          {Icon ? <Icon aria-hidden="true" className="h-8 w-8" /> : null}
+      <ShellScroll>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-8 py-16 text-center">
+          <div
+            data-testid="notice-icon"
+            className={`flex h-16 w-16 items-center justify-center rounded-full ${ring}`}
+          >
+            {Icon ? <Icon aria-hidden="true" className="h-8 w-8" /> : null}
+          </div>
+          <h1 className="text-[19px] font-bold text-[#0d1b2a]">{title}</h1>
+          {body ? (
+            <p className="text-[14px] leading-relaxed text-slate-500">{body}</p>
+          ) : null}
+          <Image
+            src={LOGO}
+            alt="9Expert"
+            width={LOGO_W}
+            height={LOGO_H}
+            className="mt-4 h-6 w-auto opacity-60"
+          />
         </div>
-        <h1 className="text-[19px] font-bold text-[#0d1b2a]">{title}</h1>
-        {body ? (
-          <p className="text-[14px] leading-relaxed text-slate-500">{body}</p>
-        ) : null}
-        <Image
-          src={LOGO}
-          alt="9Expert"
-          width={LOGO_W}
-          height={LOGO_H}
-          className="mt-4 h-6 w-auto opacity-60"
-        />
-      </div>
+      </ShellScroll>
     </Shell>
   );
 }

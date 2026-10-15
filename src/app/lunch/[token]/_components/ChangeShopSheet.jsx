@@ -14,8 +14,8 @@ import { shopTypeText, shopBlockedText, BlockedChip } from "./ShopChips";
 
 /* ---------------- frame ---------------- */
 
-/** scrim + กล่องชีต: Esc / แตะ scrim = ปิด, Tab วนในชีต, ปิดแล้วคืนโฟกัสให้ตัวที่เปิด */
-function SheetFrame({ labelledBy, testId, onClose, children }) {
+/** scrim + กล่องชีต: Esc / แตะ scrim / แตะแถบจับ = ปิด, Tab วนในชีต, ปิดแล้วคืนโฟกัสให้ตัวที่เปิด */
+export function SheetFrame({ labelledBy, testId, onClose, children }) {
   const sheetRef = useRef(null);
   // ผู้เรียกส่ง onClose ใหม่ทุก render -> อ่านผ่าน ref ไม่ให้ effect ผูกใหม่
   const onCloseRef = useRef(onClose);
@@ -33,7 +33,9 @@ function SheetFrame({ labelledBy, testId, onClose, children }) {
         return;
       }
       if (e.key !== "Tab") return;
-      const items = sheetRef.current?.querySelectorAll("button:not([disabled])");
+      const items = sheetRef.current?.querySelectorAll(
+        'button:not([disabled]):not([tabindex="-1"])',
+      );
       if (!items || items.length === 0) return;
       const first = items[0];
       const last = items[items.length - 1];
@@ -69,7 +71,16 @@ function SheetFrame({ labelledBy, testId, onClose, children }) {
         className="flex max-h-[90dvh] w-full max-w-[480px] flex-col rounded-t-[24px] bg-white px-4 pt-2 shadow-xl"
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}
       >
-        <div aria-hidden="true" className="mx-auto mb-1 h-1.5 w-10 rounded-full bg-[color:var(--gray-light)]" />
+        {/* แถบจับ: แตะแล้วปิด (เมาส์/นิ้ว) — คีย์บอร์ด/screen reader ใช้ Esc หรือปุ่มปิดแทน */}
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-hidden="true"
+          onClick={onClose}
+          className="mx-auto mb-1 flex h-5 w-16 shrink-0 items-center justify-center"
+        >
+          <span className="h-1.5 w-10 rounded-full bg-[color:var(--gray-light)]" />
+        </button>
         {children}
       </div>
     </div>

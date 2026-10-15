@@ -14,6 +14,7 @@ import {
   clearCartLines,
 } from "@/lib/lunchCart.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
+import ShellScroll from "../../_components/ShellScroll";
 import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
 
 export default function ShortSummaryClient({
@@ -80,7 +81,8 @@ export default function ShortSummaryClient({
 
   return (
     <>
-      <div className="flex-1" data-testid="short-summary">
+      {/* แถบบน: หัวร้าน (ไม่เลื่อน) */}
+      <div className="z-10 flex-none">
         <div className="flex items-center gap-3 border-b border-black/5 bg-white px-4 py-3">
           <LogoTile src={restaurant.logo} alt={restaurant.name} size={44} />
           <div className="min-w-0 flex-1">
@@ -96,6 +98,9 @@ export default function ShortSummaryClient({
           ) : null}
         </div>
 
+      </div>
+
+      <ShellScroll data-testid="short-summary">
         <div className="flex flex-col gap-3 px-4 py-4 pb-6">
           <h1 className="text-[19px] font-bold text-[#0d1b2a]">สรุปรายการ</h1>
 
@@ -118,7 +123,7 @@ export default function ShortSummaryClient({
             </p>
           </div>
         </div>
-      </div>
+      </ShellScroll>
 
       <StickyBottom className="flex gap-3">
         <button

@@ -36,19 +36,22 @@ export function groupsFromCartLine(line, menu) {
   return out;
 }
 
-export default function OptionLines({ groups = [], note = "", className = "" }) {
+// inline = วางในปุ่ม (ปุ่มใส่ได้แค่ phrasing content) -> ใช้ span แบบ block แทน div/p
+export default function OptionLines({ groups = [], note = "", className = "", inline = false }) {
   if (!groups.length && !note) return null;
+  const Box = inline ? "span" : "div";
+  const Line = inline ? "span" : "p";
   return (
-    <div className={`text-[13px] leading-snug ${className}`}>
+    <Box className={`block text-[13px] leading-snug ${className}`}>
       {groups.map((g, i) => (
-        <p key={`${g.name}-${i}`}>
+        <Line key={`${g.name}-${i}`} className="block">
           {g.name ? <span className="text-[#5e6a7e]">{g.name}: </span> : null}
           <span className="font-medium text-[#0d1b2a]">{g.values.join(", ")}</span>
-        </p>
+        </Line>
       ))}
       {note ? (
-        <p className="break-words text-[#5e6a7e]">หมายเหตุ: {note}</p>
+        <Line className="block break-words text-[#5e6a7e]">หมายเหตุ: {note}</Line>
       ) : null}
-    </div>
+    </Box>
   );
 }

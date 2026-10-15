@@ -30,11 +30,15 @@ export default function CountdownBanner({ secondsLeft, deadlineLabel }) {
   const ss = String(secs % 60).padStart(2, "0");
 
   return (
-    <div className="flex items-center gap-2 bg-[#d98a13]/10 px-4 py-2.5 text-[13px] text-[#b8720a]">
-      <Hourglass className="h-4 w-4 shrink-0" />
+    // ทึบ 100% (ไม่มี alpha/blur) และเป็นลูกตัวแรกของแถบบนที่ไม่เลื่อน -> ไม่มีอะไรโผล่ทะลุ/ลอดข้างหลัง
+    <div
+      data-testid="countdown-banner"
+      className="flex flex-none items-center gap-2 border-b border-[#f0dec4] bg-[#fbf1e4] px-4 py-2.5 text-[13px] text-[#7a4708]"
+    >
+      <Hourglass aria-hidden="true" className="h-4 w-4 shrink-0" />
       <span>
         ใกล้ปิดรับออเดอร์ · เหลือเวลา{" "}
-        <span className="font-semibold tabular-nums">
+        <span className="font-bold tabular-nums">
           {mm}:{ss}
         </span>{" "}
         นาที (ปิด {deadlineLabel} น.)
