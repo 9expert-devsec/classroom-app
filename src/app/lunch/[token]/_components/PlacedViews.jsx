@@ -144,8 +144,8 @@ export function RescanView({ order, dateLabel, token }) {
               <span className="font-semibold">{order.itemsTotal} บาท</span>
             </div>
             <div className="mt-2 flex justify-between text-[14px] text-slate-500">
-              <span>งบคูปอง</span>
-              <span>−{order.budget} บาท</span>
+              <span>ใช้งบคูปอง</span>
+              <span>−{Math.min(order.itemsTotal || 0, order.budget)} บาท</span>
             </div>
             {order.overBudget > 0 ? (
               <div className="mt-3 flex justify-between rounded-xl bg-[#d98a13]/10 px-3 py-2.5 text-[14px] font-semibold text-[#b8720a]">

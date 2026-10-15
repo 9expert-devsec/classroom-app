@@ -22,7 +22,8 @@ import { StickyBottom } from "../../../../_components/Shell";
 import BudgetBar from "../../../../_components/BudgetBar";
 import CountdownBanner from "../../../../_components/CountdownBanner";
 import QtyStepper from "../../../../_components/QtyStepper";
-import SwitchModal, { CartConflictBanner } from "../../../../_components/SwitchModal";
+import { CartConflictBanner } from "../../../../_components/SwitchModal";
+import { SwitchConfirmSheet } from "../../../../_components/ChangeShopSheet";
 
 /* ---------------- option rows ---------------- */
 
@@ -430,11 +431,12 @@ export default function MenuDetailClient({
       </StickyBottom>
 
       {switchOpen ? (
-        <SwitchModal
-          currentName={cartShop.name}
+        <SwitchConfirmSheet
           target={restaurant}
-          onCancel={() => setSwitchOpen(false)}
+          currentName={cartShop.name}
+          count={cartQty}
           onConfirm={confirmSwitch}
+          onClose={() => setSwitchOpen(false)}
         />
       ) : null}
     </>

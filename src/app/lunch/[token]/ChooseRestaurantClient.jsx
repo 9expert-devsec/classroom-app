@@ -16,7 +16,7 @@ import {
 import { clearMenuScrolls } from "@/lib/lunchScroll.client";
 import { LogoTile } from "./_components/Shell";
 import CountdownBanner from "./_components/CountdownBanner";
-import SwitchModal from "./_components/SwitchModal";
+import { SwitchConfirmSheet } from "./_components/ChangeShopSheet";
 import { ShopTypeChip, BlockedChip, shopBlockedText } from "./_components/ShopChips";
 
 /* ---------------- hero band (navy) ---------------- */
@@ -208,7 +208,7 @@ function ShopStep({ session, headerLine, nickname, notice, short, finalLabel, on
           <Ticket aria-hidden="true" className="h-7 w-7 shrink-0" />
           <div>
             <p className="text-[18px] font-bold leading-tight">งบคูปอง {session.budget} บาท</p>
-            <p className="mt-0.5 text-[13px]">สั่งเกินได้ ส่วนที่เกินชำระเองที่ร้าน</p>
+            <p className="mt-0.5 text-[13px]">สั่งเกินได้ ส่วนที่เกินชำระเพิ่มที่ร้าน</p>
           </div>
         </div>
 
@@ -315,6 +315,7 @@ export default function ChooseRestaurantClient({
 
   const cartShopName =
     (session.restaurants || []).find((r) => r.id === stored.restaurantId)?.name || "อื่น";
+  const cartQty = (stored.lines || []).reduce((s, l) => s + (l.qty || 0), 0);
 
   const closing = session?.window?.phase === "closing";
 
@@ -343,11 +344,12 @@ export default function ChooseRestaurantClient({
       )}
 
       {switchTarget ? (
-        <SwitchModal
-          currentName={cartShopName}
+        <SwitchConfirmSheet
           target={switchTarget}
-          onCancel={() => setSwitchTarget(null)}
+          currentName={cartShopName}
+          count={cartQty}
           onConfirm={confirmSwitch}
+          onClose={() => setSwitchTarget(null)}
         />
       ) : null}
     </>

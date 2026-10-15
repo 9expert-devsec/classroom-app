@@ -19,8 +19,8 @@ import {
 } from "@/lib/lunchCart.client";
 import { saveMenuScroll, takeMenuScroll, clearMenuScroll } from "@/lib/lunchScroll.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
-import SwitchModal, { CartConflictBanner } from "../../_components/SwitchModal";
-import ChangeShopSheet from "../../_components/ChangeShopSheet";
+import { CartConflictBanner } from "../../_components/SwitchModal";
+import ChangeShopSheet, { SwitchConfirmSheet } from "../../_components/ChangeShopSheet";
 import { shopTypeText } from "../../_components/ShopChips";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
@@ -178,7 +178,6 @@ export default function MenuClient({
   const [noOrderOpen, setNoOrderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const changeBtnRef = useRef(null);
 
   // ตะกร้ามีรายการจากร้านอื่น (มาทางย้อนกลับ / พิมพ์ URL) -> ไม่แตะตะกร้า ถามก่อน
   const [conflict, setConflict] = useState(false);
@@ -398,13 +397,12 @@ export default function MenuClient({
     );
   }
 
+  // ชีตคืนโฟกัสให้ปุ่ม "เปลี่ยนร้าน" เอง
   function closeSheet() {
     setSheetOpen(false);
-    // คืนโฟกัสให้ปุ่มที่เปิดชีต
-    requestAnimationFrame(() => changeBtnRef.current?.focus());
   }
 
-  // จากชีตเปลี่ยนร้าน: แถบเตือนในชีตคือการยืนยันแล้ว -> ล้างตะกร้าแล้วไปเลย
+  // จากชีตเปลี่ยนร้าน: ตะกร้าว่าง หรือผู้เรียนกดยืนยันในขั้นยืนยันแล้ว -> ล้างตะกร้าแล้วไป
   function pickFromSheet(target) {
     setSheetOpen(false);
     doSwitch(target);
@@ -493,7 +491,6 @@ export default function MenuClient({
           </div>
           {others.length > 0 ? (
             <button
-              ref={changeBtnRef}
               type="button"
               onClick={() => setSheetOpen(true)}
               aria-haspopup="dialog"
@@ -673,12 +670,14 @@ export default function MenuClient({
         </StickyBottom>
       ) : null}
 
+      {/* แถบ conflict: ยืนยันเปลี่ยนมาร้านที่กำลังดูอยู่ (ตะกร้าเป็นของอีกร้าน) */}
       {switchTarget ? (
-        <SwitchModal
-          currentName={cartShop.name}
+        <SwitchConfirmSheet
           target={switchTarget}
-          onCancel={() => setSwitchTarget(null)}
+          currentName={cartShop.name}
+          count={cartQty}
           onConfirm={() => doSwitch(switchTarget)}
+          onClose={() => setSwitchTarget(null)}
         />
       ) : null}
 
@@ -688,7 +687,7 @@ export default function MenuClient({
           currentId={restaurant.id}
           currentName={cartShop.name}
           cartCount={cartQty}
-          onPick={pickFromSheet}
+          onSwitch={pickFromSheet}
           onClose={closeSheet}
         />
       ) : null}

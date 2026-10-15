@@ -2,8 +2,8 @@
 
 // src/app/lunch/[token]/_components/SwitchModal.jsx
 //
-// ยืนยันก่อนล้างตะกร้าเมื่อเปลี่ยนร้าน — ใช้ร่วมกันทั้งหน้า 1 หน้าเมนู และหน้ารายละเอียด
-import { LogoTile } from "./Shell";
+// Sheet (กล่องล่างของ NoOrderModal) + แถบ conflict ตะกร้าคนละร้าน
+// การยืนยันเปลี่ยนร้าน/ล้างตะกร้าย้ายไปขั้นยืนยันใน ChangeShopSheet แล้ว (SwitchConfirmSheet)
 
 export function Sheet({ children }) {
   return (
@@ -12,40 +12,6 @@ export function Sheet({ children }) {
         {children}
       </div>
     </div>
-  );
-}
-
-export default function SwitchModal({ currentName, target, onCancel, onConfirm }) {
-  return (
-    <Sheet>
-      <div data-testid="switch-modal">
-        <div className="mb-3 flex items-center gap-3">
-          <LogoTile src={target.logo} alt={target.name} size={44} />
-          <h3 className="text-[17px] font-bold text-[#0d1b2a]">
-            เปลี่ยนไปร้าน {target.name}?
-          </h3>
-        </div>
-        <p className="text-[14px] leading-relaxed text-slate-500">
-          รายการที่เลือกไว้จากร้าน {currentName} จะถูกล้างทั้งหมด
-        </p>
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-11 flex-1 rounded-xl text-[15px] font-medium text-slate-500 transition hover:bg-slate-100 active:scale-[0.98]"
-          >
-            ยกเลิก
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="h-11 flex-1 rounded-xl bg-[#2486ff] text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:scale-[0.98]"
-          >
-            เปลี่ยนร้าน
-          </button>
-        </div>
-      </div>
-    </Sheet>
   );
 }
 
