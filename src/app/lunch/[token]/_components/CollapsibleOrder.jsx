@@ -4,6 +4,8 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
+import OptionLines, { groupsFromOrderLine } from "./OptionLines";
+
 export default function CollapsibleOrder({ order }) {
   const [open, setOpen] = useState(false);
   const lines = order.lines || [];
@@ -32,14 +34,7 @@ export default function CollapsibleOrder({ order }) {
                 <span className="text-[#0d1b2a]">
                   {l.qty}× {l.name}
                 </span>
-                {(l.options || []).length ? (
-                  <p className="text-[12px] text-slate-400">
-                    {l.options.map((o) => o.choiceName).join(", ")}
-                  </p>
-                ) : null}
-                {l.note ? (
-                  <p className="break-words text-[12px] italic text-slate-400">“{l.note}”</p>
-                ) : null}
+                <OptionLines groups={groupsFromOrderLine(l)} note={l.note} className="mt-0.5" />
               </div>
               <span className="shrink-0 text-slate-500">{l.lineTotal}฿</span>
             </div>
@@ -50,7 +45,7 @@ export default function CollapsibleOrder({ order }) {
           </div>
           {order.overBudget > 0 ? (
             <div className="mt-2 flex justify-between rounded-xl bg-[#d98a13]/10 px-3 py-2.5 text-[13px] font-semibold text-[#b8720a]">
-              <span>ส่วนที่ต้องชำระเองที่ร้าน</span>
+              <span>ส่วนที่ต้องชำระเพิ่มที่ร้าน</span>
               <span>{order.overBudget} บาท</span>
             </div>
           ) : null}

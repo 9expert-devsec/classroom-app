@@ -9,6 +9,7 @@ import { Check, ImageOff, Info, Lock } from "lucide-react";
 import { LogoTile, LOGO, LOGO_W, LOGO_H } from "./Shell";
 import CouponCard from "./CouponCards";
 import CollapsibleOrder from "./CollapsibleOrder";
+import OptionLines, { groupsFromOrderLine } from "./OptionLines";
 
 function SuccessIcon() {
   return (
@@ -128,16 +129,7 @@ export function RescanView({ order, dateLabel, token }) {
                     <p className="text-[14px] font-medium text-[#0d1b2a]">{l.name}</p>
                     <span className="shrink-0 text-[13px] text-slate-500">×{l.qty}</span>
                   </div>
-                  {(l.options || []).length ? (
-                    <p className="mt-0.5 text-[12px] text-slate-400">
-                      {l.options.map((o) => o.choiceName).join(", ")}
-                    </p>
-                  ) : null}
-                  {l.note ? (
-                    <p className="mt-0.5 break-words text-[12px] italic text-slate-400">
-                      “{l.note}”
-                    </p>
-                  ) : null}
+                  <OptionLines groups={groupsFromOrderLine(l)} note={l.note} className="mt-0.5" />
                 </div>
                 <span className="self-center text-[14px] font-semibold text-[#0d1b2a]">
                   {l.lineTotal}฿
@@ -157,7 +149,7 @@ export function RescanView({ order, dateLabel, token }) {
             </div>
             {order.overBudget > 0 ? (
               <div className="mt-3 flex justify-between rounded-xl bg-[#d98a13]/10 px-3 py-2.5 text-[14px] font-semibold text-[#b8720a]">
-                <span>ส่วนที่ต้องชำระเองที่ร้าน</span>
+                <span>ส่วนที่ต้องชำระเพิ่มที่ร้าน</span>
                 <span>{order.overBudget} บาท</span>
               </div>
             ) : null}

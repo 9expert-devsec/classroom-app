@@ -3,7 +3,7 @@
 /**
  * แถบงบคูปอง
  *   ไม่เกินงบ -> น้ำเงิน
- *   เกินงบ    -> ส้ม พร้อมบอกว่าต้องจ่ายส่วนต่างเองที่ร้าน
+ *   เกินงบ    -> ส้ม "ชำระเพิ่มที่ร้าน X บาท" (สั่งเกินได้ ไม่ใช่ข้อผิดพลาด จึงไม่ใช้คำว่า "เกินงบ")
  *
  * คลาสสีทุกตัวเขียนเต็ม ๆ ในไฟล์นี้ (bg-[#2486ff] / bg-[#d98a13]) ไม่ประกอบจาก
  * ตัวแปร มิฉะนั้น Tailwind JIT จะมองไม่เห็นแล้วสีหาย
@@ -31,10 +31,7 @@ export default function BudgetBar({ budget, selected, slim = false, leading = nu
           {over ? (
             <>
               เลือกแล้ว {selected} บาท ·{" "}
-              <span className="font-semibold">เกินงบ {selected - budget} บาท</span>{" "}
-              <span className="text-[12px] text-[#b8720a]/80">
-                (ชำระส่วนต่างเองที่ร้าน)
-              </span>
+              <span className="font-semibold">ชำระเพิ่มที่ร้าน {selected - budget} บาท</span>
             </>
           ) : (
             <>

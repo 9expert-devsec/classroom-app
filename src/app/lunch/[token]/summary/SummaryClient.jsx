@@ -10,7 +10,6 @@ import {
   reconcile,
   cartTotals,
   unitPriceOf,
-  choiceNamesOf,
   setLineQty,
   removeLine,
   ensureRequestId,
@@ -22,6 +21,7 @@ import {
 import { LogoTile, StickyBottom } from "../_components/Shell";
 import CountdownBanner from "../_components/CountdownBanner";
 import QtyStepper from "../_components/QtyStepper";
+import OptionLines, { groupsFromCartLine } from "../_components/OptionLines";
 
 const NETWORK_ERROR = "เชื่อมต่อไม่สำเร็จ กรุณาลองอีกครั้ง";
 const GENERIC_ERROR = "เกิดข้อผิดพลาด กรุณาลองใหม่";
@@ -82,7 +82,7 @@ function FinalConfirmModal({ restaurant, count, total, budget, busy, error, onEd
 /* ---------------- line ---------------- */
 
 function LineCard({ line, menu, bad, onQty, onRemove }) {
-  const names = choiceNamesOf(line, menu);
+  const groups = groupsFromCartLine(line, menu);
   const lineTotal = unitPriceOf(line, menu) * line.qty;
 
   return (
@@ -117,14 +117,7 @@ function LineCard({ line, menu, bad, onQty, onRemove }) {
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        {names.length ? (
-          <p className="mt-0.5 text-[12px] text-slate-400">{names.join(", ")}</p>
-        ) : null}
-        {line.note ? (
-          <p className="mt-0.5 break-words text-[12px] italic text-slate-400">
-            “{line.note}”
-          </p>
-        ) : null}
+        <OptionLines groups={groups} note={line.note} className="mt-0.5" />
         <div className="mt-2 flex items-center justify-between">
           <QtyStepper
             qty={line.qty}
@@ -450,13 +443,14 @@ export default function SummaryClient({
                     {total} บาท
                   </span>
                 </div>
+                {/* ใช้งบเท่าที่ใช้จริง ไม่ใช่ทั้งก้อน (ยอด 100 -> −100 ไม่ใช่ −180) */}
                 <div className="mt-2 flex justify-between text-[14px] text-slate-500">
-                  <span>งบคูปอง</span>
-                  <span>−{budget} บาท</span>
+                  <span>ใช้งบคูปอง</span>
+                  <span>−{Math.min(total, budget)} บาท</span>
                 </div>
                 {overage > 0 ? (
                   <div className="mt-3 flex justify-between rounded-xl bg-[#d98a13]/10 px-3 py-2.5 text-[14px] font-semibold text-[#b8720a]">
-                    <span>ส่วนที่ต้องชำระเองที่ร้าน</span>
+                    <span>ส่วนที่ต้องชำระเพิ่มที่ร้าน</span>
                     <span>{overage} บาท</span>
                   </div>
                 ) : null}

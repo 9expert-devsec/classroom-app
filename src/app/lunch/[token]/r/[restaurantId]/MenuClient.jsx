@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Minus, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
+import { Plus, Minus, ChevronLeft, ImageOff, Ticket } from "lucide-react";
 
 import {
   readCart,
@@ -567,23 +567,43 @@ export default function MenuClient({
 
           {/* ไปสั่งที่ร้านเอง — อยู่บนสุด ซ่อนเมื่อมีของในตะกร้า */}
           {cartLines.length === 0 ? (
-            <button
-              type="button"
-              data-testid="at-shop-card"
-              onClick={() => {
-                setSubmitError("");
-                setNoOrderOpen(true);
-              }}
-              className="mt-3 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[color:var(--gray-light)] bg-white px-4 py-3 text-left transition active:scale-[0.99]"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold text-[color:var(--navy)]">ยังไม่เลือกเมนูตอนนี้</p>
-                <p className="mt-0.5 text-[13px] text-[color:var(--gray)]">
-                  รับคูปอง {budget} บาท แล้วไปสั่งที่ร้านเอง
-                </p>
+            <>
+              {/* ทั้งการ์ดเป็นปุ่มเดียว — "เลือก ›" เป็นแค่ป้ายตกแต่ง */}
+              <button
+                type="button"
+                data-testid="at-shop-card"
+                onClick={() => {
+                  setSubmitError("");
+                  setNoOrderOpen(true);
+                }}
+                className="mt-3 flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--blue)] bg-[color:var(--blue-tint)] px-3.5 py-3 text-left transition active:scale-[0.99]"
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--blue)] text-white"
+                >
+                  <Ticket className="h-[22px] w-[22px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-bold text-[color:var(--navy)]">ไปสั่งที่ร้านเอง</span>
+                  <span className="mt-0.5 block text-[13px] text-[color:var(--navy)]">
+                    ไม่ต้องเลือกเมนูตอนนี้ รับคูปอง <b>{budget} บาท</b> ไปใช้ที่ร้าน
+                  </span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="flex h-8 shrink-0 items-center rounded-full bg-[color:var(--blue)] px-3 text-[13px] font-bold text-white"
+                >
+                  เลือก ›
+                </span>
+              </button>
+
+              <div className="mt-4 flex items-center gap-3">
+                <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
+                <span className="text-[13px] text-[color:var(--gray)]">หรือเลือกเมนูล่วงหน้าด้านล่าง</span>
+                <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
               </div>
-              <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-[color:var(--gray)]" />
-            </button>
+            </>
           ) : null}
 
           <div className="flex flex-col gap-2">

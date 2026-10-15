@@ -26,19 +26,24 @@ import SwitchModal, { CartConflictBanner } from "../../../../_components/SwitchM
 
 /* ---------------- option rows ---------------- */
 
-function GroupHeader({ group }) {
+// กลุ่มที่บังคับ = ดอกจันแดงต่อท้ายชื่อ (กลุ่มไม่บังคับไม่มีอะไรเพิ่ม)
+// flagged = กดเพิ่มลงตะกร้าตอนที่กลุ่มนี้ยังไม่ได้เลือก -> บอกใต้หัวข้อ
+function GroupHeader({ group, id, flagged }) {
   return (
-    <div className="mb-2 flex items-center gap-2">
-      <p className="text-[15px] font-semibold text-[#0d1b2a]">{group.name}</p>
-      {group.required ? (
-        <span className="rounded-full bg-[#c2453e]/10 px-2 py-0.5 text-[11px] font-medium text-[#c2453e]">
-          จำเป็น
-        </span>
-      ) : (
-        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-          ไม่บังคับ
-        </span>
-      )}
+    <div className="mb-2">
+      <p id={id} className="text-[15px] font-semibold text-[#0d1b2a]">
+        {group.name}
+        {group.required ? (
+          <span aria-hidden="true" className="ml-0.5 text-[#d92d20]">
+            *
+          </span>
+        ) : null}
+      </p>
+      {flagged ? (
+        <p role="alert" className="mt-0.5 text-[13px] text-[#d92d20]">
+          กรุณาเลือก 1 รายการ
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -256,6 +261,13 @@ export default function MenuDetailClient({
   const missing = groups.find((g) => g.required && !(picked[g.id] || []).length);
   const canAdd = !missing && !conflict;
 
+  // กดเพิ่มลงตะกร้าตอนกลุ่มบังคับยังว่าง -> กลุ่มที่ยังว่างทุกกลุ่มขึ้นสีแดง
+  // (กลุ่มไหนเลือกแล้วก็หายแดงเอง เพราะคิดจาก picked ทุกครั้ง)
+  const [flagged, setFlagged] = useState(false);
+  const isFlagged = (g) => flagged && g.required && !(picked[g.id] || []).length;
+  const topBarRef = useRef(null);
+  const groupEls = useRef({});
+
   const unit = unitPriceOf({ choices }, menu);
   const thisTotal = unit * qty;
   const { total: cartTotal } = useMemo(() => cartTotals(cart, menus), [cart, menus]);
@@ -263,7 +275,18 @@ export default function MenuDetailClient({
   const previewOver = preview - budget;
 
   function commit() {
-    if (!canAdd) return;
+    if (conflict) return;
+    if (missing) {
+      setFlagged(true);
+      // เลื่อนกลุ่มแรกที่ยังว่างขึ้นมาใต้แถบบน (sticky)
+      const el = groupEls.current[missing.id];
+      if (el) {
+        const offset = (topBarRef.current?.offsetHeight || 0) + 8;
+        const top = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+      }
+      return;
+    }
     const next = addLine(cart, { menuId: menu.id, qty, choices, note });
     writeCart(token, next);
     router.replace(backHref);
@@ -273,7 +296,7 @@ export default function MenuDetailClient({
 
   return (
     <>
-      <div className="sticky top-0 z-20">
+      <div ref={topBarRef} className="sticky top-0 z-20">
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -323,9 +346,22 @@ export default function MenuDetailClient({
           </div>
 
           {groups.map((g) => (
-            <div key={g.id} data-testid="option-group">
-              <GroupHeader group={g} />
-              <div className="flex flex-col gap-2">
+            <div
+              key={g.id}
+              ref={(el) => (groupEls.current[g.id] = el)}
+              data-testid="option-group"
+              role={g.selectType === "multi" ? "group" : "radiogroup"}
+              aria-labelledby={`g-${g.id}-label`}
+              aria-required={g.required ? "true" : undefined}
+              aria-invalid={isFlagged(g) ? "true" : undefined}
+            >
+              <GroupHeader group={g} id={`g-${g.id}-label`} flagged={isFlagged(g)} />
+              <div
+                className={[
+                  "flex flex-col gap-2",
+                  isFlagged(g) ? "rounded-2xl border-2 border-[#d92d20] p-2" : "",
+                ].join(" ")}
+              >
                 {g.choices.map((c) => (
                   <ChoiceRow
                     key={c.id}
@@ -374,22 +410,17 @@ export default function MenuDetailClient({
         >
           หลังเพิ่มรายการนี้: {preview} บาท
           {previewOver > 0 ? (
-            <span className="font-semibold"> · เกินงบ {previewOver} บาท</span>
+            <span className="font-semibold"> · ชำระเพิ่ม {previewOver} บาท</span>
           ) : null}
         </p>
-        {missing ? (
-          <p className="mb-1.5 text-center text-[12px] text-slate-500">
-            กรุณาเลือก {missing.name}
-          </p>
-        ) : null}
         <button
           type="button"
           data-testid="detail-add"
           onClick={commit}
-          disabled={!canAdd}
+          disabled={conflict}
           className={[
             "h-12 w-full rounded-xl text-[15px] font-semibold text-white shadow-sm transition",
-            canAdd
+            !conflict
               ? "bg-[#2486ff] hover:bg-[#005cff] active:scale-[0.99]"
               : "cursor-not-allowed bg-slate-300",
           ].join(" ")}
