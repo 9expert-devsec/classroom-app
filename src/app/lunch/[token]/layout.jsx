@@ -1,9 +1,10 @@
 // src/app/lunch/[token]/layout.jsx
 //
 // เปลือกฟอนต์ของหน้าสั่งอาหารบนมือถือ
-// root layout ตั้ง body เป็น h-screen overflow-hidden ไว้ หน้านี้จึงต้องเลื่อนเอง
+// root layout ตั้ง body เป็น h-screen overflow-hidden ไว้ — lunch.css ปลดออกให้ตัวเอกสารเลื่อนเอง
 import localFont from "next/font/local";
 import { lunchTestTimesLabel } from "@/lib/lunchConfig";
+import "./lunch.css";
 
 const googleSans = localFont({
   src: [
@@ -21,7 +22,7 @@ export default function LunchLayout({ children }) {
   // C2d: preview/dev ที่เลื่อนเวลาปิดไว้ -> บอกบรรทัดเล็ก ๆ ท้ายหน้า กันเข้าใจผิดว่าเป็นของจริง
   const testTimes = lunchTestTimesLabel();
   return (
-    <div className={`${googleSans.className} h-dvh overflow-y-auto`}>
+    <div className={`${googleSans.className} lunch-root min-h-dvh`}>
       {children}
       {testTimes ? (
         <p

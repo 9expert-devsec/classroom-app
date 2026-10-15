@@ -1,6 +1,6 @@
 // src/app/lunch/[token]/page.jsx
 //
-// หน้า 1: กรอกชื่อเล่น + เลือกร้าน
+// หน้า 1: กรอกชื่อเล่น (ขั้นแรก) -> เลือกร้าน
 // ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
 // C1: เลยเส้นตายแต่ยังไม่ถึง 15:00 = สั่งแบบย่อ (เลือกร้านแล้วไปหน้าสรุปแบบย่อ)
 //     ถึง 15:00 แล้ว = หน้าหมดเวลา ไม่ว่าสถานะใด
@@ -74,12 +74,7 @@ export default async function LunchPage({ params, searchParams }) {
     );
   }
 
-  const headerLine = [
-    `คุณ${session.learner?.fullName || "-"}`,
-    session.class?.name || "",
-    session.class?.room ? `ห้อง ${session.class.room}` : "",
-    thaiDateLabel(session.class?.dayYMD),
-  ]
+  const headerLine = [session.class?.name || "", thaiDateLabel(session.class?.dayYMD)]
     .filter(Boolean)
     .join(" · ");
 

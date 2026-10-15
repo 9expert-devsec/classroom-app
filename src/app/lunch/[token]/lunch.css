@@ -1,0 +1,24 @@
+/* src/app/lunch/[token]/lunch.css
+ *
+ * สีแบรนด์ 9Expert ของหน้าสั่งอาหาร (ตั้งที่เดียว ใช้ผ่าน var(--…))
+ * กติกา: --lime ใช้บนพื้น --navy เท่านั้น / --blue-light ใช้แค่ปลาย gradient งบคูปอง
+ */
+.lunch-root {
+  --bg: #f8fafd;
+  --navy: #0d1b2a;
+  --blue: #2486ff;
+  --blue-deep: #005cff;
+  --blue-light: #48b0ff;
+  --lime: #d4f73f;
+  --gray: #5e6a7e;
+  --gray-light: #b7c3d4;
+  --blue-tint: #eaf3ff;
+  --budget-gradient: linear-gradient(90deg, #005cff, #48b0ff);
+}
+
+/* root layout ตั้ง body เป็น h-screen overflow-hidden (จอ iPad ของแอดมิน)
+ * หน้าสั่งอาหารต้องให้ตัวเอกสารเลื่อนเอง ไม่มีกล่องเลื่อนซ้อน -> ปลดเฉพาะหน้านี้ */
+body:has(.lunch-root) {
+  height: auto;
+  overflow: visible;
+}

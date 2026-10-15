@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ArrowLeftRight, ImageOff } from "lucide-react";
+import { Plus, Minus, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 
 import {
   readCart,
   writeCart,
   addLine,
+  setLineQty,
+  removeLine,
   reconcile,
   cartTotals,
-  canQuickAdd,
   newRequestId,
   switchRestaurant,
   enterRestaurant,
@@ -18,20 +19,31 @@ import {
 } from "@/lib/lunchCart.client";
 import { saveMenuScroll, takeMenuScroll, clearMenuScroll } from "@/lib/lunchScroll.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
-import SwitchModal, { Sheet, CartConflictBanner } from "../../_components/SwitchModal";
+import SwitchModal, { CartConflictBanner } from "../../_components/SwitchModal";
+import ChangeShopSheet from "../../_components/ChangeShopSheet";
+import { shopTypeText } from "../../_components/ShopChips";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
 import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
 
 /* ---------------- menu row ---------------- */
 
-function MenuRow({ m, locked, onAdd, onOpen }) {
+/**
+ * qty = จำนวนรวมของเมนูนี้ทุกบรรทัดในตะกร้า (เมนูเดียวกันในหลายหมวดจึงเห็นเลขเท่ากัน)
+ * 0 = ปุ่ม "+" เดียว / ≥ 1 = กรอบน้ำเงิน + [−] n [+]
+ */
+function MenuRow({ m, qty, locked, onInc, onDec, onOpen }) {
   const out = m.unavailableToday;
+  const inCart = qty > 0;
 
   return (
     <div
+      data-testid="menu-row"
       className={[
-        "flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm",
+        "flex items-center gap-3 rounded-2xl bg-white",
+        inCart
+          ? "border-2 border-[color:var(--blue)] p-[9px]"
+          : "border border-black/[.08] p-2.5",
         out ? "opacity-50" : "",
       ].join(" ")}
     >
@@ -39,86 +51,68 @@ function MenuRow({ m, locked, onAdd, onOpen }) {
         type="button"
         disabled={out}
         onClick={() => !out && onOpen(m)}
-        className="flex flex-1 items-center gap-3 text-left disabled:cursor-not-allowed"
+        className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-not-allowed"
       >
         {m.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={m.image}
             alt={m.name}
-            className="h-14 w-14 rounded-xl bg-slate-100 object-cover"
+            className="h-16 w-16 shrink-0 rounded-xl bg-slate-100 object-cover"
           />
         ) : (
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-slate-300">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-300">
             <ImageOff className="h-5 w-5" />
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-[14px] font-medium text-[#0d1b2a]">{m.name}</p>
-          <p className="mt-0.5 text-[13px] text-slate-500">
+          <p className="text-[16px] font-medium leading-snug text-[color:var(--navy)]">{m.name}</p>
+          <p className="mt-0.5 text-[14px] text-[color:var(--gray)]">
             {out ? "หมดวันนี้" : `${m.price} ฿`}
           </p>
         </div>
       </button>
 
-      <button
-        type="button"
-        disabled={out || locked}
-        onClick={() => !out && !locked && onAdd(m)}
-        aria-label={`เพิ่ม ${m.name}`}
-        data-testid="add-button"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2486ff] text-white shadow-sm transition hover:bg-[#005cff] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
-      >
-        <Plus className="h-5 w-5" />
-      </button>
+      {inCart ? (
+        <div className="flex shrink-0 items-center gap-1" data-testid="row-stepper">
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => !locked && onDec(m)}
+            aria-label={`ลด ${m.name}`}
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-[color:var(--gray-light)] bg-white text-[color:var(--gray)] transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span
+            data-testid="row-qty"
+            className="min-w-[22px] text-center text-[17px] font-bold tabular-nums text-[color:var(--navy)]"
+          >
+            {qty}
+          </span>
+          <button
+            type="button"
+            disabled={locked}
+            onClick={() => !locked && onInc(m)}
+            aria-label={`เพิ่ม ${m.name}`}
+            className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[color:var(--blue)] text-white transition hover:bg-[color:var(--blue-deep)] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={out || locked}
+          onClick={() => !out && !locked && onInc(m)}
+          aria-label={`เพิ่ม ${m.name}`}
+          data-testid="add-button"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[color:var(--blue)] text-white shadow-sm transition hover:bg-[color:var(--blue-deep)] active:scale-90 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+      )}
     </div>
-  );
-}
-
-/* ---------------- modals ---------------- */
-
-function PickShopSheet({ others, onPick, onCancel }) {
-  return (
-    <Sheet>
-      <h3 className="text-[17px] font-bold text-[#0d1b2a]">เปลี่ยนร้าน</h3>
-      <ul className="mt-3 flex flex-col gap-2">
-        {others.map((r) => {
-          const blocked = r.state !== "open";
-          return (
-            <li key={r.id}>
-              <button
-                type="button"
-                disabled={blocked}
-                onClick={() => !blocked && onPick(r)}
-                className={[
-                  "flex w-full items-center gap-3 rounded-xl border border-black/5 p-3 text-left transition",
-                  blocked
-                    ? "cursor-not-allowed bg-slate-50 opacity-50"
-                    : "bg-white hover:border-[#2486ff]/40 active:scale-[0.99]",
-                ].join(" ")}
-              >
-                <LogoTile src={r.logo} alt={r.name} size={36} />
-                <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-[#0d1b2a]">
-                  {r.name}
-                </span>
-                {blocked ? (
-                  <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-[11px] text-slate-500">
-                    {r.state === "closed" ? "ปิดวันนี้" : "คูปองหมด"}
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mt-4 h-11 w-full rounded-xl text-[15px] font-medium text-slate-500 transition hover:bg-slate-100"
-      >
-        ยกเลิก
-      </button>
-    </Sheet>
   );
 }
 
@@ -155,14 +149,8 @@ function buildSections(categories, menus) {
   return sections;
 }
 
-/** กล่องที่เลื่อนจริง (layout ของ lunch เป็น h-dvh overflow-y-auto ไม่ใช่ window) */
-function scrollParentOf(el) {
-  for (let p = el?.parentElement; p; p = p.parentElement) {
-    const oy = getComputedStyle(p).overflowY;
-    if (oy === "auto" || oy === "scroll") return p;
-  }
-  return document.scrollingElement;
-}
+// ตัวเอกสารเป็นตัวเลื่อน (ไม่มีกล่องเลื่อนซ้อนแล้ว) -> ตำแหน่งทั้งหมดวัดเทียบ window
+const docTop = (el) => el.getBoundingClientRect().top + window.scrollY;
 
 /* ---------------- page ---------------- */
 
@@ -170,6 +158,7 @@ export default function MenuClient({
   token,
   restaurant,
   others,
+  shops,
   budget,
   windowInfo,
   deadlineLabel,
@@ -183,10 +172,11 @@ export default function MenuClient({
   const [activeCat, setActiveCat] = useState(categories[0]?.id || "");
 
   const [switchTarget, setSwitchTarget] = useState(null);
-  const [pickOpen, setPickOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [noOrderOpen, setNoOrderOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const changeBtnRef = useRef(null);
 
   // ตะกร้ามีรายการจากร้านอื่น (มาทางย้อนกลับ / พิมพ์ URL) -> ไม่แตะตะกร้า ถามก่อน
   const [conflict, setConflict] = useState(false);
@@ -214,7 +204,8 @@ export default function MenuClient({
     writeCart(token, next);
   }
 
-  const cartQty = (cart.lines || []).reduce((s, l) => s + (l.qty || 0), 0);
+  const cartLines = cart.lines || [];
+  const cartQty = cartLines.reduce((s, l) => s + (l.qty || 0), 0);
   const cartShop =
     cart.restaurantId === restaurant.id
       ? restaurant
@@ -225,8 +216,29 @@ export default function MenuClient({
     [cart, menus],
   );
 
+  // จำนวนรวมต่อเมนู (ทุกบรรทัด) — ตะกร้าของร้านอื่นไม่นับ
+  const qtyByMenu = useMemo(() => {
+    const map = new Map();
+    if (conflict) return map;
+    for (const l of cart.lines || []) {
+      const id = String(l.menuId);
+      map.set(id, (map.get(id) || 0) + (l.qty || 0));
+    }
+    return map;
+  }, [cart, conflict]);
+
   const sections = useMemo(() => buildSections(categories, menus), [categories, menus]);
   const showPills = sections.some((s) => s.name);
+
+  // จำนวนในตะกร้าต่อหมวด (ต่อท้ายปุ่มหมวด " · n")
+  const qtyBySection = useMemo(() => {
+    const map = new Map();
+    for (const s of sections) {
+      const n = s.items.reduce((sum, m) => sum + (qtyByMenu.get(String(m.id)) || 0), 0);
+      if (n > 0) map.set(s.id, n);
+    }
+    return map;
+  }, [sections, qtyByMenu]);
 
   /* ---- scroll-spy ---- */
 
@@ -234,7 +246,6 @@ export default function MenuClient({
   const pillRowRef = useRef(null);
   const listRef = useRef(null);
   const spacerRef = useRef(null);
-  const scrollerRef = useRef(null);
   const sectionEls = useRef({});
   const pillEls = useRef({});
   // ระหว่างเลื่อนเพราะกดหมวด -> ไม่ให้ spy เปลี่ยนหมวดตามทางที่เลื่อนผ่าน
@@ -252,11 +263,10 @@ export default function MenuClient({
 
   // ช่องว่างท้ายหน้า: ให้ section สุดท้ายเลื่อนขึ้นไปชนแถบหมวดได้ (หมวดสุดท้ายจึง active ได้)
   const measure = useCallback(() => {
-    const scroller = scrollerRef.current;
     const sticky = stickyRef.current;
     const list = listRef.current;
     const spacer = spacerRef.current;
-    if (!scroller || !sticky || !list || !spacer) return;
+    if (!sticky || !list || !spacer) return;
 
     const h = sticky.offsetHeight;
     setStickyH(h);
@@ -266,13 +276,12 @@ export default function MenuClient({
       setSpacerH(0);
       return;
     }
-    const top0 = scroller.getBoundingClientRect().top - scroller.scrollTop;
-    const lastTop = last.getBoundingClientRect().top - top0;
-    const spacerTop = spacer.getBoundingClientRect().top - top0;
-    const wrapperBottom = spacer.parentElement.getBoundingClientRect().bottom - top0;
+    const lastTop = docTop(last);
+    const spacerTop = docTop(spacer);
+    const wrapperBottom = spacer.parentElement.getBoundingClientRect().bottom + window.scrollY;
     // ของที่อยู่ต่อจากเนื้อหา (แถบตะกร้าล่าง ฯลฯ) ก็นับเป็นที่เลื่อนได้
-    const after = scroller.scrollHeight - wrapperBottom;
-    const need = scroller.clientHeight - h - (spacerTop - lastTop) - after;
+    const after = document.documentElement.scrollHeight - wrapperBottom;
+    const need = window.innerHeight - h - (spacerTop - lastTop) - after;
     setSpacerH(Math.max(0, Math.ceil(need)));
   }, []);
 
@@ -280,12 +289,10 @@ export default function MenuClient({
   const restoreTop = useRef(undefined);
 
   useEffect(() => {
-    scrollerRef.current = scrollParentOf(stickyRef.current);
     measure();
     const ro = new ResizeObserver(() => measure());
-    [scrollerRef.current, stickyRef.current, listRef.current].forEach(
-      (el) => el && ro.observe(el),
-    );
+    [stickyRef.current, listRef.current].forEach((el) => el && ro.observe(el));
+    window.addEventListener("resize", measure);
 
     if (restoreTop.current === undefined) {
       restoreTop.current = takeMenuScroll(token, restaurant.id);
@@ -295,10 +302,9 @@ export default function MenuClient({
     let tries = 0;
     function restore() {
       raf = 0;
-      const scroller = scrollerRef.current;
       const top = restoreTop.current;
-      if (!scroller || !top) return;
-      const max = scroller.scrollHeight - scroller.clientHeight;
+      if (!top) return;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
       if (max < top && tries++ < 30) {
         raf = requestAnimationFrame(restore);
         return;
@@ -306,12 +312,13 @@ export default function MenuClient({
       restoreTop.current = 0;
       jumping.current = false;
       // กระโดดทันที ไม่ smooth -> spy เห็นแค่ตำแหน่งปลายทาง
-      scroller.scrollTop = top;
+      window.scrollTo(0, top);
     }
     raf = requestAnimationFrame(restore);
 
     return () => {
       ro.disconnect();
+      window.removeEventListener("resize", measure);
       if (raf) cancelAnimationFrame(raf);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -324,8 +331,7 @@ export default function MenuClient({
 
   // เลื่อนอยู่ -> หมวดของ section ที่อยู่บนสุด (ใต้แถบ sticky) เป็นหมวด active
   useEffect(() => {
-    const scroller = scrollerRef.current;
-    if (!scroller || !showPills) return;
+    if (!showPills) return;
     let raf = 0;
 
     function spy() {
@@ -354,13 +360,13 @@ export default function MenuClient({
       jumping.current = false;
     }
 
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-    scroller.addEventListener("touchstart", onUser, { passive: true });
-    scroller.addEventListener("wheel", onUser, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("touchstart", onUser, { passive: true });
+    window.addEventListener("wheel", onUser, { passive: true });
     return () => {
-      scroller.removeEventListener("scroll", onScroll);
-      scroller.removeEventListener("touchstart", onUser);
-      scroller.removeEventListener("wheel", onUser);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("touchstart", onUser);
+      window.removeEventListener("wheel", onUser);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [sections, showPills]);
@@ -379,46 +385,62 @@ export default function MenuClient({
   }, [activeCat]);
 
   function jumpTo(id) {
-    const scroller = scrollerRef.current;
     const el = sectionEls.current[id];
     setActiveCat(id);
-    if (!scroller || !el) return;
+    if (!el) return;
     jumping.current = true;
     clearTimeout(jumpTimer.current);
     // เผื่อไม่มี scroll event เลย (อยู่ตำแหน่งนั้นอยู่แล้ว)
     jumpTimer.current = setTimeout(() => (jumping.current = false), 150);
-    const top =
-      el.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top +
-      scroller.scrollTop -
-      stickyRef.current.offsetHeight;
-    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    const top = docTop(el) - stickyRef.current.offsetHeight;
+    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }
-
-  const openOthers = others.filter((r) => r.state === "open");
 
   function goDetail(m) {
     // กลับจากหน้ารายละเอียดแล้วอยู่ตำแหน่งเดิม
-    saveMenuScroll(token, restaurant.id, scrollerRef.current?.scrollTop);
+    saveMenuScroll(token, restaurant.id, window.scrollY);
     router.push(`/lunch/${token}/r/${restaurant.id}/m/${m.id}`);
   }
 
-  function quickAdd(m) {
-    // มีกลุ่มตัวเลือกที่บังคับ -> ต้องไปหน้ารายละเอียด
-    if (!canQuickAdd(m)) {
+  function goCart() {
+    router.push(`/lunch/${token}/summary`);
+  }
+
+  // "+": เมนูที่มีกลุ่มตัวเลือก -> หน้ารายละเอียด (สร้างบรรทัดใหม่) / ไม่มี -> เพิ่ม 1 เลย
+  function inc(m) {
+    if ((m.optionGroups || []).length > 0) {
       goDetail(m);
       return;
     }
     persist(addLine(cart, { menuId: m.id, qty: 1 }));
   }
 
-  function requestSwitch(target) {
-    setPickOpen(false);
-    if ((cart.lines || []).length === 0) {
-      doSwitch(target);
+  // "−": มีบรรทัดเดียว -> ลด 1 (ถึง 0 = ลบบรรทัด) / หลายบรรทัด (ตัวเลือกต่างกัน) -> ไปตะกร้า ไม่เดา
+  function dec(m) {
+    const lines = cartLines.filter((l) => String(l.menuId) === String(m.id));
+    if (lines.length === 0) return;
+    if (lines.length > 1) {
+      goCart();
       return;
     }
-    setSwitchTarget(target);
+    const line = lines[0];
+    persist(
+      (line.qty || 0) > 1
+        ? setLineQty(cart, line.lineKey, line.qty - 1)
+        : removeLine(cart, line.lineKey),
+    );
+  }
+
+  function closeSheet() {
+    setSheetOpen(false);
+    // คืนโฟกัสให้ปุ่มที่เปิดชีต
+    requestAnimationFrame(() => changeBtnRef.current?.focus());
+  }
+
+  // จากชีตเปลี่ยนร้าน: แถบเตือนในชีตคือการยืนยันแล้ว -> ล้างตะกร้าแล้วไปเลย
+  function pickFromSheet(target) {
+    setSheetOpen(false);
+    doSwitch(target);
   }
 
   function doSwitch(target) {
@@ -474,7 +496,7 @@ export default function MenuClient({
 
   return (
     <>
-      <div ref={stickyRef} className="sticky top-0 z-10">
+      <div ref={stickyRef} className="sticky top-0 z-10 border-b border-black/[.08] bg-white">
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -483,34 +505,33 @@ export default function MenuClient({
             onSwitch={() => setSwitchTarget(restaurant)}
           />
         ) : null}
-        {/* แถบร้าน + ปุ่มเปลี่ยนร้าน */}
-        <div className="flex items-center justify-between gap-2 border-b border-black/5 bg-white px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <LogoTile src={restaurant.logo} alt={restaurant.name} size={34} />
-            <span className="truncate text-[15px] font-bold text-[#0d1b2a]">
-              {restaurant.name}
-            </span>
-          </div>
 
-          {openOthers.length === 1 ? (
+        {/* แถว 1: กลับ + ร้าน + เปลี่ยนร้าน */}
+        <div className="flex items-center gap-2 px-2 py-2 pr-4">
+          <button
+            type="button"
+            onClick={() => router.push(`/lunch/${token}`)}
+            aria-label="กลับไปเลือกร้าน"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[color:var(--navy)] transition hover:bg-slate-100"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <LogoTile src={restaurant.logo} alt={restaurant.name} size={40} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[17px] font-bold leading-tight text-[color:var(--navy)]">
+              {restaurant.name}
+            </p>
+            <p className="truncate text-[12px] text-[color:var(--gray)]">{shopTypeText(restaurant)}</p>
+          </div>
+          {others.length > 0 ? (
             <button
+              ref={changeBtnRef}
               type="button"
-              onClick={() => requestSwitch(openOthers[0])}
-              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#2486ff]/40 bg-white px-3 text-[12px] font-medium text-[#005cff] transition active:scale-[0.97]"
+              onClick={() => setSheetOpen(true)}
+              aria-haspopup="dialog"
+              className="h-9 shrink-0 rounded-full border border-[color:var(--gray-light)] bg-white px-3 text-[13px] font-semibold text-[color:var(--blue)] transition active:scale-[0.97]"
             >
-              {openOthers[0].logo ? (
-                <LogoTile src={openOthers[0].logo} alt="" size={16} />
-              ) : null}
-              เปลี่ยนเป็น {openOthers[0].name}
-            </button>
-          ) : others.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setPickOpen(true)}
-              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#2486ff]/40 bg-white px-3 text-[12px] font-medium text-[#005cff] transition active:scale-[0.97]"
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              เปลี่ยนร้าน
+              เปลี่ยนร้าน ▾
             </button>
           ) : null}
         </div>
@@ -522,31 +543,43 @@ export default function MenuClient({
           />
         ) : null}
 
-        <BudgetBar budget={budget} selected={total} />
+        {/* แถว 2: งบ */}
+        <BudgetBar budget={budget} selected={total} slim />
 
+        {/* แถว 3: หมวด */}
         {showPills ? (
           <div
             ref={pillRowRef}
             data-testid="category-pills"
-            className="flex gap-2 overflow-x-auto border-b border-black/5 bg-[#f8fafd] px-4 py-2.5"
+            className="flex gap-2 overflow-x-auto px-4 pb-2.5"
           >
-            {sections.map((s) => (
-              <button
-                key={s.id}
-                ref={(el) => (pillEls.current[s.id] = el)}
-                type="button"
-                onClick={() => jumpTo(s.id)}
-                aria-current={activeCat === s.id ? "true" : undefined}
-                className={[
-                  "h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition",
-                  activeCat === s.id
-                    ? "bg-[#2486ff] text-white shadow-sm"
-                    : "bg-white text-slate-500 ring-1 ring-black/5",
-                ].join(" ")}
-              >
-                {s.name}
-              </button>
-            ))}
+            {sections.map((s) => {
+              const active = activeCat === s.id;
+              const n = qtyBySection.get(s.id);
+              return (
+                <button
+                  key={s.id}
+                  ref={(el) => (pillEls.current[s.id] = el)}
+                  type="button"
+                  onClick={() => jumpTo(s.id)}
+                  aria-current={active ? "true" : undefined}
+                  className={[
+                    "h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition",
+                    active
+                      ? "bg-[color:var(--blue)] text-white"
+                      : "border border-[color:var(--gray-light)] bg-white text-[color:var(--gray)]",
+                  ].join(" ")}
+                >
+                  {s.name}
+                  {n ? (
+                    // บนปุ่ม active (พื้นน้ำเงิน) ใช้ตัวขาว ไม่งั้นมองไม่เห็น
+                    <span className={`font-bold ${active ? "text-white" : "text-[color:var(--blue)]"}`}>
+                      {` · ${n}`}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -556,6 +589,27 @@ export default function MenuClient({
           <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
             มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
           </p>
+        ) : null}
+
+        {/* ไปสั่งที่ร้านเอง — อยู่บนสุด ซ่อนเมื่อมีของในตะกร้า */}
+        {cartLines.length === 0 ? (
+          <button
+            type="button"
+            data-testid="at-shop-card"
+            onClick={() => {
+              setSubmitError("");
+              setNoOrderOpen(true);
+            }}
+            className="mt-3 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[color:var(--gray-light)] bg-white px-4 py-3 text-left transition active:scale-[0.99]"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-[color:var(--navy)]">ยังไม่เลือกเมนูตอนนี้</p>
+              <p className="mt-0.5 text-[13px] text-[color:var(--gray)]">
+                รับคูปอง {budget} บาท แล้วไปสั่งที่ร้านเอง
+              </p>
+            </div>
+            <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-[color:var(--gray)]" />
+          </button>
         ) : null}
 
         <div ref={listRef} className="flex flex-col gap-2">
@@ -569,7 +623,7 @@ export default function MenuClient({
               style={{ scrollMarginTop: stickyH }}
             >
               {s.name ? (
-                <h2 className="mb-2.5 text-[16px] font-semibold text-[#0d1b2a]">
+                <h2 className="mb-2.5 text-[16px] font-semibold text-[color:var(--navy)]">
                   {s.name}
                 </h2>
               ) : null}
@@ -578,8 +632,10 @@ export default function MenuClient({
                   <MenuRow
                     key={`${s.id}-${m.id}`}
                     m={m}
+                    qty={qtyByMenu.get(String(m.id)) || 0}
                     locked={conflict}
-                    onAdd={quickAdd}
+                    onInc={inc}
+                    onDec={dec}
                     onOpen={goDetail}
                   />
                 ))}
@@ -589,38 +645,30 @@ export default function MenuClient({
         </div>
 
         {sections.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-slate-400">
+          <p className="py-6 text-center text-[13px] text-[color:var(--gray)]">
             ยังไม่มีเมนู
           </p>
         ) : null}
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubmitError("");
-            setNoOrderOpen(true);
-          }}
-          className="mt-6 h-11 w-full shrink-0 rounded-xl border border-[#2486ff]/40 bg-white text-[14px] font-medium text-[#005cff] transition active:scale-[0.99]"
-        >
-          ไม่เลือกอาหารตอนนี้ (ไปสั่งที่ร้านเอง)
-        </button>
 
         {/* ที่ว่างท้ายหน้าให้ section สุดท้ายเลื่อนขึ้นถึงแถบหมวด */}
         <div ref={spacerRef} aria-hidden="true" className="shrink-0" style={{ height: spacerH }} />
       </div>
 
       {count > 0 && !conflict ? (
-        <StickyBottom className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[13px] text-slate-500">ตะกร้า {count} รายการ</p>
-            <p className="text-[16px] font-bold text-[#0d1b2a]">{total} บาท</p>
-          </div>
+        <StickyBottom>
           <button
             type="button"
-            onClick={() => router.push(`/lunch/${token}/summary`)}
-            className="h-11 rounded-xl bg-[#2486ff] px-6 text-[15px] font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:scale-[0.98]"
+            onClick={goCart}
+            data-testid="view-cart"
+            className="flex h-[54px] w-full items-center justify-between rounded-[14px] bg-[color:var(--navy)] px-4 text-[color:var(--bg)] shadow-sm transition active:scale-[0.99]"
           >
-            ดูสรุป
+            <span className="flex items-center gap-2.5">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[color:var(--lime)] px-1.5 text-[13px] font-bold tabular-nums text-[color:var(--navy)]">
+                {count}
+              </span>
+              <span className="text-[16px] font-semibold">ดูตะกร้า</span>
+            </span>
+            <span className="text-[16px] font-bold tabular-nums">{total} บาท</span>
           </button>
         </StickyBottom>
       ) : null}
@@ -634,11 +682,14 @@ export default function MenuClient({
         />
       ) : null}
 
-      {pickOpen ? (
-        <PickShopSheet
-          others={others}
-          onPick={requestSwitch}
-          onCancel={() => setPickOpen(false)}
+      {sheetOpen ? (
+        <ChangeShopSheet
+          shops={shops}
+          currentId={restaurant.id}
+          currentName={cartShop.name}
+          cartCount={cartQty}
+          onPick={pickFromSheet}
+          onClose={closeSheet}
         />
       ) : null}
 

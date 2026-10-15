@@ -83,6 +83,7 @@ export default async function RestaurantMenuPage({ params }) {
         token={token}
         restaurant={restaurant}
         others={(session.restaurants || []).filter((r) => r.id !== restaurantId)}
+        shops={session.restaurants || []}
         budget={session.budget}
         windowInfo={session.window}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
