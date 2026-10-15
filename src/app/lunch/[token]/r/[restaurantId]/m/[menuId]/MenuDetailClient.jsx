@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, ImageOff } from "lucide-react";
+import { ChevronLeft, Check, ImageOff } from "lucide-react";
 
 import {
   readCart,
@@ -273,7 +273,7 @@ export default function MenuDetailClient({
 
   return (
     <>
-      <div className="sticky top-0 z-10">
+      <div className="sticky top-0 z-20">
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -288,20 +288,27 @@ export default function MenuDetailClient({
             deadlineLabel={deadlineLabel}
           />
         ) : null}
-        <BudgetBar budget={budget} selected={cartTotal} />
+        {/* ปุ่มกลับอยู่ในแถบงบ (sticky) — ไม่ลอยทับรูป จึงไม่เลื่อนไปทับแถบงบ */}
+        <BudgetBar
+          budget={budget}
+          selected={cartTotal}
+          leading={
+            <button
+              type="button"
+              onClick={() => router.replace(backHref)}
+              aria-label="กลับไปรายการเมนู"
+              className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-[#0d1b2a] pl-2.5 pr-3.5 text-[15px] font-semibold text-white transition active:scale-[0.97]"
+            >
+              <ChevronLeft aria-hidden="true" className="h-5 w-5" strokeWidth={2.4} />
+              กลับ
+            </button>
+          }
+        />
       </div>
 
       <div className="flex-1 pb-6">
         <div className="relative">
           <MenuHero src={menu.image} alt={menu.name} />
-          <button
-            type="button"
-            onClick={() => router.replace(backHref)}
-            aria-label="ย้อนกลับ"
-            className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-[#0d1b2a] shadow-sm backdrop-blur"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
         </div>
 
         <div className="flex flex-col gap-5 px-4 py-4">

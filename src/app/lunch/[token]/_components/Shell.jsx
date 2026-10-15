@@ -14,11 +14,14 @@ export const LOGO = "/signature_logo_9expert2026_01-ninebule.png";
 export const LOGO_W = 900;
 export const LOGO_H = 295;
 
-export function Shell({ children }) {
+// app = เปลือกสูงเท่าจอพอดี ไม่ให้ตัวเอกสารเลื่อน (หน้าเมนู: เลื่อนเฉพาะรายการข้างใน)
+export function Shell({ children, app = false }) {
   return (
-    <div className="flex min-h-dvh flex-col bg-[#f8fafd] text-[#0d1b2a]">
+    <div
+      className={`flex flex-col bg-[#f8fafd] text-[#0d1b2a] ${app ? "lunch-app-shell h-dvh overflow-hidden" : "min-h-dvh"}`}
+    >
       <div
-        className="mx-auto flex w-full max-w-[480px] flex-1 flex-col"
+        className={`mx-auto flex w-full max-w-[480px] flex-1 flex-col ${app ? "min-h-0" : ""}`}
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
         {children}

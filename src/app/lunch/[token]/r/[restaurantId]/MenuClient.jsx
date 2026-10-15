@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Minus, ChevronLeft, ChevronRight, ImageOff } from "lucide-react";
 
@@ -149,13 +149,15 @@ function buildSections(categories, menus) {
   return sections;
 }
 
-// ตัวเอกสารเป็นตัวเลื่อน (ไม่มีกล่องเลื่อนซ้อนแล้ว) -> ตำแหน่งทั้งหมดวัดเทียบ window
-const docTop = (el) => el.getBoundingClientRect().top + window.scrollY;
-
 /* ---------------- page ---------------- */
 
+/**
+ * app shell สูงเท่าจอ: [หัว flex-none] [รายการ — ตัวเลื่อนเดียวของหน้า] [แถบตะกร้า flex-none]
+ * scroll-spy / กดหมวด / จำตำแหน่ง ใช้กล่องรายการ (scrollRef) ไม่ใช่ window
+ */
 export default function MenuClient({
   token,
+  testTimes = "",
   restaurant,
   others,
   shops,
@@ -240,71 +242,36 @@ export default function MenuClient({
     return map;
   }, [sections, qtyByMenu]);
 
-  /* ---- scroll-spy ---- */
+  /* ---- scroll-spy (กล่องรายการเป็นตัวเลื่อนตัวเดียว) ---- */
 
-  const stickyRef = useRef(null);
-  const pillRowRef = useRef(null);
-  const listRef = useRef(null);
-  const spacerRef = useRef(null);
+  const scrollRef = useRef(null);
   const sectionEls = useRef({});
   const pillEls = useRef({});
   // ระหว่างเลื่อนเพราะกดหมวด -> ไม่ให้ spy เปลี่ยนหมวดตามทางที่เลื่อนผ่าน
   const jumping = useRef(false);
   const jumpTimer = useRef(null);
 
-  // ความสูงของกองแถบบนที่ sticky (แถบร้าน + แถบเตือน + งบ + หมวด) วัดจริง ไม่เดา
-  const [stickyH, setStickyH] = useState(0);
-  const [spacerH, setSpacerH] = useState(0);
-
   // หมวดที่ไม่อยู่แล้ว (เมนูเปลี่ยน) -> กลับไปหมวดแรก
   useEffect(() => {
     if (!sections.some((s) => s.id === activeCat)) setActiveCat(sections[0]?.id || "");
   }, [sections, activeCat]);
 
-  // ช่องว่างท้ายหน้า: ให้ section สุดท้ายเลื่อนขึ้นไปชนแถบหมวดได้ (หมวดสุดท้ายจึง active ได้)
-  const measure = useCallback(() => {
-    const sticky = stickyRef.current;
-    const list = listRef.current;
-    const spacer = spacerRef.current;
-    if (!sticky || !list || !spacer) return;
-
-    const h = sticky.offsetHeight;
-    setStickyH(h);
-
-    const last = list.lastElementChild;
-    if (!last) {
-      setSpacerH(0);
-      return;
-    }
-    const lastTop = docTop(last);
-    const spacerTop = docTop(spacer);
-    const wrapperBottom = spacer.parentElement.getBoundingClientRect().bottom + window.scrollY;
-    // ของที่อยู่ต่อจากเนื้อหา (แถบตะกร้าล่าง ฯลฯ) ก็นับเป็นที่เลื่อนได้
-    const after = document.documentElement.scrollHeight - wrapperBottom;
-    const need = window.innerHeight - h - (spacerTop - lastTop) - after;
-    setSpacerH(Math.max(0, Math.ceil(need)));
-  }, []);
-
   // ตำแหน่งที่จะคืนตอนกลับจากหน้ารายละเอียด (อ่านครั้งเดียว — StrictMode รัน effect ซ้ำ)
   const restoreTop = useRef(undefined);
 
   useEffect(() => {
-    measure();
-    const ro = new ResizeObserver(() => measure());
-    [stickyRef.current, listRef.current].forEach((el) => el && ro.observe(el));
-    window.addEventListener("resize", measure);
-
     if (restoreTop.current === undefined) {
       restoreTop.current = takeMenuScroll(token, restaurant.id);
     }
-    // รอให้ช่องว่างท้ายหน้าถูกวัดก่อน ไม่งั้นตำแหน่งล่าง ๆ จะโดนตัด
+    // รอให้รายการวาดครบก่อน ไม่งั้นตำแหน่งล่าง ๆ จะโดนตัด
     let raf = 0;
     let tries = 0;
     function restore() {
       raf = 0;
+      const scroller = scrollRef.current;
       const top = restoreTop.current;
-      if (!top) return;
-      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (!scroller || !top) return;
+      const max = scroller.scrollHeight - scroller.clientHeight;
       if (max < top && tries++ < 30) {
         raf = requestAnimationFrame(restore);
         return;
@@ -312,35 +279,34 @@ export default function MenuClient({
       restoreTop.current = 0;
       jumping.current = false;
       // กระโดดทันที ไม่ smooth -> spy เห็นแค่ตำแหน่งปลายทาง
-      window.scrollTo(0, top);
+      scroller.scrollTop = top;
     }
     raf = requestAnimationFrame(restore);
-
     return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
       if (raf) cancelAnimationFrame(raf);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measure]);
+  }, []);
 
-  // แถบตะกร้าล่างโผล่/หาย เปลี่ยนความสูงที่เลื่อนได้
+  // เลื่อนอยู่ -> หมวดของ section ที่อยู่บนสุดของกล่องรายการเป็นหมวด active
+  // เลื่อนถึงท้ายแล้ว (±2px) -> หมวดสุดท้าย แม้หัวข้อจะขึ้นไปไม่ถึงบนสุด (ไม่มีช่องว่างเผื่อท้ายแล้ว)
   useEffect(() => {
-    measure();
-  }, [measure, count, conflict, removedNotice]);
-
-  // เลื่อนอยู่ -> หมวดของ section ที่อยู่บนสุด (ใต้แถบ sticky) เป็นหมวด active
-  useEffect(() => {
-    if (!showPills) return;
+    const scroller = scrollRef.current;
+    if (!scroller || !showPills) return;
     let raf = 0;
 
     function spy() {
       raf = 0;
-      const line = stickyRef.current.getBoundingClientRect().bottom + 8;
+      const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
       let current = sections[0]?.id;
-      for (const s of sections) {
-        const el = sectionEls.current[s.id];
-        if (el && el.getBoundingClientRect().top <= line) current = s.id;
+      if (atEnd && scroller.scrollTop > 0) {
+        current = sections[sections.length - 1]?.id;
+      } else {
+        const line = scroller.getBoundingClientRect().top + 8;
+        for (const s of sections) {
+          const el = sectionEls.current[s.id];
+          if (el && el.getBoundingClientRect().top <= line) current = s.id;
+        }
       }
       if (current) setActiveCat(current);
     }
@@ -360,45 +326,46 @@ export default function MenuClient({
       jumping.current = false;
     }
 
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("touchstart", onUser, { passive: true });
-    window.addEventListener("wheel", onUser, { passive: true });
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("touchstart", onUser, { passive: true });
+    scroller.addEventListener("wheel", onUser, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("touchstart", onUser);
-      window.removeEventListener("wheel", onUser);
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("touchstart", onUser);
+      scroller.removeEventListener("wheel", onUser);
       if (raf) cancelAnimationFrame(raf);
     };
   }, [sections, showPills]);
 
   useEffect(() => () => clearTimeout(jumpTimer.current), []);
 
-  // หมวด active เปลี่ยน -> เลื่อนแถบหมวดแนวนอนให้เห็นปุ่มนั้น (กลางแถบ)
+  // หมวด active เปลี่ยน -> เลื่อนปุ่มนั้นเข้ามาในแถบหมวด (เลื่อนแค่แถบหมวด ไม่ใช่ทั้งหน้า)
   useEffect(() => {
-    const row = pillRowRef.current;
-    const pill = pillEls.current[activeCat];
-    if (!row || !pill) return;
-    const r = row.getBoundingClientRect();
-    const p = pill.getBoundingClientRect();
-    const delta = p.left - r.left - (r.width - p.width) / 2;
-    if (Math.abs(delta) > 1) row.scrollBy({ left: delta, behavior: "smooth" });
+    pillEls.current[activeCat]?.scrollIntoView({
+      inline: "nearest",
+      block: "nearest",
+      behavior: "smooth",
+    });
   }, [activeCat]);
 
   function jumpTo(id) {
+    const scroller = scrollRef.current;
     const el = sectionEls.current[id];
     setActiveCat(id);
-    if (!el) return;
+    if (!scroller || !el) return;
     jumping.current = true;
     clearTimeout(jumpTimer.current);
     // เผื่อไม่มี scroll event เลย (อยู่ตำแหน่งนั้นอยู่แล้ว)
     jumpTimer.current = setTimeout(() => (jumping.current = false), 150);
-    const top = docTop(el) - stickyRef.current.offsetHeight;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    const top =
+      el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    // ปลายรายการ: เลื่อนได้แค่ถึงท้าย ก็หยุดตรงนั้น
+    scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   }
 
   function goDetail(m) {
     // กลับจากหน้ารายละเอียดแล้วอยู่ตำแหน่งเดิม
-    saveMenuScroll(token, restaurant.id, window.scrollY);
+    saveMenuScroll(token, restaurant.id, scrollRef.current?.scrollTop);
     router.push(`/lunch/${token}/r/${restaurant.id}/m/${m.id}`);
   }
 
@@ -496,7 +463,8 @@ export default function MenuClient({
 
   return (
     <>
-      <div ref={stickyRef} className="sticky top-0 z-10 border-b border-black/[.08] bg-white">
+      {/* หัว: ไม่เลื่อนตามรายการ */}
+      <div className="z-10 flex-none border-b border-black/[.08] bg-white">
         {conflict ? (
           <CartConflictBanner
             count={cartQty}
@@ -548,114 +516,126 @@ export default function MenuClient({
 
         {/* แถว 3: หมวด */}
         {showPills ? (
-          <div
-            ref={pillRowRef}
-            data-testid="category-pills"
-            className="flex gap-2 overflow-x-auto px-4 pb-2.5"
-          >
-            {sections.map((s) => {
-              const active = activeCat === s.id;
-              const n = qtyBySection.get(s.id);
-              return (
-                <button
-                  key={s.id}
-                  ref={(el) => (pillEls.current[s.id] = el)}
-                  type="button"
-                  onClick={() => jumpTo(s.id)}
-                  aria-current={active ? "true" : undefined}
-                  className={[
-                    "h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition",
-                    active
-                      ? "bg-[color:var(--blue)] text-white"
-                      : "border border-[color:var(--gray-light)] bg-white text-[color:var(--gray)]",
-                  ].join(" ")}
-                >
-                  {s.name}
-                  {n ? (
-                    // บนปุ่ม active (พื้นน้ำเงิน) ใช้ตัวขาว ไม่งั้นมองไม่เห็น
-                    <span className={`font-bold ${active ? "text-white" : "text-[color:var(--blue)]"}`}>
-                      {` · ${n}`}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+          // กล่องเลื่อนแนวนอนชิดขอบจอ (ไม่มี padding) — ระยะ 16px หัว/ท้ายอยู่ที่แถวด้านใน
+          <div data-testid="category-pills" className="lunch-no-scrollbar overflow-x-auto pb-2.5">
+            <div className="flex w-max gap-2 px-4">
+              {sections.map((s) => {
+                const active = activeCat === s.id;
+                const n = qtyBySection.get(s.id);
+                return (
+                  <button
+                    key={s.id}
+                    ref={(el) => (pillEls.current[s.id] = el)}
+                    type="button"
+                    onClick={() => jumpTo(s.id)}
+                    aria-current={active ? "true" : undefined}
+                    className={[
+                      "h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition",
+                      active
+                        ? "bg-[color:var(--blue)] text-white"
+                        : "border border-[color:var(--gray-light)] bg-white text-[color:var(--gray)]",
+                    ].join(" ")}
+                  >
+                    {s.name}
+                    {n ? (
+                      // บนปุ่ม active (พื้นน้ำเงิน) ใช้ตัวขาว ไม่งั้นมองไม่เห็น
+                      <span className={`font-bold ${active ? "text-white" : "text-[color:var(--blue)]"}`}>
+                        {` · ${n}`}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col px-4 pb-6 pt-1">
-        {removedNotice > 0 ? (
-          <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
-            มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
-          </p>
-        ) : null}
+      {/* รายการ: ตัวเลื่อนแนวตั้งตัวเดียวของหน้า */}
+      <div
+        ref={scrollRef}
+        data-testid="menu-scroll"
+        className="min-h-0 flex-auto overflow-y-auto overscroll-contain"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        <div className="flex flex-col px-4 pb-6 pt-1">
+          {removedNotice > 0 ? (
+            <p className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
+              มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
+            </p>
+          ) : null}
 
-        {/* ไปสั่งที่ร้านเอง — อยู่บนสุด ซ่อนเมื่อมีของในตะกร้า */}
-        {cartLines.length === 0 ? (
-          <button
-            type="button"
-            data-testid="at-shop-card"
-            onClick={() => {
-              setSubmitError("");
-              setNoOrderOpen(true);
-            }}
-            className="mt-3 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[color:var(--gray-light)] bg-white px-4 py-3 text-left transition active:scale-[0.99]"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold text-[color:var(--navy)]">ยังไม่เลือกเมนูตอนนี้</p>
-              <p className="mt-0.5 text-[13px] text-[color:var(--gray)]">
-                รับคูปอง {budget} บาท แล้วไปสั่งที่ร้านเอง
-              </p>
-            </div>
-            <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-[color:var(--gray)]" />
-          </button>
-        ) : null}
-
-        <div ref={listRef} className="flex flex-col gap-2">
-          {sections.map((s) => (
-            <section
-              key={s.id}
-              ref={(el) => (sectionEls.current[s.id] = el)}
-              data-testid="menu-section"
-              aria-label={s.name || undefined}
-              className="pt-3"
-              style={{ scrollMarginTop: stickyH }}
+          {/* ไปสั่งที่ร้านเอง — อยู่บนสุด ซ่อนเมื่อมีของในตะกร้า */}
+          {cartLines.length === 0 ? (
+            <button
+              type="button"
+              data-testid="at-shop-card"
+              onClick={() => {
+                setSubmitError("");
+                setNoOrderOpen(true);
+              }}
+              className="mt-3 flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-[color:var(--gray-light)] bg-white px-4 py-3 text-left transition active:scale-[0.99]"
             >
-              {s.name ? (
-                <h2 className="mb-2.5 text-[16px] font-semibold text-[color:var(--navy)]">
-                  {s.name}
-                </h2>
-              ) : null}
-              <div className="flex flex-col gap-2.5">
-                {s.items.map((m) => (
-                  <MenuRow
-                    key={`${s.id}-${m.id}`}
-                    m={m}
-                    qty={qtyByMenu.get(String(m.id)) || 0}
-                    locked={conflict}
-                    onInc={inc}
-                    onDec={dec}
-                    onOpen={goDetail}
-                  />
-                ))}
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold text-[color:var(--navy)]">ยังไม่เลือกเมนูตอนนี้</p>
+                <p className="mt-0.5 text-[13px] text-[color:var(--gray)]">
+                  รับคูปอง {budget} บาท แล้วไปสั่งที่ร้านเอง
+                </p>
               </div>
-            </section>
-          ))}
-        </div>
+              <ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-[color:var(--gray)]" />
+            </button>
+          ) : null}
 
-        {sections.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-[color:var(--gray)]">
-            ยังไม่มีเมนู
+          <div className="flex flex-col gap-2">
+            {sections.map((s) => (
+              <section
+                key={s.id}
+                ref={(el) => (sectionEls.current[s.id] = el)}
+                data-testid="menu-section"
+                aria-label={s.name || undefined}
+                className="pt-3"
+              >
+                {s.name ? (
+                  <h2 className="mb-2.5 text-[16px] font-semibold text-[color:var(--navy)]">
+                    {s.name}
+                  </h2>
+                ) : null}
+                <div className="flex flex-col gap-2.5">
+                  {s.items.map((m) => (
+                    <MenuRow
+                      key={`${s.id}-${m.id}`}
+                      m={m}
+                      qty={qtyByMenu.get(String(m.id)) || 0}
+                      locked={conflict}
+                      onInc={inc}
+                      onDec={dec}
+                      onOpen={goDetail}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          {sections.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-[color:var(--gray)]">
+              ยังไม่มีเมนู
+            </p>
+          ) : null}
+        </div>
+        {/* TEST TIMES อยู่ท้ายรายการ (layout ซ่อนบรรทัดของตัวเองบนหน้านี้) */}
+        {testTimes ? (
+          <p
+            data-testid="lunch-test-times"
+            className="pb-1 text-center font-mono text-[10px] text-slate-400"
+          >
+            {testTimes}
           </p>
         ) : null}
-
-        {/* ที่ว่างท้ายหน้าให้ section สุดท้ายเลื่อนขึ้นถึงแถบหมวด */}
-        <div ref={spacerRef} aria-hidden="true" className="shrink-0" style={{ height: spacerH }} />
       </div>
 
       {count > 0 && !conflict ? (
-        <StickyBottom>
+        <StickyBottom className="flex-none">
           <button
             type="button"
             onClick={goCart}

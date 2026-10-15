@@ -22,3 +22,41 @@ body:has(.lunch-root) {
   height: auto;
   overflow: visible;
 }
+
+/* แถบเลื่อนแนวนอน (แถบหมวด) — เลื่อนได้แต่ไม่โชว์ scrollbar */
+.lunch-no-scrollbar {
+  scrollbar-width: none;
+}
+.lunch-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* หน้าเมนูเป็น app shell สูงเท่าจอ -> บรรทัด TEST TIMES ของ layout ย้ายไปอยู่ท้ายรายการแทน */
+.lunch-root:has(.lunch-app-shell) .lunch-test-times {
+  display: none;
+}
+
+/* แนวตั้งเท่านั้น: มือถือแนวนอน (สูงไม่เกิน 500px — แท็บเล็ต/เดสก์ท็อปไม่โดน)
+ * ซ่อนด้วย CSS ล้วน ไม่ unmount -> หมุนกลับแล้วตะกร้า/ช่องกรอก/ตำแหน่งเลื่อน/ชีตที่เปิดอยู่ยังอยู่ครบ
+ * visibility:hidden = ซ่อนจาก screen reader และกดไม่ได้ แต่ยังคง layout ไว้ */
+.lunch-rotate {
+  display: none;
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .lunch-rotate {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    background: var(--navy);
+  }
+  .lunch-page {
+    visibility: hidden;
+  }
+}

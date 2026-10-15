@@ -14,6 +14,7 @@ import {
 } from "@/lib/lunchGuards.server";
 import { getDaySet } from "@/lib/couponAvailability.server";
 import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
+import { lunchTestTimesLabel } from "@/lib/lunchConfig";
 
 import { Shell, NoticeScreen } from "../../_components/Shell";
 import GateNotice from "../../_components/GateNotice";
@@ -78,8 +79,9 @@ export default async function RestaurantMenuPage({ params }) {
   const { categories, menus } = await loadRestaurantMenu({ daySet, restaurantId });
 
   return (
-    <Shell>
+    <Shell app>
       <MenuClient
+        testTimes={lunchTestTimesLabel()}
         token={token}
         restaurant={restaurant}
         others={(session.restaurants || []).filter((r) => r.id !== restaurantId)}

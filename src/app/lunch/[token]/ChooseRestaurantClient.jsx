@@ -41,8 +41,11 @@ function HeroBand({ className = "", children }) {
 function NicknameStep({ value, onChange, onSubmit }) {
   const v = value.trim();
   const valid = isValidNickname(v);
-  // ปุ่มกดไม่ได้จนกว่าจะถูกต้อง -> บอกข้อผิดพลาดทันทีที่พิมพ์ผิด
-  const error = v.length > 0 && !valid;
+  const [touched, setTouched] = useState(false);
+  // ขึ้นข้อผิดพลาดเมื่อออกจากช่องแล้วครั้งหนึ่ง หรือทันทีที่พิมพ์ตัวที่ไม่ใช่ภาษาอังกฤษ/เว้นวรรค
+  // (ปุ่มยังกดไม่ได้จนกว่าจะถูกต้องเหมือนเดิม)
+  const badChar = /[^A-Za-z ]/.test(value);
+  const error = badChar || (touched && v.length > 0 && !valid);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -72,6 +75,7 @@ function NicknameStep({ value, onChange, onSubmit }) {
           value={value}
           maxLength={NICKNAME_MAX}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={() => setTouched(true)}
           placeholder="เช่น Bas"
           autoComplete="nickname"
           aria-invalid={error || undefined}
