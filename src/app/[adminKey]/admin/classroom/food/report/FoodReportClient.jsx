@@ -12,6 +12,7 @@ import ShopSummary from "./_components/ShopSummary";
 import TopMenus from "./_components/TopMenus";
 import ReportFilters from "./_components/ReportFilters";
 import ReportTable from "./_components/ReportTable";
+import ClassGroupedTable, { groupRowsByClass } from "./_components/ClassGroupedTable";
 import ReportPagination from "./_components/ReportPagination";
 import SelectionBar from "./_components/SelectionBar";
 import GroupSections from "./_components/GroupSections";
@@ -239,6 +240,11 @@ export default function FoodReportClient({ todayYMD }) {
   const pageStart = (page - 1) * params.size;
   const pageRows = listRows.slice(pageStart, pageStart + params.size);
 
+  // r2d: "รายละเอียดรายการ" แยกการ์ดตาม Class — จัดกลุ่มหลังกรอง, เรียงตาม Class เฉพาะตอนแสดง
+  // (listRows เองไม่เปลี่ยนลำดับ -> export / พิมพ์ ยังได้ลำดับเดิม)
+  const classGroups = useMemo(() => groupRowsByClass(listRows), [listRows]);
+  const classOrderedRows = useMemo(() => classGroups.flatMap((g) => g.rows), [classGroups]);
+
   const selectedRows = useMemo(
     () => allRows.filter((o) => selectedIds.has(rowId(o))),
     [allRows, selectedIds],
@@ -377,12 +383,38 @@ export default function FoodReportClient({ todayYMD }) {
         )}
       </div>
       <ReportFilters params={params} setParams={setParams} classOptions={classOptions} />
-      <ReportTable
-        rows={overview ? listRows.slice(0, params.size) : pageRows}
-        startIndex={overview ? 0 : pageStart}
-        empty={listEmpty}
-        {...tableProps}
-      />
+      {(() => {
+        // แถวของหน้านี้ = ช่วงเดียวกับเดิม แต่ตัดจากลำดับตาม Class แล้วแบ่งเป็นการ์ด
+        const shown = overview
+          ? classOrderedRows.slice(0, params.size)
+          : classOrderedRows.slice(pageStart, pageStart + params.size);
+        if (!shown.length) return <ReportTable rows={[]} empty={listEmpty} {...tableProps} />;
+        const shownIdList = shown.map(rowId);
+        const allOn = shownIdList.every((id) => selectedIds.has(id));
+        const someOn = !allOn && shownIdList.some((id) => selectedIds.has(id));
+        return (
+          <>
+            {/* เลือกทั้งหมดในหน้านี้ (เดิมอยู่หัวตาราง) — หัวการ์ดแต่ละใบเลือกเฉพาะ Class นั้น */}
+            <label className="flex w-fit items-center gap-2 px-1 text-xs text-admin-textMuted">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={allOn}
+                ref={(el) => {
+                  if (el) el.indeterminate = someOn;
+                }}
+                onChange={() => toggleMany(shownIdList, !allOn)}
+              />
+              เลือกทั้งหมดในหน้านี้ ({shown.length})
+            </label>
+            <ClassGroupedTable
+              groups={classGroups}
+              shownIds={new Set(shownIdList)}
+              tableProps={tableProps}
+            />
+          </>
+        );
+      })()}
       {overview ? (
         <div className="text-xs text-admin-textMuted">จากทั้งหมด {listRows.length} รายการ</div>
       ) : (

@@ -27,7 +27,19 @@ const TD = "px-3 py-2.5 align-middle";
  * Detail table (one row per learner per day). Selection lives in the parent so it
  * survives paging / tab switches; the header checkbox toggles the rows shown here.
  */
-export default function ReportTable({ rows, startIndex = 0, selectedIds, onToggle, onToggleMany, onEdit, empty }) {
+// numberOf(o) = เลข "#" ของแถว (การ์ดตาม Class นับใหม่ในการ์ด) — ไม่ส่งมา = startIndex + ลำดับ เหมือนเดิม
+// selectAllLabel = aria-label ของ checkbox หัวตาราง (ค่าเดิม "เลือกทั้งหมดในหน้านี้")
+export default function ReportTable({
+  rows,
+  startIndex = 0,
+  selectedIds,
+  onToggle,
+  onToggleMany,
+  onEdit,
+  empty,
+  numberOf,
+  selectAllLabel = "เลือกทั้งหมดในหน้านี้",
+}) {
   const ids = rows.map(rowId);
   const allChecked = ids.length > 0 && ids.every((id) => selectedIds.has(id));
   const someChecked = !allChecked && ids.some((id) => selectedIds.has(id));
@@ -40,7 +52,7 @@ export default function ReportTable({ rows, startIndex = 0, selectedIds, onToggl
             <th className={`${TH} w-10`}>
               <input
                 type="checkbox"
-                aria-label="เลือกทั้งหมดในหน้านี้"
+                aria-label={selectAllLabel}
                 className="h-4 w-4"
                 checked={allChecked}
                 ref={(el) => {
@@ -90,7 +102,9 @@ export default function ReportTable({ rows, startIndex = 0, selectedIds, onToggl
                     onChange={() => onToggle(id)}
                   />
                 </td>
-                <td className={`${TD} text-admin-textMuted`}>{startIndex + idx + 1}</td>
+                <td className={`${TD} text-admin-textMuted`}>
+                  {numberOf ? numberOf(o) : startIndex + idx + 1}
+                </td>
                 <td className={`${TD} whitespace-nowrap`}>{formatDateDMY(o.dayYMD)}</td>
                 <td className={`${TD} max-w-[200px]`}>
                   <div className="truncate font-medium text-admin-text" title={o.studentName}>
