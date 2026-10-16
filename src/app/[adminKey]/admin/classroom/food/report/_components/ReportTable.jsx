@@ -9,10 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusPill, TypeBadge } from "./ReportBits";
+import ItemsCell from "./ItemsCell";
 import {
   FLAG_INFO,
   formatDateDMY,
-  itemsText,
   rowId,
   shopText,
   statusKeyOf,
@@ -21,7 +21,8 @@ import {
 } from "./reportUi";
 
 const TH = "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-medium text-admin-textMuted";
-const TD = "px-3 py-2.5 align-middle";
+// ชิดบน: ช่องรายการอาหารเรียงซ้อนสูงได้หลายบรรทัด (r2e) — ชิดกลางแล้วแถวดูเหลื่อม
+const TD = "px-3 py-2.5 align-top";
 
 /**
  * Detail table (one row per learner per day). Selection lives in the parent so it
@@ -84,11 +85,6 @@ export default function ReportTable({
           )}
           {rows.map((o, idx) => {
             const id = rowId(o);
-            const items = itemsText(o);
-            const note = String(o.note ?? o.food?.note ?? "").trim();
-            const itemsFull = [items === "-" ? "" : items, note ? `หมายเหตุ: ${note}` : ""]
-              .filter(Boolean)
-              .join(" · ");
             const flags = Array.isArray(o.flags) ? o.flags : [];
             const shop = shopText(o);
             return (
@@ -143,9 +139,8 @@ export default function ReportTable({
                 </td>
                 <td className={`${TD} whitespace-nowrap`}>{statusTimeOf(o) || "-"}</td>
                 <td className={`${TD} min-w-[200px] max-w-[320px]`}>
-                  <div className="line-clamp-2" title={itemsFull || undefined}>
-                    {itemsFull || "-"}
-                  </div>
+                  {/* เรียงซ้อน: รายการ / ตัวเลือกต่อกลุ่ม / หมายเหตุของแต่ละรายการ, หมายเหตุของแถวท้ายสุด */}
+                  <ItemsCell row={o} />
                 </td>
                 <td className={`${TD} text-center`}>
                   <DropdownMenu>
