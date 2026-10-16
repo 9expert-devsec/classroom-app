@@ -18,7 +18,6 @@ import {
   PanelLeftOpen,
   Ticket,
   ClipboardList,
-  PackageCheck,
   PenLine,
   KeyRound,
   GraduationCap,
@@ -125,30 +124,11 @@ const NAV = [
         icon: ClipboardList,
         perm: PERM.FOOD_READ,
       },
-      {
-        label: "Counter คูปองอาหาร",
-        href: "/classroom/food/lunch-counter",
-        icon: PackageCheck,
-        perm: PERM.FOOD_READ,
-      },
+      // r3a: "Counter คูปองอาหาร" (/classroom/food/lunch-counter) เลิกใช้ — เอาออกจากเมนู
     ],
   },
 
-  // ✅ แยกเมนู Coupons เป็นเมนูใหม่
-  {
-    label: "Coupons",
-    href: "/classroom/coupons",
-    icon: Ticket,
-    perm: PERM.FOOD_REPORT, // ถ้ามี PERM.COUPONS_READ ในอนาคต แนะนำเปลี่ยนมาใช้อันนั้น
-    children: [
-      {
-        label: "Coupon Tracking",
-        href: "/classroom/coupons",
-        icon: Ticket,
-        perm: PERM.FOOD_REPORT,
-      },
-    ],
-  },
+  // r3a: เมนู "Coupons" > "Coupon Tracking" (/classroom/coupons) เลิกใช้ — เอาออกจากเมนู
 
   {
     label: "Event",
