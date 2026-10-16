@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Camera, CheckCircle2, Clock, Ban, XCircle, ArrowLeft, BarChart3 } from "lucide-react";
 
 import { ShopLogo, LAST_SHOP_KEY } from "../ShopPickerClient";
+import { optionGroupsOf } from "@/lib/lunchOptionGroups";
 
 const AUTO_RETURN_MS = 3000;
 
@@ -75,17 +76,24 @@ function CustomerCard({ c }) {
         {c.mode === "at_shop" ? (
           <p className="mt-2 text-sm text-[#0d1b2a]">Ordering at the shop (no pre-order)</p>
         ) : (
-          <ul className="mt-2 flex flex-col gap-2">
+          // 1 บล็อกต่อ 1 รายการ (เหมือนใบสั่งร้าน): "<qty>× <เมนู>" / "<กลุ่ม>: <ค่า>" / "หมายเหตุ: …"
+          <ul className="mt-2 flex flex-col divide-y divide-black/10">
             {(c.items || []).map((it, i) => (
-              <li key={i} className="text-sm text-[#0d1b2a]">
-                <div className="flex justify-between gap-3">
-                  <span className="font-medium">{it.name}</span>
-                  <span className="shrink-0 text-slate-500">×{it.qty}</span>
-                </div>
-                {it.options?.length ? (
-                  <p className="text-xs text-slate-500">{it.options.join(", ")}</p>
+              <li key={i} className="py-2 text-sm text-[#0d1b2a] first:pt-0 last:pb-0">
+                <p className="font-bold">
+                  {it.qty}× {it.name}
+                </p>
+                {optionGroupsOf(it).map((g, k) => (
+                  <p key={k} className="pl-4 text-[13px] text-[#0d1b2a]">
+                    {g.group ? <span className="text-slate-500">{g.group}: </span> : null}
+                    {g.values.join(", ")}
+                  </p>
+                ))}
+                {it.note ? (
+                  <p className="pl-4 text-[13px] text-[#0d1b2a]">
+                    <span className="font-bold">หมายเหตุ:</span> {it.note}
+                  </p>
                 ) : null}
-                {it.note ? <p className="text-xs italic text-slate-500">“{it.note}”</p> : null}
               </li>
             ))}
           </ul>

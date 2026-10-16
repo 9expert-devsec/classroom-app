@@ -30,7 +30,7 @@ import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
   "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia " +
-  "lines.name lines.qty lines.options.choiceName lines.note nickname holderName roomName " +
+  "lines.name lines.qty lines.options.choiceName lines.options.groupName lines.note nickname holderName roomName " +
   "submittedAt createdAt";
 
 function cleanLower(x) {
@@ -102,6 +102,11 @@ function orderLines(order) {
     name: l.name || "",
     qty: Number(l.qty) || 1,
     options: (l.options || []).map((o) => o.choiceName).filter(Boolean),
+    // r2b: เพิ่มชื่อกลุ่มคู่กับค่า (options เดิมคงไว้เหมือนเดิม — export / ตาราง / พิมพ์รายคลาสใช้อยู่)
+    // บรรทัดเก่าที่ไม่มีชื่อกลุ่ม -> groupName ""
+    optionDetails: (l.options || [])
+      .filter((o) => o?.choiceName)
+      .map((o) => ({ groupName: o.groupName || "", choiceName: o.choiceName })),
     note: l.note || "",
   }));
 }

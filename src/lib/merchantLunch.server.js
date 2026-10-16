@@ -72,13 +72,17 @@ function customerOf(order) {
       name: l.name || "",
       qty: l.qty || 0,
       options: (l.options || []).map((o) => o.choiceName).filter(Boolean),
+      // r2b: เพิ่มชื่อกลุ่มคู่กับค่า (options เดิมคงไว้) — บรรทัดเก่าที่ไม่มีชื่อกลุ่ม -> groupName ""
+      optionDetails: (l.options || [])
+        .filter((o) => o?.choiceName)
+        .map((o) => ({ groupName: o.groupName || "", choiceName: o.choiceName })),
       note: l.note || "",
     })),
   };
 }
 
 const PROJECTION =
-  "status dayYMD eCouponCode couponCode nickname holderName roomName courseName lines.name lines.qty lines.options.choiceName lines.note redeemedAt";
+  "status dayYMD eCouponCode couponCode nickname holderName roomName courseName lines.name lines.qty lines.options.choiceName lines.options.groupName lines.note redeemedAt";
 
 function baseFilter({ restaurantId, code, dayYMD }) {
   return {

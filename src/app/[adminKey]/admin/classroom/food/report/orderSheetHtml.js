@@ -5,6 +5,8 @@
 //   - ร้าน e-coupon แสดงรหัส 9XP
 //   - นับเฉพาะ ordered / at_shop (cancelled / pending / forfeited ไม่อยู่ใน sheet)
 
+import { optionGroupsOf } from "@/lib/lunchOptionGroups";
+
 export const BRAND_LOGO_PATH = "/signature_logo_9expert2026_01-ninebule.png";
 
 // localStorage: เวลาที่พิมพ์ล่าสุดต่อวัน + ร้าน (เฉพาะเบราว์เซอร์นี้) — shopId = restaurantId หรือ "all"
@@ -46,34 +48,6 @@ export const esc = (s) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-
-/**
- * ตัวเลือกของบรรทัด -> [{ group, values }]
- * ข้อมูลรายงานตอนนี้ส่งมาแค่ "ค่า" (string) ไม่มีชื่อกลุ่ม -> 1 บรรทัดต่อ 1 ค่า (ไม่มีหัวกลุ่ม)
- * ถ้าวันหลังส่งมาเป็น { groupName, choiceName } จะรวมเป็น 1 บรรทัดต่อกลุ่ม "<กลุ่ม>: <ค่า>, <ค่า>" ให้เอง
- */
-function optionGroupsOf(l) {
-  const out = [];
-  const byGroup = new Map();
-  for (const o of Array.isArray(l?.options) ? l.options : []) {
-    if (!o) continue;
-    if (typeof o === "string") {
-      out.push({ group: "", values: [o] });
-      continue;
-    }
-    const value = String(o.choiceName || "").trim();
-    if (!value) continue;
-    const group = String(o.groupName || "").trim();
-    let g = group ? byGroup.get(group) : null;
-    if (!g) {
-      g = { group, values: [] };
-      if (group) byGroup.set(group, g);
-      out.push(g);
-    }
-    g.values.push(value);
-  }
-  return out;
-}
 
 /**
  * 1 บล็อกต่อ 1 บรรทัดที่สั่ง: "<qty>× <เมนู>" (ตัวหนา) แล้วตัวเลือก (ย่อหน้า) แล้ว "หมายเหตุ: …"
