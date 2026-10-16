@@ -188,7 +188,7 @@ function ShopStep({ session, headerLine, nickname, notice, short, finalLabel, on
             data-testid="short-flow-note"
             className="rounded-xl bg-[color:var(--blue-tint)] px-3.5 py-2.5 text-[13px] font-medium text-[color:var(--blue-deep)]"
           >
-            สั่งแบบย่อได้ถึง {finalLabel} น. · รับคูปองแล้วไปสั่งที่ร้าน
+            สั่งแบบย่อได้ถึง {finalLabel} น. · รับคูปองแล้วสั่งที่ร้านเอง
           </p>
         ) : null}
 

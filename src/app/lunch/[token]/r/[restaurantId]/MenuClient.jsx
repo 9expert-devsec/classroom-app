@@ -10,20 +10,17 @@ import {
   addLine,
   reconcile,
   cartTotals,
-  newRequestId,
   switchRestaurant,
   enterRestaurant,
-  clearCartLines,
 } from "@/lib/lunchCart.client";
 import { saveMenuScroll, takeMenuScroll, clearMenuScroll } from "@/lib/lunchScroll.client";
 import { LogoTile, StickyBottom } from "../../_components/Shell";
-import { CartConflictBanner } from "../../_components/SwitchModal";
+import { CartConflictBanner } from "../../_components/CartConflictBanner";
 import ChangeShopSheet, { SwitchConfirmSheet } from "../../_components/ChangeShopSheet";
 import { shopTypeText } from "../../_components/ShopChips";
 import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
 import ShellScroll from "../../_components/ShellScroll";
-import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
 import ItemSheet from "../../_components/ItemSheet";
 
 /* ---------------- menu row ---------------- */
@@ -162,11 +159,8 @@ export default function MenuClient({
 
   const [switchTarget, setSwitchTarget] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [noOrderOpen, setNoOrderOpen] = useState(false);
   // ชีตของเมนูที่อยู่ในตะกร้า ("" = ปิด)
   const [itemSheetId, setItemSheetId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [submitError, setSubmitError] = useState("");
 
   // ตะกร้ามีรายการจากร้านอื่น (มาทางย้อนกลับ / พิมพ์ URL) -> ไม่แตะตะกร้า ถามก่อน
   const [conflict, setConflict] = useState(false);
@@ -440,41 +434,6 @@ export default function MenuClient({
     router.push(`/lunch/${token}/r/${target.id}`);
   }
 
-  async function confirmAtShop() {
-    setBusy(true);
-    setSubmitError("");
-    try {
-      const r = await postAtShop({
-        token,
-        requestId: newRequestId(),
-        nickname: cart.nickname,
-        restaurantId: restaurant.id,
-      });
-
-      // สำเร็จ / replay / สั่งไปแล้ว -> หน้าขอบคุณ
-      if (r.next === "done") {
-        clearCartLines(token, readCart(token));
-        router.replace(`/lunch/${token}?done=1`);
-        return;
-      }
-      if (r.next === "sold_out") {
-        setNoOrderOpen(false);
-        router.replace(`/lunch/${token}?notice=sold_out`);
-        return;
-      }
-      if (r.next === "refresh") {
-        router.refresh();
-        return;
-      }
-      setSubmitError(r.message);
-    } catch (err) {
-      console.error("at_shop submit failed:", err);
-      setSubmitError("เกิดข้อผิดพลาด กรุณาลองใหม่");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const closing = windowInfo?.phase === "closing";
 
   return (
@@ -576,46 +535,46 @@ export default function MenuClient({
             </p>
           ) : null}
 
-          {/* ไปสั่งที่ร้านเอง — อยู่บนสุด ซ่อนเมื่อมีของในตะกร้า */}
-          {cartLines.length === 0 ? (
-            <>
-              {/* ทั้งการ์ดเป็นปุ่มเดียว — "เลือก ›" เป็นแค่ป้ายตกแต่ง */}
-              <button
-                type="button"
-                data-testid="at-shop-card"
-                onClick={() => {
-                  setSubmitError("");
-                  setNoOrderOpen(true);
-                }}
-                className="mt-3 flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--blue)] bg-[color:var(--blue-tint)] px-3.5 py-3 text-left transition active:scale-[0.99]"
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--blue)] text-white"
-                >
-                  <Ticket className="h-[22px] w-[22px]" />
+          {/* สั่งที่ร้านเอง — อยู่บนสุดเสมอ -> หน้าสรุปสั่งที่ร้านเอง (หน้าเดียวกับแบบย่อหลังเส้นตาย)
+              ตะกร้ามีของ: บอกว่าจะถูกล้าง (ล้างจริงหลังยืนยันสำเร็จเท่านั้น) */}
+          {/* ทั้งการ์ดเป็นปุ่มเดียว — "เลือก ›" เป็นแค่ป้ายตกแต่ง */}
+          <button
+            type="button"
+            data-testid="at-shop-card"
+            onClick={() => router.push(`/lunch/${token}/short/${restaurant.id}?from=menu`)}
+            className="mt-3 flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--blue)] bg-[color:var(--blue-tint)] px-3.5 py-3 text-left transition active:scale-[0.99]"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[color:var(--blue)] text-white"
+            >
+              <Ticket className="h-[22px] w-[22px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-bold text-[color:var(--navy)]">สั่งที่ร้านเอง</span>
+              {cartQty > 0 ? (
+                <span className="mt-0.5 block text-[13px] text-[#7a4708]">
+                  รายการที่เลือกไว้ {cartQty} รายการจะถูกล้าง
                 </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-bold text-[color:var(--navy)]">ไปสั่งที่ร้านเอง</span>
-                  <span className="mt-0.5 block text-[13px] text-[color:var(--navy)]">
-                    ไม่ต้องเลือกเมนูตอนนี้ รับคูปอง <b>{budget} บาท</b> ไปใช้ที่ร้าน
-                  </span>
+              ) : (
+                <span className="mt-0.5 block text-[13px] text-[color:var(--navy)]">
+                  ไม่ต้องเลือกเมนูตอนนี้ รับคูปอง <b>{budget} บาท</b> ไปใช้ที่ร้าน
                 </span>
-                <span
-                  aria-hidden="true"
-                  className="flex h-8 shrink-0 items-center rounded-full bg-[color:var(--blue)] px-3 text-[13px] font-bold text-white"
-                >
-                  เลือก ›
-                </span>
-              </button>
+              )}
+            </span>
+            <span
+              aria-hidden="true"
+              className="flex h-8 shrink-0 items-center rounded-full bg-[color:var(--blue)] px-3 text-[13px] font-bold text-white"
+            >
+              เลือก ›
+            </span>
+          </button>
 
-              <div className="mt-4 flex items-center gap-3">
-                <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
-                <span className="text-[13px] text-[color:var(--gray)]">หรือเลือกเมนูล่วงหน้าด้านล่าง</span>
-                <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
-              </div>
-            </>
-          ) : null}
+          <div className="mt-4 flex items-center gap-3">
+            <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
+            <span className="text-[13px] text-[color:var(--gray)]">หรือเลือกเมนูล่วงหน้าด้านล่าง</span>
+            <span aria-hidden="true" className="h-px flex-1 bg-[color:var(--gray-light)]" />
+          </div>
 
           <div className="flex flex-col gap-2">
             {sections.map((s) => (
@@ -704,18 +663,6 @@ export default function MenuClient({
           onEditLine={(line) => editLine(itemSheetMenu, line)}
           onAddMore={() => addMore(itemSheetMenu)}
           onClose={closeItemSheet}
-        />
-      ) : null}
-
-      {noOrderOpen ? (
-        <NoOrderModal
-          restaurant={restaurant}
-          budget={budget}
-          cartCount={cartQty}
-          busy={busy}
-          error={submitError}
-          onCancel={() => setNoOrderOpen(false)}
-          onConfirm={confirmAtShop}
         />
       ) : null}
     </>

@@ -25,7 +25,7 @@ import ShellScroll from "../../../../_components/ShellScroll";
 import BudgetBar from "../../../../_components/BudgetBar";
 import CountdownBanner from "../../../../_components/CountdownBanner";
 import QtyStepper from "../../../../_components/QtyStepper";
-import { CartConflictBanner } from "../../../../_components/SwitchModal";
+import { CartConflictBanner } from "../../../../_components/CartConflictBanner";
 import { SwitchConfirmSheet } from "../../../../_components/ChangeShopSheet";
 
 /* ---------------- option rows ---------------- */

@@ -1,19 +1,9 @@
 "use client";
 
-// src/app/lunch/[token]/_components/SwitchModal.jsx
+// src/app/lunch/[token]/_components/CartConflictBanner.jsx
 //
-// Sheet (กล่องล่างของ NoOrderModal) + แถบ conflict ตะกร้าคนละร้าน
-// การยืนยันเปลี่ยนร้าน/ล้างตะกร้าย้ายไปขั้นยืนยันใน ChangeShopSheet แล้ว (SwitchConfirmSheet)
-
-export function Sheet({ children }) {
-  return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 px-4 pb-4">
-      <div className="w-full max-w-[480px] rounded-2xl bg-white p-5 shadow-xl">
-        {children}
-      </div>
-    </div>
-  );
-}
+// แถบ conflict: ตะกร้ามีรายการจากอีกร้าน (เดิมชื่อ SwitchModal.jsx — กล่องยืนยันเปลี่ยนร้าน
+// ย้ายไป SwitchConfirmSheet ใน ChangeShopSheet แล้ว, Sheet เดิมถูกแทนด้วย SheetFrame)
 
 /**
  * แถบบนสุดเมื่อเข้าหน้าร้านอื่นขณะที่ตะกร้ายังมีรายการจากอีกร้าน

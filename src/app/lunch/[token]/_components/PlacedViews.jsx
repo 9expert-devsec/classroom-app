@@ -57,8 +57,8 @@ export function ThankYouView({ order, dateLabel, token }) {
       {atShop ? (
         <InfoBox testId="at-shop-box">
           {order.isStock
-            ? `ท่านเลือกไปสั่งอาหารที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาทที่ร้าน ${order.restaurantName} · รับคูปองกับเจ้าหน้าที่ที่ Counter`
-            : `ท่านเลือกไปสั่งอาหารที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาท แสดงคูปองนี้ที่ร้าน`}
+            ? `ท่านเลือกสั่งที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาทที่ร้าน ${order.restaurantName} · รับคูปองกับเจ้าหน้าที่ที่ Counter`
+            : `ท่านเลือกสั่งที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาท แสดงคูปองนี้ที่ร้าน`}
         </InfoBox>
       ) : (
         <>
@@ -106,7 +106,7 @@ export function RescanView({ order, dateLabel, token }) {
       </div>
 
       {atShop ? (
-        <InfoBox testId="at-shop-box">ท่านเลือกไปสั่งอาหารที่ร้านเอง</InfoBox>
+        <InfoBox testId="at-shop-box">ท่านเลือกสั่งที่ร้านเอง</InfoBox>
       ) : (
         <>
           <div className="flex flex-col gap-2">
