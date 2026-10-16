@@ -106,40 +106,19 @@ export function sheetRowsForShop(rows, shopId, dateYMD, afterHHMM) {
 
 /**
  * สรุปเมนูที่ต้องเตรียม: 1 แถวต่อเมนู (จำนวนรวม = ผลรวม qty ของบรรทัดที่สั่งผ่านแอป)
- * หมายเหตุ = "ปกติ ×N" (ไม่มีตัวเลือก — เฉพาะเมื่อมีชุดตัวเลือกด้วย) + ชุดตัวเลือกของเมนูนั้น นับตาม qty
+ * ไม่มีคอลัมน์หมายเหตุแล้ว (r2c) — ตัวเลือก/หมายเหตุของแต่ละจานอยู่ในตาราง "รายการสั่ง" ใต้บรรทัดของตัวเอง
  */
 export function menuSummary(orderedRows) {
   const m = new Map();
   for (const r of orderedRows) {
     for (const l of r.lines || []) {
       const name = l?.name || "-";
-      const qty = Number(l.qty) || 1;
-      const opts = Array.isArray(l?.options) ? l.options.filter(Boolean) : [];
-      const x = m.get(name) || { qty: 0, combos: new Map() };
-      x.qty += qty;
-      if (opts.length) {
-        const k = opts.join(", ");
-        x.combos.set(k, (x.combos.get(k) || 0) + qty);
-      }
-      m.set(name, x);
+      m.set(name, (m.get(name) || 0) + (Number(l.qty) || 1));
     }
   }
   return [...m.entries()]
-    .map(([label, x]) => {
-      // "ปกติ ×N" (orders without options) leads only when the menu also has option combos
-      const plain = x.qty - [...x.combos.values()].reduce((n, q) => n + q, 0);
-      const combos = countsNote(x.combos);
-      return { label, qty: x.qty, note: combos && plain > 0 ? `ปกติ ×${plain} · ${combos}` : combos };
-    })
+    .map(([label, qty]) => ({ label, qty }))
     .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
-}
-
-/** Map(label → n) → "a ×2 · b ×1" (มาก → น้อย), "" เมื่อว่าง */
-export function countsNote(map) {
-  return [...map.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "th"))
-    .map(([k, n]) => `${k} ×${n}`)
-    .join(" · ");
 }
 
 const UTENSILS_SVG = `<svg class="sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`;
@@ -293,6 +272,8 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
     items: menuSummary(ordered),
     icon: true,
     emptyText: "ไม่มีรายการที่สั่งผ่านแอป",
+    // 3 คอลัมน์: # · เมนูอาหาร (ได้ความกว้างของหมายเหตุเดิม) · จำนวนรวม
+    showNote: false,
   });
 
   const noCheckin = (r) =>
