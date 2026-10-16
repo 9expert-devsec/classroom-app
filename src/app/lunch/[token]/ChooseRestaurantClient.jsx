@@ -18,6 +18,7 @@ import { LogoTile } from "./_components/Shell";
 import ShellScroll from "./_components/ShellScroll";
 import CountdownBanner from "./_components/CountdownBanner";
 import { SwitchConfirmSheet } from "./_components/ChangeShopSheet";
+import ClearCartSheet, { cartSignature } from "./_components/ClearCartSheet";
 import { ShopTypeChip, BlockedChip, shopBlockedText } from "./_components/ShopChips";
 
 /* ---------------- hero band (navy) ---------------- */
@@ -267,6 +268,8 @@ export default function ChooseRestaurantClient({
   const [draft, setDraft] = useState(null); // null = ยังไม่พิมพ์ ใช้ค่าที่เก็บไว้
   const value = draft ?? nickname;
   const [switchTarget, setSwitchTarget] = useState(null);
+  // r1h: แบบย่อ + ตะกร้ามีของ -> ร้านที่จะไปหลังยืนยันล้างตะกร้า
+  const [clearTarget, setClearTarget] = useState(null);
 
   // เปลี่ยนขั้น (ชื่อเล่น <-> เลือกร้าน) -> กล่องเนื้อหาเริ่มบนสุดใหม่
   const scrollRef = useRef(null);
@@ -293,9 +296,10 @@ export default function ChooseRestaurantClient({
 
   // กติกาเดียวกับทุกหน้า: มีรายการจากร้านอื่น -> ถามก่อนล้าง
   function pick(r) {
-    // แบบย่อไม่มีตะกร้าเมนู — ไม่ต้องถามเรื่องรายการจากร้านอื่น
+    // แบบย่อ (หลังเส้นตาย) = สั่งที่ร้านเอง — ตะกร้ามีของค้าง -> ยืนยันล้างก่อนไปหน้าสรุป (r1h)
     if (short) {
-      router.push(`/lunch/${token}/short/${r.id}`);
+      if ((readCart(token).lines || []).length > 0) setClearTarget(r);
+      else router.push(`/lunch/${token}/short/${r.id}`);
       return;
     }
     const current = readCart(token);
@@ -354,6 +358,20 @@ export default function ChooseRestaurantClient({
           count={cartQty}
           onConfirm={confirmSwitch}
           onClose={() => setSwitchTarget(null)}
+        />
+      ) : null}
+
+      {/* ยืนยันแล้วแค่พาไปหน้าสรุป — ตะกร้ายังอยู่ (ล้างหลังส่งออเดอร์สำเร็จเท่านั้น) */}
+      {clearTarget ? (
+        <ClearCartSheet
+          count={cartQty}
+          cartShopName={cartShopName}
+          onCancel={() => setClearTarget(null)}
+          onConfirm={() =>
+            router.push(
+              `/lunch/${token}/short/${clearTarget.id}?confirmed=${cartSignature(readCart(token))}`,
+            )
+          }
         />
       ) : null}
     </>

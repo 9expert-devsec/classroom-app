@@ -48,6 +48,7 @@ export default async function ShortSummaryPage({ params, searchParams }) {
         windowInfo={session.window}
         deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
         from={String(searchParams?.from || "")}
+        confirmed={String(searchParams?.confirmed || "")}
       />
     </Shell>
   );

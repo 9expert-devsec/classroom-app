@@ -3,9 +3,11 @@
 // หน้าสรุป "สั่งที่ร้านเอง" (at_shop) — หน้าเดียวของทั้ง 2 ทาง
 //   from=menu : มาจากการ์ด "สั่งที่ร้านเอง" ในหน้าเมนู (ก่อนเส้นตาย) -> ย้อนกลับไปหน้าเมนูร้านนั้น
 //   อื่น ๆ     : C1 แบบย่อหลังเส้นตาย (ชื่อเล่น -> เลือกร้าน -> หน้านี้) -> ย้อนกลับไปหน้าเลือกร้าน
-// ชื่อเล่น / ร้าน / คูปอง / หมายเหตุราคา แล้วยืนยันในชีต (NoOrderModal) -> POST at_shop
-// ตะกร้ามีของ -> เตือนว่าจะถูกล้าง และล้างจริงหลัง POST สำเร็จเท่านั้น
-import { useEffect, useMemo, useRef, useState } from "react";
+// r1h: ยืนยันครั้งเดียว — ชีต "ล้างรายการที่เลือกไว้?" (ClearCartSheet) อยู่ก่อนหน้านี้ ถ้าตะกร้ามีของ
+//   "ยืนยัน" ที่นี่ส่งออเดอร์เลย ไม่มีชีตซ้ำ / ตะกร้าถูกล้างหลัง POST สำเร็จเท่านั้น
+//   เข้าหน้านี้ตรง ๆ (URL / ย้อน-ไปหน้า) ทั้งที่ตะกร้ามีของและยังไม่ได้ยืนยันชุดนี้
+//   (?confirmed= ไม่ตรงกับ cartSignature ตอนนี้) -> แสดงแถบเตือนสีส้มอีกครั้ง ไม่ให้ข้ามคำเตือน
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info } from "lucide-react";
 
@@ -20,7 +22,7 @@ import { LogoTile, StickyBottom } from "../../_components/Shell";
 import ShellScroll from "../../_components/ShellScroll";
 import CountdownBanner from "../../_components/CountdownBanner";
 import { ShopTypeChip } from "../../_components/ShopChips";
-import NoOrderModal, { postAtShop } from "../../_components/NoOrderModal";
+import { postAtShop, cartSignature } from "../../_components/ClearCartSheet";
 
 export default function ShortSummaryClient({
   token,
@@ -31,6 +33,7 @@ export default function ShortSummaryClient({
   windowInfo,
   deadlineLabel,
   from = "",
+  confirmed = "",
 }) {
   const router = useRouter();
   const backHref = from === "menu" ? `/lunch/${token}/r/${restaurant.id}` : `/lunch/${token}`;
@@ -45,26 +48,22 @@ export default function ShortSummaryClient({
   const cartCount = (stored.lines || []).reduce((s, l) => s + (l.qty || 0), 0);
   const cartShopName =
     restaurants.find((r) => r.id === stored.restaurantId)?.name || restaurant.name;
+  // เตือนเฉพาะเมื่อยังไม่ได้ยืนยันล้างตะกร้าชุดนี้ในชีตก่อนหน้า
+  const warnClear = cartCount > 0 && confirmed !== cartSignature(stored);
 
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const confirmBtnRef = useRef(null);
 
   // ยังไม่ได้ยืนยันชื่อเล่น -> กลับไปกรอกที่หน้าแรกก่อน
   useEffect(() => {
     if (ready && !nickname) router.replace(`/lunch/${token}`);
   }, [ready, nickname, router, token]);
 
-  function closeConfirm() {
-    setConfirmOpen(false);
-    // Safari ไม่โฟกัสปุ่มตอนแตะ -> คืนโฟกัสให้ปุ่ม "ยืนยัน" เอง
-    requestAnimationFrame(() => confirmBtnRef.current?.focus());
-  }
-
   async function confirm() {
+    if (busy) return; // กันกดซ้ำ
     setBusy(true);
     setError("");
+    let leaving = false;
     try {
       const r = await postAtShop({
         token,
@@ -75,16 +74,18 @@ export default function ShortSummaryClient({
 
       // สำเร็จ / replay / สั่งไปแล้ว (409 already_ordered) -> ล้างตะกร้าตอนนี้เท่านั้น
       if (r.next === "done") {
+        leaving = true;
         clearCartLines(token, readCart(token));
         router.replace(`/lunch/${token}?done=1`);
         return;
       }
       if (r.next === "sold_out") {
-        setConfirmOpen(false);
+        leaving = true;
         router.replace(`/lunch/${token}?notice=sold_out`);
         return;
       }
       if (r.next === "refresh") {
+        leaving = true;
         router.refresh();
         return;
       }
@@ -93,7 +94,8 @@ export default function ShortSummaryClient({
       console.error("short at_shop submit failed:", err);
       setError("เกิดข้อผิดพลาด กรุณาลองใหม่");
     } finally {
-      setBusy(false);
+      // กำลังออกจากหน้า -> ค้างสถานะ "กำลังบันทึก..." ไว้ ไม่ให้กดซ้ำระหว่างเปลี่ยนหน้า
+      if (!leaving) setBusy(false);
     }
   }
 
@@ -136,13 +138,25 @@ export default function ShortSummaryClient({
               <span className="font-semibold">{budget} บาท</span>
             </div>
           </div>
+          <p className="-mt-1 px-1 text-[13px] text-[color:var(--gray)]">
+            เมื่อยืนยันแล้วจะแก้ไขเองไม่ได้
+          </p>
 
-          {cartCount > 0 ? (
+          {warnClear ? (
             <p
               data-testid="short-clear-warning"
               className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#b8720a]"
             >
               รายการที่เลือกไว้ {cartCount} รายการจาก {cartShopName} จะถูกล้างทั้งหมด
+            </p>
+          ) : null}
+
+          {error ? (
+            <p
+              data-testid="short-error"
+              className="rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]"
+            >
+              {error}
             </p>
           ) : null}
 
@@ -160,36 +174,21 @@ export default function ShortSummaryClient({
         <button
           type="button"
           onClick={() => router.replace(backHref)}
-          className="h-12 flex-1 rounded-xl border border-[color:var(--gray-light)] bg-white text-[15px] font-semibold text-[color:var(--navy)] transition active:scale-[0.98]"
+          disabled={busy}
+          className="h-12 flex-1 rounded-xl border border-[color:var(--gray-light)] bg-white text-[15px] font-semibold text-[color:var(--navy)] transition active:scale-[0.98] disabled:opacity-50"
         >
           ย้อนกลับ
         </button>
         <button
-          ref={confirmBtnRef}
           type="button"
-          aria-haspopup="dialog"
-          onClick={() => {
-            setError("");
-            setConfirmOpen(true);
-          }}
-          className="h-12 flex-[1.4] rounded-xl bg-[color:var(--blue)] text-[15px] font-bold text-white shadow-sm transition hover:bg-[color:var(--blue-deep)] active:scale-[0.98]"
+          data-testid="short-confirm"
+          onClick={confirm}
+          disabled={busy}
+          className="h-12 flex-[1.4] rounded-xl bg-[color:var(--blue)] text-[15px] font-bold text-white shadow-sm transition hover:bg-[color:var(--blue-deep)] active:scale-[0.98] disabled:opacity-60"
         >
-          ยืนยัน
+          {busy ? "กำลังบันทึก..." : "ยืนยัน"}
         </button>
       </StickyBottom>
-
-      {confirmOpen ? (
-        <NoOrderModal
-          restaurant={restaurant}
-          budget={budget}
-          cartCount={cartCount}
-          cartShopName={cartShopName}
-          busy={busy}
-          error={error}
-          onCancel={closeConfirm}
-          onConfirm={confirm}
-        />
-      ) : null}
     </>
   );
 }

@@ -22,6 +22,7 @@ import BudgetBar from "../../_components/BudgetBar";
 import CountdownBanner from "../../_components/CountdownBanner";
 import ShellScroll from "../../_components/ShellScroll";
 import ItemSheet from "../../_components/ItemSheet";
+import ClearCartSheet, { cartSignature } from "../../_components/ClearCartSheet";
 
 /* ---------------- menu row ---------------- */
 
@@ -161,6 +162,8 @@ export default function MenuClient({
   const [sheetOpen, setSheetOpen] = useState(false);
   // ชีตของเมนูที่อยู่ในตะกร้า ("" = ปิด)
   const [itemSheetId, setItemSheetId] = useState("");
+  // r1h: ตะกร้ามีของ -> ยืนยันล้างก่อนไปหน้าสรุป "สั่งที่ร้านเอง" (ยืนยันครั้งเดียว)
+  const [clearOpen, setClearOpen] = useState(false);
 
   // ตะกร้ามีรายการจากร้านอื่น (มาทางย้อนกลับ / พิมพ์ URL) -> ไม่แตะตะกร้า ถามก่อน
   const [conflict, setConflict] = useState(false);
@@ -541,7 +544,10 @@ export default function MenuClient({
           <button
             type="button"
             data-testid="at-shop-card"
-            onClick={() => router.push(`/lunch/${token}/short/${restaurant.id}?from=menu`)}
+            onClick={() => {
+              if (cartQty > 0) setClearOpen(true);
+              else router.push(`/lunch/${token}/short/${restaurant.id}?from=menu`);
+            }}
             className="mt-3 flex w-full items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--blue)] bg-[color:var(--blue-tint)] px-3.5 py-3 text-left transition active:scale-[0.99]"
           >
             <span
@@ -653,6 +659,20 @@ export default function MenuClient({
           cartCount={cartQty}
           onSwitch={pickFromSheet}
           onClose={closeSheet}
+        />
+      ) : null}
+
+      {/* ยืนยันแล้วแค่พาไปหน้าสรุป — ตะกร้ายังอยู่ (ล้างหลังส่งออเดอร์สำเร็จเท่านั้น) */}
+      {clearOpen ? (
+        <ClearCartSheet
+          count={cartQty}
+          cartShopName={cartShop.name}
+          onCancel={() => setClearOpen(false)}
+          onConfirm={() =>
+            router.push(
+              `/lunch/${token}/short/${restaurant.id}?from=menu&confirmed=${cartSignature(cart)}`,
+            )
+          }
         />
       ) : null}
 
