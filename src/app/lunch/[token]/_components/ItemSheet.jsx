@@ -7,7 +7,7 @@
 //   ปุ่มล่าง "สั่งรายการนี้เพิ่ม" -> บรรทัดใหม่
 // ใช้กรอบ/scrim เดียวกับชีตเปลี่ยนร้าน (SheetFrame): Esc / แตะ scrim / แตะแถบจับ = ปิด
 import { useEffect, useRef } from "react";
-import { ImageOff } from "lucide-react";
+import { ImageOff, Pencil } from "lucide-react";
 
 import { unitPriceOf } from "@/lib/lunchCart.client";
 import { SheetFrame } from "./ChangeShopSheet";
@@ -92,8 +92,18 @@ export default function ItemSheet({ menu, lines, onEditLine, onAddMore, onClose 
                 >
                   {l.qty}
                 </span>
-                <span className="w-16 shrink-0 text-right text-[15px] font-semibold tabular-nums text-[color:var(--navy)]">
-                  {lineTotal} บาท
+                {/* ยอด + ป้าย "แก้ไข" (ทั้งแถวเป็นปุ่มอยู่แล้ว ป้ายนี้แค่บอกว่าแตะได้ — ปุ่มซ้อนปุ่มไม่ได้) */}
+                <span className="flex w-16 shrink-0 flex-col items-end">
+                  <span className="text-[15px] font-semibold tabular-nums text-[color:var(--navy)]">
+                    {lineTotal} บาท
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 flex items-center gap-1 text-[14px] font-semibold text-[#005cff]"
+                  >
+                    <Pencil className="h-4 w-4" strokeWidth={2} />
+                    แก้ไข
+                  </span>
                 </span>
               </button>
             </li>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImageOff, Info, ShoppingCart, Trash2 } from "lucide-react";
+import { ImageOff, Info, Pencil, ShoppingCart, Trash2 } from "lucide-react";
 
 import {
   readCart,
@@ -128,20 +128,33 @@ function LineCard({ line, menu, bad, onQty, onRemove, onEdit }) {
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between">
-          <QtyStepper
-            qty={line.qty}
-            onChange={onQty}
-            min={MIN_QTY}
-            max={MAX_QTY}
-            size="sm"
-          />
-          <span
-            data-testid="line-total"
-            className="text-[15px] font-semibold text-[#0d1b2a]"
+        {/* แถวเดียวกับปุ่มจำนวน: "แก้ไข" ซ้าย (ชิดข้อความของบรรทัด) / จำนวน + ยอดขวา — ไม่เพิ่มความสูง */}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            data-testid="summary-line-edit-button"
+            aria-label={`แก้ไข ${menu.name}`}
+            className="flex min-h-[32px] shrink-0 items-center gap-1 text-[14px] font-semibold text-[#005cff]"
           >
-            {lineTotal}฿
-          </span>
+            <Pencil aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+            แก้ไข
+          </button>
+          <div className="flex items-center gap-3">
+            <QtyStepper
+              qty={line.qty}
+              onChange={onQty}
+              min={MIN_QTY}
+              max={MAX_QTY}
+              size="sm"
+            />
+            <span
+              data-testid="line-total"
+              className="text-[15px] font-semibold text-[#0d1b2a]"
+            >
+              {lineTotal}฿
+            </span>
+          </div>
         </div>
       </div>
     </div>
