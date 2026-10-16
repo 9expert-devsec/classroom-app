@@ -92,37 +92,6 @@ function CancelModal({ row, busy, error, onClose, onConfirm }) {
 
 /* ---------------- header bits ---------------- */
 
-// นาฬิกาสด — เริ่มหลัง mount (กัน hydration mismatch)
-function LiveClock() {
-  const [now, setNow] = useState(null);
-  useEffect(() => {
-    const tick = () => setNow(new Date());
-    const first = setTimeout(tick, 0);
-    const t = setInterval(tick, 1000);
-    return () => {
-      clearTimeout(first);
-      clearInterval(t);
-    };
-  }, []);
-  const time = now
-    ? now.toLocaleTimeString("en-GB", { hour12: false, timeZone: "Asia/Bangkok" })
-    : "--:--:--";
-  const date = now
-    ? now.toLocaleDateString("th-TH-u-ca-gregory", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        timeZone: "Asia/Bangkok",
-      })
-    : "";
-  return (
-    <div className="flex h-12 min-w-[112px] flex-col items-center justify-center rounded-xl border border-admin-border bg-white px-3 shadow-sm">
-      <div className="text-base font-semibold leading-tight tabular-nums text-admin-text">{time}</div>
-      <div className="text-[11px] leading-tight text-admin-textMuted">{date}</div>
-    </div>
-  );
-}
-
 function StatusCards({ counts, active, onPick }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" data-testid="status-chips">
@@ -328,7 +297,7 @@ export default function LunchOrdersPage() {
   return (
     // layout แม่ (<main>) เป็น overflow-hidden — หน้านี้ scroll เอง
     <div className="flex h-full min-w-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain pr-1">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-6">
+      <div className="flex w-full flex-col gap-4 pb-6">
         {/* header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
@@ -366,7 +335,6 @@ export default function LunchOrdersPage() {
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               รีเฟรช
             </button>
-            <LiveClock />
           </div>
         </div>
 

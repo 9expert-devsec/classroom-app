@@ -20,7 +20,6 @@ import {
 
 import {
   ActionButtons,
-  Avatar,
   CodeCell,
   StatusPill,
   baht,
@@ -114,7 +113,6 @@ export default function OrderDrawer({ row, error, actionProps, blockEsc, onClose
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5">
           <div className="flex items-center gap-3 pb-4">
-            <Avatar name={row.name} size="lg" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-base font-semibold text-admin-text">{row.name || "-"}</div>
               <div className="truncate text-sm text-admin-textMuted">{row.nickname || "-"}</div>
@@ -155,7 +153,7 @@ export default function OrderDrawer({ row, error, actionProps, blockEsc, onClose
           </Section>
 
           <Section Icon={Clock} title="เวลา">
-            <Field Icon={Clock} label="เส้นตายการสั่ง">
+            <Field Icon={Clock} label="ส่งก่อน">
               <span className="tabular-nums">{row.deadlineHM || "-"}</span>
               {row.reopenCount > 0 ? (
                 <span className="ml-1 text-xs text-admin-textMuted">

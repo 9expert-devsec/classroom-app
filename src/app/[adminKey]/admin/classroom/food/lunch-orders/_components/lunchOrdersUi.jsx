@@ -80,52 +80,6 @@ export function StatusPill({ status }) {
   );
 }
 
-/* ---------------- avatar ---------------- */
-
-const AVATAR_TONES = [
-  "bg-sky-100 text-sky-700",
-  "bg-violet-100 text-violet-700",
-  "bg-emerald-100 text-emerald-700",
-  "bg-amber-100 text-amber-700",
-  "bg-rose-100 text-rose-700",
-  "bg-indigo-100 text-indigo-700",
-  "bg-teal-100 text-teal-700",
-  "bg-fuchsia-100 text-fuchsia-700",
-];
-
-// ตัวอักษรแรกที่ใช้เป็นอักษรย่อได้ (ข้ามสระหน้า เ แ โ ใ ไ ของภาษาไทย)
-function firstLetter(word) {
-  return Array.from(word).find((ch) => /[A-Za-z0-9ก-ฮ]/.test(ch)) || "";
-}
-
-export function initialsOf(name) {
-  const words = String(name || "").trim().split(/\s+/).filter(Boolean);
-  const s = words
-    .slice(0, 2)
-    .map(firstLetter)
-    .join("")
-    .toUpperCase();
-  return s || "?";
-}
-
-function toneOf(name) {
-  let h = 0;
-  for (const ch of String(name || "")) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-  return AVATAR_TONES[h % AVATAR_TONES.length];
-}
-
-export function Avatar({ name, size = "md" }) {
-  const dim = size === "lg" ? "h-14 w-14 text-lg" : "h-10 w-10 text-sm";
-  return (
-    <span
-      aria-hidden
-      className={`inline-flex shrink-0 items-center justify-center rounded-full font-semibold ${dim} ${toneOf(name)}`}
-    >
-      {initialsOf(name)}
-    </span>
-  );
-}
-
 /* ---------------- cells ---------------- */
 
 export function sourceLabel(row) {
@@ -206,7 +160,7 @@ export function ActionButtons({ row, busy, onCancel, onReissue, onHandout, onRet
         : "";
 
   if (!showHandout && !showReturn && !showCancel && !showReissue) {
-    return full ? null : <span className="block text-center text-admin-textMuted">-</span>;
+    return full ? null : <span className="block text-right text-admin-textMuted">-</span>;
   }
 
   return (

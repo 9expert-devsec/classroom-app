@@ -3,7 +3,7 @@
 // การ์ดต่อคลาส (พับได้) + ตารางผู้เรียนของคลาสนั้น
 import { ChevronDown, Clock, GraduationCap, Hand, Layers, Store, Tag, Users } from "lucide-react";
 
-import { ActionButtons, Avatar, CodeCell, StatusPill, baht, sourceLabel } from "./lunchOrdersUi";
+import { ActionButtons, CodeCell, StatusPill, baht, sourceLabel } from "./lunchOrdersUi";
 
 function IconLine({ Icon, children }) {
   return (
@@ -67,7 +67,7 @@ export default function ClassSection({
                 <th className={TH}>รายละเอียดออเดอร์</th>
                 <th className={TH}>ยอดเงิน</th>
                 <th className={TH}>เวลา</th>
-                <th className={`${TH} pr-4 text-center`}>จัดการ</th>
+                <th className={`${TH} pr-4 text-right`}>จัดการ</th>
               </tr>
             </thead>
             <tbody>
@@ -83,14 +83,9 @@ export default function ClassSection({
                     }`}
                   >
                     <td className="py-3 pl-4 pr-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={r.name} />
-                        <div className="min-w-0">
-                          <div className="truncate font-medium text-admin-text">{r.name || "-"}</div>
-                          <div className="truncate text-xs text-admin-textMuted">
-                            {r.nickname || "-"}
-                          </div>
-                        </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-admin-text">{r.name || "-"}</div>
+                        <div className="truncate text-xs text-admin-textMuted">{r.nickname || "-"}</div>
                       </div>
                     </td>
                     <td className="px-3 py-3">
@@ -120,7 +115,7 @@ export default function ClassSection({
                     <td className="whitespace-nowrap px-3 py-3 text-xs text-admin-text">
                       <div className="flex flex-col gap-1">
                         <IconLine Icon={Clock}>
-                          เส้นตาย <span className="tabular-nums">{r.deadlineHM || "-"}</span>
+                          ส่งก่อน <span className="tabular-nums">{r.deadlineHM || "-"}</span>
                           {r.reopenCount > 0 ? (
                             <span className="ml-1 text-[10px] text-admin-textMuted">
                               (+{r.reopenCount})
@@ -144,7 +139,7 @@ export default function ClassSection({
                       </div>
                     </td>
                     <td className="py-3 pl-3 pr-4">
-                      <div className="flex justify-center">
+                      <div className="flex justify-end">
                         <ActionButtons row={r} {...actionProps} />
                       </div>
                     </td>
