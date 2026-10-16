@@ -3,16 +3,24 @@
 // หน้า "ติดตามการสั่งอาหาร" — ออเดอร์อาหารกลางวันของวันหนึ่ง แยกตามคลาส
 // ยกเลิก / ออก QR ใหม่ (token ใหม่) ผ่าน /api/admin/lunch/*
 // C1: ไม่มี "เปิดพิเศษ" แล้ว — ยกเลิก + ออก QR ใหม่ ได้เฉพาะคนที่เคยสั่งแล้ว และก่อน 15:00
+// R3b: หน้าตาใหม่ (การ์ดสถานะ / การ์ดคลาสพับได้ / drawer รายละเอียด) — endpoint + payload เดิม
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { CalendarDays, RefreshCw, Search, Utensils } from "lucide-react";
 
-import LunchStatusBadge, { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
+import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
 import { Modal, QrModal, ConfirmModal } from "@/components/admin/lunch/LunchModals";
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
+import { STATUS_KEYS, STATUS_META } from "./_components/lunchOrdersUi";
+import ClassSection from "./_components/ClassSection";
+import OrderDrawer from "./_components/OrderDrawer";
+
 const POLL_MS = 30_000;
-const STATUS_FILTERS = ["all", "pending", "forfeited", "ordered", "at_shop", "cancelled"];
+const STATUS_FILTERS = ["all", ...STATUS_KEYS];
+
+const FIELD =
+  "mt-1.5 h-10 w-full rounded-xl border border-admin-border bg-white px-3 text-sm text-admin-text outline-none focus:border-brand-primary";
 
 function todayBkk() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -82,91 +90,72 @@ function CancelModal({ row, busy, error, onClose, onConfirm }) {
   );
 }
 
-/* ---------------- table ---------------- */
+/* ---------------- header bits ---------------- */
 
-function CodeCell({ row }) {
-  if (!row.couponCode) return <span className="text-admin-textMuted">-</span>;
-  if (row.couponVoided) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="line-through decoration-red-500 decoration-2 opacity-60">
-          <CouponCode code={row.couponCode} size="table" />
-        </span>
-        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-700">
-          void
-        </span>
-      </div>
-    );
-  }
-  // C2: ร้านใช้คูปองแล้ว
-  if (row.redeemedHM) {
-    return (
-      <div className="flex flex-col gap-0.5">
-        <CouponCode code={row.couponCode} size="table" />
-        <span className="text-[11px] font-medium text-green-700">ใช้แล้ว {row.redeemedHM}</span>
-      </div>
-    );
-  }
-  return <CouponCode code={row.couponCode} size="table" />;
+// นาฬิกาสด — เริ่มหลัง mount (กัน hydration mismatch)
+function LiveClock() {
+  const [now, setNow] = useState(null);
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const first = setTimeout(tick, 0);
+    const t = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(t);
+    };
+  }, []);
+  const time = now
+    ? now.toLocaleTimeString("en-GB", { hour12: false, timeZone: "Asia/Bangkok" })
+    : "--:--:--";
+  const date = now
+    ? now.toLocaleDateString("th-TH-u-ca-gregory", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        timeZone: "Asia/Bangkok",
+      })
+    : "";
+  return (
+    <div className="flex h-12 min-w-[112px] flex-col items-center justify-center rounded-xl border border-admin-border bg-white px-3 shadow-sm">
+      <div className="text-base font-semibold leading-tight tabular-nums text-admin-text">{time}</div>
+      <div className="text-[11px] leading-tight text-admin-textMuted">{date}</div>
+    </div>
+  );
 }
 
-function ActionButtons({ row, busy, onCancel, onReissue, onHandout, onReturn }) {
-  const btn =
-    "rounded-lg px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 whitespace-nowrap";
+function StatusCards({ counts, active, onPick }) {
   return (
-    <div className="flex flex-wrap justify-end gap-1.5">
-      {(row.status === "ordered" || row.status === "at_shop") &&
-      row.stockStatus === "assigned" ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onHandout(row)}
-          className={`${btn} bg-brand-primary text-[#0D1B2A] hover:opacity-90`}
-        >
-          ส่งมอบ
-        </button>
-      ) : null}
-      {row.status === "cancelled" && row.stockStatus === "awaiting_return" ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onReturn(row)}
-          className={`${btn} bg-amber-100 text-amber-800 hover:bg-amber-200`}
-        >
-          รับคืน
-        </button>
-      ) : null}
-      {row.canCancel || row.cancelBlockedReason ? (
-        <button
-          type="button"
-          disabled={busy || !row.canCancel}
-          title={row.cancelBlockedReason || undefined}
-          onClick={() => row.canCancel && onCancel(row)}
-          className={`${btn} border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed`}
-        >
-          ยกเลิก
-        </button>
-      ) : null}
-      {row.canReissue || row.reissueBlockedReason ? (
-        <button
-          type="button"
-          disabled={busy || !row.canReissue}
-          title={row.reissueBlockedReason || undefined}
-          onClick={() => row.canReissue && onReissue(row)}
-          className={`${btn} bg-green-100 text-green-700 hover:bg-green-200 disabled:cursor-not-allowed`}
-        >
-          ออก QR ใหม่
-        </button>
-      ) : null}
-      {!row.canCancel && row.cancelBlockedReason ? (
-        <span className="w-full text-right text-[11px] text-admin-textMuted">
-          {row.cancelBlockedReason}
-        </span>
-      ) : !row.canReissue && row.reissueBlockedReason ? (
-        <span className="w-full text-right text-[11px] text-admin-textMuted">
-          {row.reissueBlockedReason}
-        </span>
-      ) : null}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" data-testid="status-chips">
+      {STATUS_KEYS.map((s) => {
+        const m = STATUS_META[s];
+        const on = active === s;
+        return (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onPick(on ? "all" : s)}
+            className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left transition sm:p-4 ${m.card} ${
+              on ? `ring-2 ${m.ring}` : "hover:brightness-[0.98]"
+            }`}
+          >
+            <span
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${m.icon}`}
+            >
+              <m.Icon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className={`block truncate text-sm font-semibold ${m.text}`}>
+                {LUNCH_STATUS_LABELS[s]}
+              </span>
+              <span className="block text-admin-text">
+                <span className="text-2xl font-semibold tabular-nums">{counts[s] ?? 0}</span>{" "}
+                <span className="text-sm">คน</span>
+              </span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -192,6 +181,9 @@ export default function LunchOrdersPage() {
   const [actionError, setActionError] = useState("");
   const [stockAction, setStockAction] = useState(null); // { kind: "handout" | "return", row }
   const [stockError, setStockError] = useState("");
+
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [selectedId, setSelectedId] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
@@ -241,6 +233,13 @@ export default function LunchOrdersPage() {
         rows: byClass.get(c.id).sort((a, b) => a.name.localeCompare(b.name)),
       }));
   }, [data]);
+
+  // แถวที่เลือก = ข้อมูลล่าสุดหลังรีเฟรช; หายจากรายการ (เช่นถูกกรองออก) -> drawer ปิด
+  const selected = useMemo(
+    () => (selectedId ? (data?.items || []).find((it) => it.orderId === selectedId) || null : null),
+    [data, selectedId],
+  );
+  const closeDrawer = useCallback(() => setSelectedId(""), []);
 
   const post = postLunchAdmin;
 
@@ -296,127 +295,151 @@ export default function LunchOrdersPage() {
     }
   }
 
+  // ปุ่มในตารางและใน drawer ใช้ handler ชุดเดียวกัน
+  const actionProps = {
+    busy,
+    onCancel: (row) => {
+      setCancelError("");
+      setCancelRow(row);
+    },
+    onReissue: reissue,
+    onHandout: (row) => {
+      setStockError("");
+      setStockAction({ kind: "handout", row });
+    },
+    onReturn: (row) => {
+      setStockError("");
+      setStockAction({ kind: "return", row });
+    },
+  };
+
+  function toggleClass(id) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const counts = data?.counts || {};
+  const modalOpen = !!(cancelRow || qr || stockAction);
 
   return (
-    <div className="mx-auto w-full max-w-7xl p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold text-admin-text">
-            ติดตามการสั่งอาหาร
-            {/* C2d: preview/dev ที่เลื่อนเวลาปิดไว้ */}
-            {data?.testTimes ? (
-              <span
-                data-testid="lunch-test-times"
-                className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800"
-              >
-                {data.testTimes}
-              </span>
-            ) : null}
-          </h1>
-          <p className="mt-1 text-sm text-admin-textMuted">
-            ออเดอร์อาหารกลางวันของผู้เรียน · อัปเดตอัตโนมัติทุก 30 วินาที
-          </p>
+    // layout แม่ (<main>) เป็น overflow-hidden — หน้านี้ scroll เอง
+    <div className="flex h-full min-w-0 flex-col overflow-y-auto overflow-x-hidden overscroll-contain pr-1">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 pb-6">
+        {/* header */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <Utensils className="mt-1 h-7 w-7 shrink-0 text-admin-text" />
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-admin-text">
+                ติดตามการสั่งอาหาร
+                {/* C2d: preview/dev ที่เลื่อนเวลาปิดไว้ */}
+                {data?.testTimes ? (
+                  <span
+                    data-testid="lunch-test-times"
+                    className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800"
+                  >
+                    {data.testTimes}
+                  </span>
+                ) : null}
+              </h1>
+              <p className="mt-0.5 text-sm text-admin-textMuted">
+                อัปเดตข้อมูลการสั่งอาหารของผู้เรียนอัตโนมัติทุก 30 วินาที
+                {updatedAt ? (
+                  <span className="ml-1 tabular-nums">
+                    · ล่าสุด {updatedAt.toLocaleTimeString("th-TH", { hour12: false })}
+                  </span>
+                ) : null}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={load}
+              disabled={loading}
+              className="inline-flex h-12 items-center gap-2 rounded-xl border border-admin-border bg-white px-4 text-sm font-semibold text-brand-primaryDark shadow-sm hover:bg-admin-surfaceMuted disabled:opacity-60"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              รีเฟรช
+            </button>
+            <LiveClock />
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl border border-admin-border bg-white px-3 py-2 text-sm text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          รีเฟรช
-          {updatedAt ? (
-            <span className="text-xs text-admin-textMuted">
-              {updatedAt.toLocaleTimeString("th-TH", { hour12: false })}
+
+        {/* filters */}
+        <div className="grid gap-3 rounded-2xl border border-admin-border bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-xs font-medium text-admin-text">
+            วันที่
+            <span className="relative block">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 mt-[3px] h-4 w-4 -translate-y-1/2 text-admin-textMuted" />
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value || todayBkk())}
+                className={`${FIELD} pl-9`}
+              />
             </span>
-          ) : null}
-        </button>
-      </div>
+          </label>
+          <label className="text-xs font-medium text-admin-text">
+            คลาส
+            <select value={classId} onChange={(e) => setClassId(e.target.value)} className={FIELD}>
+              <option value="">ทุกคลาส</option>
+              {(data?.classes || []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                  {c.room ? ` · ห้อง ${c.room}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-admin-text">
+            สถานะ
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className={FIELD}>
+              {STATUS_FILTERS.map((s) => (
+                <option key={s} value={s}>
+                  {s === "all" ? "ทั้งหมด" : LUNCH_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-xs font-medium text-admin-text">
+            ค้นหาชื่อ
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 mt-[3px] h-4 w-4 -translate-y-1/2 text-admin-textMuted" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="ชื่อ / ชื่อเล่น"
+                className={`${FIELD} pl-9`}
+              />
+            </span>
+          </label>
+        </div>
 
-      {/* filters */}
-      <div className="mt-4 grid gap-3 rounded-2xl border border-admin-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="text-xs text-admin-textMuted">
-          วันที่
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value || todayBkk())}
-            className="mt-1 w-full rounded-xl border border-admin-border px-3 py-2 text-sm text-admin-text"
-          />
-        </label>
-        <label className="text-xs text-admin-textMuted">
-          คลาส
-          <select
-            value={classId}
-            onChange={(e) => setClassId(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-admin-border px-3 py-2 text-sm text-admin-text"
-          >
-            <option value="">ทุกคลาส</option>
-            {(data?.classes || []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-                {c.room ? ` · ห้อง ${c.room}` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-admin-textMuted">
-          สถานะ
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-admin-border px-3 py-2 text-sm text-admin-text"
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s} value={s}>
-                {s === "all" ? "ทั้งหมด" : LUNCH_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-admin-textMuted">
-          ค้นหาชื่อ
-          <span className="relative mt-1 block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-admin-textMuted" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ชื่อ / ชื่อเล่น"
-              className="w-full rounded-xl border border-admin-border py-2 pl-9 pr-3 text-sm text-admin-text"
-            />
-          </span>
-        </label>
-      </div>
+        {/* status cards — กดเพื่อกรอง, กดซ้ำเพื่อล้าง */}
+        <StatusCards counts={counts} active={status} onPick={setStatus} />
 
-      {/* chips */}
-      <div className="mt-4 flex flex-wrap gap-2" data-testid="status-chips">
-        {STATUS_FILTERS.filter((s) => s !== "all").map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatus(status === s ? "all" : s)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
-              status === s
-                ? "border-brand-primary bg-brand-primary/10"
-                : "border-admin-border bg-white hover:bg-admin-surfaceMuted"
-            }`}
-          >
-            <LunchStatusBadge status={s} />
-            <span className="font-semibold text-admin-text">{counts[s] ?? 0}</span>
-          </button>
-        ))}
-      </div>
+        {loadError ? (
+          <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </p>
+        ) : null}
+        {actionError ? (
+          <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {actionError}
+          </p>
+        ) : null}
 
-      {loadError ? (
-        <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</p>
-      ) : null}
-      {actionError ? (
-        <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{actionError}</p>
-      ) : null}
-
-      {/* table grouped by class */}
-      <div className="mt-4 flex flex-col gap-4">
+        {/* class sections */}
+        {!data && loading ? (
+          <p className="rounded-2xl border border-admin-border bg-white p-6 text-center text-sm text-admin-textMuted">
+            กำลังโหลด…
+          </p>
+        ) : null}
         {data && groups.length === 0 ? (
           <p className="rounded-2xl border border-admin-border bg-white p-6 text-center text-sm text-admin-textMuted">
             ไม่มีออเดอร์ตามตัวกรองนี้
@@ -424,112 +447,27 @@ export default function LunchOrdersPage() {
         ) : null}
 
         {groups.map((g) => (
-          <div
+          <ClassSection
             key={g.id}
-            className="overflow-hidden rounded-2xl border border-admin-border bg-white"
-          >
-            <div className="flex items-center justify-between border-b border-admin-border bg-admin-surfaceMuted px-4 py-2.5">
-              <div className="text-sm font-semibold text-admin-text">
-                {g.name}
-                {g.room ? (
-                  <span className="ml-2 font-normal text-admin-textMuted">ห้อง {g.room}</span>
-                ) : null}
-              </div>
-              <div className="text-xs text-admin-textMuted">{g.rows.length} คน</div>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-admin-textMuted">
-                  <th className="px-4 py-2 font-medium">ผู้เรียน</th>
-                  <th className="px-2 py-2 font-medium">สถานะ</th>
-                  <th className="px-2 py-2 font-medium">ร้าน</th>
-                  <th className="px-2 py-2 font-medium">รหัสคูปอง</th>
-                  <th className="px-2 py-2 font-medium">ที่มา</th>
-                  <th className="px-2 py-2 text-right font-medium">ยอดรวม</th>
-                  <th className="px-2 py-2 font-medium">เส้นตาย</th>
-                  <th className="px-2 py-2 font-medium">ส่งมอบ</th>
-                  <th className="px-4 py-2 text-right font-medium">จัดการ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {g.rows.map((r) => (
-                  <tr
-                    key={r.orderId}
-                    data-testid="order-row"
-                    className="border-t border-admin-border align-middle"
-                  >
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-admin-text">{r.name || "-"}</div>
-                      {r.nickname ? (
-                        <div className="text-xs text-admin-textMuted">{r.nickname}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-2 py-2.5">
-                      <LunchStatusBadge status={r.status} />
-                    </td>
-                    <td className="px-2 py-2.5 text-admin-text">{r.restaurantName || "-"}</td>
-                    <td className="px-2 py-2.5">
-                      <CodeCell row={r} />
-                    </td>
-                    <td className="px-2 py-2.5 text-xs text-admin-textMuted">
-                      {r.couponSource === "stock"
-                        ? "stock"
-                        : r.couponSource === "ecoupon"
-                          ? "e-coupon"
-                          : "-"}
-                    </td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-admin-text">
-                      {r.itemsTotal ? `${r.itemsTotal} ฿` : "-"}
-                      {r.overBudget > 0 ? (
-                        <div className="text-xs text-amber-700">เกิน {r.overBudget} ฿</div>
-                      ) : null}
-                    </td>
-                    <td className="px-2 py-2.5 tabular-nums text-admin-text">
-                      {r.deadlineHM || "-"}
-                      {r.reopenCount > 0 ? (
-                        <span className="ml-1 text-[10px] text-admin-textMuted">
-                          (+{r.reopenCount})
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-2 py-2.5 text-xs text-admin-text" data-testid="handout-cell">
-                      {r.handedOutHM ? (
-                        <>
-                          <div className="tabular-nums">{r.handedOutHM}</div>
-                          {r.handedOutBy ? (
-                            <div className="text-admin-textMuted">{r.handedOutBy}</div>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-admin-textMuted">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <ActionButtons
-                        row={r}
-                        busy={busy}
-                        onCancel={(row) => {
-                          setCancelError("");
-                          setCancelRow(row);
-                        }}
-                        onReissue={reissue}
-                        onHandout={(row) => {
-                          setStockError("");
-                          setStockAction({ kind: "handout", row });
-                        }}
-                        onReturn={(row) => {
-                          setStockError("");
-                          setStockAction({ kind: "return", row });
-                        }}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            group={g}
+            open={!collapsed.has(g.id)}
+            onToggle={() => toggleClass(g.id)}
+            selectedId={selected ? selectedId : ""}
+            onSelect={setSelectedId}
+            actionProps={actionProps}
+          />
         ))}
       </div>
+
+      {selected ? (
+        <OrderDrawer
+          row={selected}
+          error={actionError}
+          actionProps={actionProps}
+          blockEsc={modalOpen}
+          onClose={closeDrawer}
+        />
+      ) : null}
 
       {cancelRow ? (
         <CancelModal
