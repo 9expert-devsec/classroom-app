@@ -5,7 +5,7 @@
 // C1: ไม่มี "เปิดพิเศษ" แล้ว — ยกเลิก + ออก QR ใหม่ ได้เฉพาะคนที่เคยสั่งแล้ว และก่อน 15:00
 // R3b: หน้าตาใหม่ (การ์ดสถานะ / การ์ดคลาสพับได้ / drawer รายละเอียด) — endpoint + payload เดิม
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, RefreshCw, Search, Utensils } from "lucide-react";
+import { CalendarDays, RefreshCw, Search } from "lucide-react";
 
 import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
@@ -300,30 +300,27 @@ export default function LunchOrdersPage() {
       <div className="flex w-full flex-col gap-4 pb-6">
         {/* header */}
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <Utensils className="mt-1 h-7 w-7 shrink-0 text-admin-text" />
-            <div className="min-w-0">
-              <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-admin-text">
-                ติดตามการสั่งอาหาร
-                {/* C2d: preview/dev ที่เลื่อนเวลาปิดไว้ */}
-                {data?.testTimes ? (
-                  <span
-                    data-testid="lunch-test-times"
-                    className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800"
-                  >
-                    {data.testTimes}
-                  </span>
-                ) : null}
-              </h1>
-              <p className="mt-0.5 text-sm text-admin-textMuted">
-                อัปเดตข้อมูลการสั่งอาหารของผู้เรียนอัตโนมัติทุก 30 วินาที
-                {updatedAt ? (
-                  <span className="ml-1 tabular-nums">
-                    · ล่าสุด {updatedAt.toLocaleTimeString("th-TH", { hour12: false })}
-                  </span>
-                ) : null}
-              </p>
-            </div>
+          <div className="min-w-0">
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold text-admin-text">
+              ติดตามการสั่งอาหาร
+              {/* C2d: preview/dev ที่เลื่อนเวลาปิดไว้ */}
+              {data?.testTimes ? (
+                <span
+                  data-testid="lunch-test-times"
+                  className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800"
+                >
+                  {data.testTimes}
+                </span>
+              ) : null}
+            </h1>
+            <p className="mt-0.5 text-sm text-admin-textMuted">
+              อัปเดตข้อมูลการสั่งอาหารของผู้เรียนอัตโนมัติทุก 30 วินาที
+              {updatedAt ? (
+                <span className="ml-1 tabular-nums">
+                  · ล่าสุด {updatedAt.toLocaleTimeString("th-TH", { hour12: false })}
+                </span>
+              ) : null}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
