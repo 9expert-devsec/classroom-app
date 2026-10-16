@@ -47,9 +47,53 @@ export const esc = (s) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-function lineLabel(l) {
-  const opts = Array.isArray(l?.options) ? l.options.filter(Boolean) : [];
-  return `${l?.name || "-"}${opts.length ? ` · ${opts.join(", ")}` : ""}`;
+/**
+ * ตัวเลือกของบรรทัด -> [{ group, values }]
+ * ข้อมูลรายงานตอนนี้ส่งมาแค่ "ค่า" (string) ไม่มีชื่อกลุ่ม -> 1 บรรทัดต่อ 1 ค่า (ไม่มีหัวกลุ่ม)
+ * ถ้าวันหลังส่งมาเป็น { groupName, choiceName } จะรวมเป็น 1 บรรทัดต่อกลุ่ม "<กลุ่ม>: <ค่า>, <ค่า>" ให้เอง
+ */
+function optionGroupsOf(l) {
+  const out = [];
+  const byGroup = new Map();
+  for (const o of Array.isArray(l?.options) ? l.options : []) {
+    if (!o) continue;
+    if (typeof o === "string") {
+      out.push({ group: "", values: [o] });
+      continue;
+    }
+    const value = String(o.choiceName || "").trim();
+    if (!value) continue;
+    const group = String(o.groupName || "").trim();
+    let g = group ? byGroup.get(group) : null;
+    if (!g) {
+      g = { group, values: [] };
+      if (group) byGroup.set(group, g);
+      out.push(g);
+    }
+    g.values.push(value);
+  }
+  return out;
+}
+
+/**
+ * 1 บล็อกต่อ 1 บรรทัดที่สั่ง: "<qty>× <เมนู>" (ตัวหนา) แล้วตัวเลือก (ย่อหน้า) แล้ว "หมายเหตุ: …"
+ * หมายเหตุอยู่ใต้บรรทัดของตัวเอง — ร้านรู้ว่าโน้ตไหนเป็นของจานไหน
+ */
+function lineBlockHtml(l) {
+  const qty = Number(l?.qty) || 1;
+  const opts = optionGroupsOf(l)
+    .map(
+      (g) =>
+        `<div class="ol-sub">${g.group ? `${esc(g.group)}: ` : ""}${esc(g.values.join(", "))}</div>`,
+    )
+    .join("");
+  const note = String(l?.note || "").trim();
+  return `
+    <div class="ol">
+      <div class="ol-item"><b>${qty}×</b> <b>${esc(l?.name || "-")}</b></div>
+      ${opts}
+      ${note ? `<div class="ol-sub ol-note"><b>หมายเหตุ:</b> ${esc(note)}</div>` : ""}
+    </div>`;
 }
 
 function absUrl(url, origin) {
@@ -206,6 +250,11 @@ export const CSS = `
   .after { font-weight: 800; color: #111827; }
   h3 { font-size: 13px; margin: 14px 0 6px; }
   .lines div + div { margin-top: 2px; }
+  .ol-cell { break-inside: avoid; page-break-inside: avoid; }
+  .ol + .ol { border-top: 1px solid #d1d5db; margin-top: 4px; padding-top: 4px; }
+  .ol-item { font-size: 13px; line-height: 1.35; }
+  .ol-sub { font-size: 12px; line-height: 1.35; padding-left: 16px; }
+  .ol-note b { font-weight: 700; }
   .footer { margin-top: 10px; font-size: 12px; font-weight: 700; text-align: right; }
   .empty { margin-top: 40px; text-align: center; font-size: 14px; color: #6b7280; }
   /* page 1 of a shop = header + kitchen summary; the order list starts on the next page */
@@ -278,9 +327,10 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
       : "";
 
 
+  // "รายการ" ได้ความกว้างของคอลัมน์หมายเหตุเดิมไปด้วย (หมายเหตุย้ายเข้าไปอยู่ใต้บรรทัดของตัวเอง)
   const orderCols = showCode
-    ? `<col style="width:5%" /><col style="width:11%" /><col style="width:18%" /><col style="width:8%" /><col style="width:28%" /><col style="width:13%" /><col style="width:7%" /><col style="width:10%" />`
-    : `<col style="width:5%" /><col style="width:12%" /><col style="width:20%" /><col style="width:9%" /><col style="width:32%" /><col style="width:14%" /><col style="width:8%" />`;
+    ? `<col style="width:5%" /><col style="width:11%" /><col style="width:18%" /><col style="width:8%" /><col style="width:41%" /><col style="width:7%" /><col style="width:10%" />`
+    : `<col style="width:5%" /><col style="width:12%" /><col style="width:20%" /><col style="width:9%" /><col style="width:46%" /><col style="width:8%" />`;
 
   const orderListHtml = ordered.length
     ? `
@@ -293,7 +343,6 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
             <th class="th">ชื่อ-นามสกุล</th>
             <th class="th">ห้อง</th>
             <th class="th">รายการ</th>
-            <th class="th">หมายเหตุถึงร้าน</th>
             <th class="th">เวลาสั่ง</th>
             ${showCode ? `<th class="th">Code</th>` : ""}
           </tr>
@@ -301,22 +350,14 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
         <tbody>
           ${ordered
             .map((r, i) => {
-              const lines = (r.lines || [])
-                .map((l) => `<div>${esc(lineLabel(l))} ×${Number(l.qty) || 1}</div>`)
-                .join("");
-              const notes = (r.lines || [])
-                .map((l) => String(l.note || "").trim())
-                .filter(Boolean)
-                .map((n) => `<div>${esc(n)}</div>`)
-                .join("");
+              const lines = (r.lines || []).map(lineBlockHtml).join("");
               return `
                 <tr>
                   <td class="td num">${i + 1}</td>
                   <td class="td">${esc(r.nickname || "-")}</td>
                   <td class="td">${esc(r.studentName || "-")}${noCheckin(r)}</td>
                   <td class="td">${esc(r.orderRoomName || r.roomName || "-")}</td>
-                  <td class="td lines">${lines || "-"}</td>
-                  <td class="td lines">${notes || "-"}</td>
+                  <td class="td ol-cell">${lines || "-"}</td>
                   <td class="td">${esc(hmBKK(r.orderedAt) || "-")}</td>
                   ${showCode ? `<td class="td mono">${esc(r.code || "-")}</td>` : ""}
                 </tr>`;
