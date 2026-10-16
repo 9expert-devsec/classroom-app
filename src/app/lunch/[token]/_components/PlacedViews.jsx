@@ -13,10 +13,49 @@ import OptionLines, { groupsFromOrderLine } from "./OptionLines";
 
 function SuccessIcon() {
   return (
-    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#2486ff]/10">
-      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#2486ff] text-white">
+    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--blue-tint)]">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:var(--blue)] text-white">
         <Check aria-hidden="true" className="h-6 w-6" strokeWidth={3} />
       </div>
+    </div>
+  );
+}
+
+// โลโก้ร้าน 52px มุม 14 (หัวหน้าขอบคุณ R4a)
+function ShopTile({ src, alt }) {
+  return (
+    <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[#dce3ee] bg-white">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
+      ) : (
+        <span className="text-2xl text-[color:var(--gray-light)]">?</span>
+      )}
+    </div>
+  );
+}
+
+// สั่งที่ร้านเอง (R4a B / C) — รูปแบบ + มูลค่าคูปอง + บรรทัดอธิบาย
+function AtShopCard({ order }) {
+  const note = order.isStock
+    ? `สั่งอาหารที่ร้าน ${order.restaurantName} ด้วยตัวเอง ส่วนที่เกิน ${order.budget} บาท ชำระเพิ่มที่ร้าน`
+    : `แสดงคูปองนี้ให้พนักงานสแกนที่ร้าน ส่วนที่เกิน ${order.budget} บาท ชำระเพิ่มที่ร้าน`;
+  return (
+    <div
+      data-testid="at-shop-box"
+      className="rounded-2xl border border-[#dce3ee] bg-white px-4 py-3.5 text-[15px]"
+    >
+      <div className="flex justify-between gap-3">
+        <span className="text-[color:var(--gray)]">รูปแบบ</span>
+        <span className="font-bold text-[color:var(--navy)]">สั่งที่ร้านเอง</span>
+      </div>
+      <div className="mt-2 flex justify-between gap-3">
+        <span className="text-[color:var(--gray)]">คูปองมูลค่า</span>
+        <span className="font-bold text-[color:var(--navy)]">{order.budget} บาท</span>
+      </div>
+      <p className="mt-3 border-t border-[#dce3ee] pt-3 text-[13px] leading-relaxed text-[color:var(--gray)]">
+        {note}
+      </p>
     </div>
   );
 }
@@ -41,39 +80,20 @@ export function ThankYouView({ order, dateLabel, token }) {
     <div className="flex flex-col gap-5 px-4 py-6" data-testid="thank-you">
       <div className="text-center">
         <SuccessIcon />
-        <h1 className="mt-3 text-[19px] font-bold text-[#0d1b2a]">
+        <h1 className="mt-3 text-[21px] font-bold text-[color:var(--navy)]">
           บันทึกรายการเรียบร้อยแล้ว
         </h1>
       </div>
 
       <div className="flex items-center justify-center gap-4">
         <Image src={LOGO} alt="9Expert" width={LOGO_W} height={LOGO_H} className="h-6 w-auto" />
-        <span className="text-slate-300">|</span>
-        <LogoTile src={order.restaurantLogo} alt={order.restaurantName} size={40} />
+        <span aria-hidden="true" className="h-8 w-px bg-[color:var(--gray-light)]" />
+        <ShopTile src={order.restaurantLogo} alt={order.restaurantName} />
       </div>
 
       <CouponCard order={order} dateLabel={dateLabel} token={token} />
 
-      {atShop ? (
-        <InfoBox testId="at-shop-box">
-          {order.isStock
-            ? `ท่านเลือกสั่งที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาทที่ร้าน ${order.restaurantName} · รับคูปองกับเจ้าหน้าที่ที่ Counter`
-            : `ท่านเลือกสั่งที่ร้านเอง ใช้คูปองมูลค่า ${order.budget} บาท แสดงคูปองนี้ที่ร้าน`}
-        </InfoBox>
-      ) : (
-        <>
-          {!order.isStock ? (
-            <p className="text-center text-[13px] text-slate-500">
-              แสดงคูปองนี้ที่ร้านเมื่อไปรับอาหาร
-            </p>
-          ) : null}
-          <CollapsibleOrder order={order} />
-        </>
-      )}
-
-      <p className="text-center text-[12px] text-slate-400">
-        สแกน QR เดิมอีกครั้งเพื่อดูรายการและรหัสคูปองได้ตลอด
-      </p>
+      {atShop ? <AtShopCard order={order} /> : <CollapsibleOrder order={order} />}
     </div>
   );
 }

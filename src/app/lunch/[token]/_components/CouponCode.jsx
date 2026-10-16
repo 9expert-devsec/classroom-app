@@ -23,8 +23,11 @@ export default function CouponCode({ code, size = "lg" }) {
   const groups = codeGroups(code);
   const multi = groups.length > 1;
   // "table" = ตารางหน้าแอดมิน (P4a) — เล็กและชิดซ้าย; หน้าผู้เรียนยังไม่ต่ำกว่า 18px
+  // "xl" = รหัสใต้ QR ของ e-coupon (R4a ~32px)
   const sizeClass =
-    size === "lg"
+    size === "xl"
+      ? "text-[clamp(18px,8vw,32px)] text-center"
+      : size === "lg"
       ? "text-[clamp(18px,7.5vw,30px)] text-center"
       : size === "table"
         ? "text-[13px] text-left"

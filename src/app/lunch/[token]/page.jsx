@@ -4,7 +4,7 @@
 // ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
 // C1: เลยเส้นตายแต่ยังไม่ถึง 15:00 = สั่งแบบย่อ (เลือกร้านแล้วไปหน้าสรุปแบบย่อ)
 //     ถึง 15:00 แล้ว = หน้าหมดเวลา ไม่ว่าสถานะใด
-import { X, RefreshCw } from "lucide-react";
+import { X } from "lucide-react";
 
 import dbConnect from "@/lib/mongoose";
 import {
@@ -16,7 +16,7 @@ import {
 
 import { Shell, NoticeScreen } from "./_components/Shell";
 import ShellScroll from "./_components/ShellScroll";
-import { ExpiredScreen } from "./_components/GateNotice";
+import { ExpiredScreen, CancelledQrScreen } from "./_components/GateNotice";
 import { finalCloseLabel } from "@/lib/lunchConfig";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
 import { ThankYouView, RescanView } from "./_components/PlacedViews";
@@ -48,16 +48,7 @@ export default async function LunchPage({ params, searchParams }) {
 
   if (gate === LUNCH_GATE.INVALID) return <InvalidScreen />;
 
-  if (gate === LUNCH_GATE.REPLACED) {
-    return (
-      <NoticeScreen
-        icon={RefreshCw}
-        tone="amber"
-        title="QR นี้ถูกแทนที่แล้ว"
-        body="กรุณาติดต่อเจ้าหน้าที่"
-      />
-    );
-  }
+  if (gate === LUNCH_GATE.REPLACED) return <CancelledQrScreen />;
 
   if (gate === LUNCH_GATE.EXPIRED) return <ExpiredScreen kind={expiredKind} />;
 

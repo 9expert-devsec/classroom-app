@@ -10,7 +10,15 @@
 import QRCode from "react-qr-code";
 import CouponStamp, { stampFadeClass } from "./CouponStamp";
 
-export default function LunchQrCode({ path, value, size = 280, status = "unused", className = "" }) {
+// fgColor: สีจุด QR (ค่าเริ่มต้นดำ) — หน้า e-coupon ของผู้เรียนใช้ navy
+export default function LunchQrCode({
+  path,
+  value,
+  size = 280,
+  status = "unused",
+  fgColor = "#000000",
+  className = "",
+}) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const encoded = value ?? (path ? `${origin}${path}` : "");
   if (!encoded) return null;
@@ -25,7 +33,7 @@ export default function LunchQrCode({ path, value, size = 280, status = "unused"
       className={`relative mx-auto flex items-center justify-center rounded-xl bg-white p-4 ${className}`}
     >
       <div className={stampFadeClass(status)}>
-        <QRCode value={encoded} size={size} />
+        <QRCode value={encoded} size={size} fgColor={fgColor} />
       </div>
       <CouponStamp status={status} />
     </div>
