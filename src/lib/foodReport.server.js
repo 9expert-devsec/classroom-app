@@ -215,6 +215,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         orderId: idStr(order._id),
         couponShopId: idStr(order.restaurantId),
         couponShopName: order.restaurantName || "",
+        // ร้าน stock หรือไม่ (snapshot ตอนสั่ง) — ร้าน stock มีได้ทั้งกระดาษและ e-coupon แทน
+        couponShopUsesStock: !!order.usesCouponStock,
         couponSource,
         code:
           couponSource === "stock"
@@ -434,8 +436,13 @@ function summarize(rows, allOrders, stockById) {
     }
     if (!active) continue; // pending/forfeited ที่เลือกร้านแล้วนับใน totals เท่านั้น
 
-    const shop = ensureShop(shops, r.couponShopId, r.couponShopName, r.couponSource);
-    if (shop.source === "stock") {
+    const shopSource = r.couponShopUsesStock || r.couponSource === "stock" ? "stock" : "ecoupon";
+    const shop = ensureShop(shops, r.couponShopId, r.couponShopName, shopSource);
+    if (shop.source === "stock" && r.couponSource === "ecoupon") {
+      // ร้าน stock ที่ออก e-coupon แทนเพราะกระดาษหมด — นับแยกจากกระดาษ
+      shop.ecouponIssued += 1;
+      if (r.redeemedAt) shop.ecouponRedeemed += 1;
+    } else if (shop.source === "stock") {
       shop.orders += 1;
       if (r.handedOutAt || r.stockCodeStatus === "handed_out") shop.handedOut += 1;
       else if (r.stockCodeStatus === "assigned") shop.assignedNotHandedOut += 1;
@@ -479,7 +486,7 @@ function ensureShop(shops, id, name, source) {
     shops.set(
       id,
       source === "stock"
-        ? { id, name, source: "stock", orders: 0, handedOut: 0, assignedNotHandedOut: 0, awaitingReturn: 0, missingCode: 0 }
+        ? { id, name, source: "stock", orders: 0, handedOut: 0, assignedNotHandedOut: 0, awaitingReturn: 0, missingCode: 0, ecouponIssued: 0, ecouponRedeemed: 0 }
         : { id, name, source: "ecoupon", issued: 0, redeemed: 0, notRedeemed: 0 },
     );
   }

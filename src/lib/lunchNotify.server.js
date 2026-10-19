@@ -78,7 +78,7 @@ export async function notifyAfterSubmit(order) {
 
     const [remaining, restaurant] = await Promise.all([
       countAvailable(order.restaurantId, order.dayYMD),
-      Restaurant.findById(order.restaurantId).select("couponStockLowThreshold").lean(),
+      Restaurant.findById(order.restaurantId).select("couponStockLowThreshold stockFallbackToECoupon").lean(),
     ]);
     const t = Number(restaurant?.couponStockLowThreshold);
     const threshold = Number.isFinite(t) && t >= 0 ? t : LUNCH_STOCK_LOW_DEFAULT;
@@ -93,7 +93,10 @@ export async function notifyAfterSubmit(order) {
         ...base,
         kind: "stock_out",
         dedupeKey: `lunch.stock_out:${order.restaurantId}:${order.dayYMD}`,
-        message: `คูปองร้าน ${shop} หมดแล้ว`,
+        // ร้านที่ตั้ง fallback ไว้ยังรับต่อได้ด้วย e-coupon
+        message: restaurant?.stockFallbackToECoupon
+          ? `คูปองกระดาษร้าน ${shop} หมด ระบบเปลี่ยนเป็น e-coupon แล้ว`
+          : `คูปองร้าน ${shop} หมดแล้ว`,
       });
     } else if (remaining <= threshold) {
       await notifyLunch({

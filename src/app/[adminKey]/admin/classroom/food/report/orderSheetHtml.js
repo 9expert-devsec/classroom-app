@@ -261,9 +261,12 @@ export function headerHtml({ shop, dateYMD, printedAt, afterHHMM, origin }) {
 }
 
 function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) {
-  const showCode = shop.source === "ecoupon";
   const ordered = rows.filter((r) => r.couponState === "ordered");
   const atShop = rows.filter((r) => r.couponState === "at_shop");
+  // ร้าน stock ที่ออก e-coupon แทนตอนกระดาษหมด: แสดงโค้ดเฉพาะแถว e-coupon (ไม่แสดงโค้ดกระดาษ)
+  const isECouponRow = (r) => shop.source === "ecoupon" || r.couponSource === "ecoupon";
+  const showCode = [...ordered, ...atShop].some(isECouponRow);
+  const codeOf = (r) => (isECouponRow(r) ? r.code || "-" : "-");
   // coupon lines carry their options inline (no separate add-on / drink) → one numbered table
   const kitchenHtml = summaryTableHtml({
     num: 1,
@@ -314,7 +317,7 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
                   <td class="td">${esc(r.orderRoomName || r.roomName || "-")}</td>
                   <td class="td ol-cell">${lines || "-"}</td>
                   <td class="td">${esc(hmBKK(r.orderedAt) || "-")}</td>
-                  ${showCode ? `<td class="td mono">${esc(r.code || "-")}</td>` : ""}
+                  ${showCode ? `<td class="td mono">${esc(codeOf(r))}</td>` : ""}
                 </tr>`;
             })
             .join("")}
@@ -348,7 +351,7 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
                   <td class="td">${esc(r.nickname || "-")}</td>
                   <td class="td">${esc(r.studentName || "-")}${noCheckin(r)}</td>
                   <td class="td">${esc(r.orderRoomName || r.roomName || "-")}</td>
-                  ${showCode ? `<td class="td mono">${esc(r.code || "-")}</td>` : ""}
+                  ${showCode ? `<td class="td mono">${esc(codeOf(r))}</td>` : ""}
                 </tr>`,
             )
             .join("")}
@@ -356,9 +359,13 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
       </table>`
     : `<div class="sub">ไม่มี</div>`;
 
+  const placed = [...ordered, ...atShop];
+  const paperCount = placed.filter((r) => !isECouponRow(r)).length;
   const footerHtml = `
       <div class="footer">
-        สั่งผ่านแอป ${ordered.length} · สั่งที่ร้านเอง ${atShop.length} · รวม ${ordered.length + atShop.length}
+        สั่งผ่านแอป ${ordered.length} · สั่งที่ร้านเอง ${atShop.length} · รวม ${ordered.length + atShop.length}${
+          shop.source === "stock" ? ` (คูปองกระดาษ ${paperCount} · e-coupon ${placed.length - paperCount})` : ""
+        }
       </div>`;
   const hasList = ordered.length + atShop.length > 0;
 

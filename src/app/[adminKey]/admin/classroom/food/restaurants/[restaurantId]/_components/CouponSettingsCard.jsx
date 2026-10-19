@@ -140,6 +140,11 @@ function StockSummary({ restaurant, adminKey, onSaved }) {
       <span className={`font-semibold ${tone}`}>
         พร้อมใช้ {available === undefined ? "—" : available.toLocaleString()} ใบ
       </span>
+      {summary?.fallbackECouponToday > 0 && (
+        <span className="text-admin-textMuted">
+          e-coupon แทนกระดาษวันนี้ {summary.fallbackECouponToday.toLocaleString()} ใบ
+        </span>
+      )}
       <label className="flex items-center gap-1.5 text-admin-textMuted">
         เตือนเมื่อเหลือ ≤
         <input
@@ -178,6 +183,7 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
   const restaurantId = String(restaurant?._id || "");
   const couponEnabled = !!restaurant?.couponEnabled;
   const usesCouponStock = !!restaurant?.usesCouponStock;
+  const stockFallback = !!restaurant?.stockFallbackToECoupon;
   // learners only see priced menus, so flag active menus that have none
   const unpricedCount = menus.filter((m) => m.isActive !== false && !hasPrice(m.price)).length;
 
@@ -272,7 +278,26 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
                 : "เปิดร้านคูปองก่อน จึงจะตั้งค่าคูปอง stock ได้"}
             </p>
           ) : usesCouponStock ? (
-            <StockSummary restaurant={restaurant} adminKey={adminKey} onSaved={onSaved} />
+            <>
+              <StockSummary restaurant={restaurant} adminKey={adminKey} onSaved={onSaved} />
+              <div className="mt-3 flex items-start justify-between gap-4 border-t border-admin-border pt-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-admin-text">
+                    เมื่อคูปองกระดาษหมด ให้ออก e-coupon จากระบบแทน
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-admin-textMuted">
+                    ใช้คูปองกระดาษก่อนเสมอ เมื่อไม่มีใบที่ใช้ได้ ผู้เรียนจะได้ e-coupon (9XP-XXXX)
+                    ไปแสดงที่ร้านแทน และร้านไม่ขึ้นว่า &quot;คูปองหมด&quot;
+                  </p>
+                </div>
+                <Toggle
+                  checked={stockFallback}
+                  disabled={saving}
+                  label="เมื่อคูปองกระดาษหมด ให้ออก e-coupon จากระบบแทน"
+                  onChange={(v) => patch({ stockFallbackToECoupon: v })}
+                />
+              </div>
+            </>
           ) : (
             <p className="mt-2 text-[11px] text-admin-textMuted">
               ร้านนี้จะใช้ e-coupon (9XP-XXXX) ที่ระบบออกให้

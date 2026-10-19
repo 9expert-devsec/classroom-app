@@ -46,7 +46,11 @@ export default function StockKpis({ summary }) {
         tone="green"
         label="พร้อมใช้"
         value={s?.availableNotExpired}
-        caption="คูปองที่สามารถใช้งานได้ (ยังไม่หมดอายุ)"
+        caption={
+          s?.restaurant?.stockFallbackToECoupon || s?.fallbackECouponToday > 0
+            ? `ยังไม่หมดอายุ · e-coupon แทนกระดาษวันนี้ ${s?.fallbackECouponToday ?? 0} ใบ`
+            : "คูปองที่สามารถใช้งานได้ (ยังไม่หมดอายุ)"
+        }
       />
       <KpiCard
         icon={CircleCheck}

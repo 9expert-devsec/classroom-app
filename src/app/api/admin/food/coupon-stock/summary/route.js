@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import CouponStockCode from "@/models/CouponStockCode";
 import Restaurant from "@/models/Restaurant";
+import LunchOrder from "@/models/LunchOrder";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -27,7 +28,7 @@ export async function GET(req) {
     if (!restaurantId) return jsonError("กรุณาระบุร้านอาหาร", 400);
 
     const restaurant = await Restaurant.findById(restaurantId)
-      .select("name usesCouponStock couponStockLowThreshold")
+      .select("name usesCouponStock couponStockLowThreshold stockFallbackToECoupon")
       .lean();
     if (!restaurant) return jsonError("ไม่พบร้านอาหาร", 404);
 
@@ -144,6 +145,15 @@ export async function GET(req) {
 
     const lowThreshold = Number(restaurant.couponStockLowThreshold ?? 5);
 
+    // e-coupon ที่ออกแทนกระดาษวันนี้ (ไม่นับใบที่ยกเลิกไปแล้ว)
+    const fallbackECouponToday = await LunchOrder.countDocuments({
+      restaurantId: restaurant._id,
+      dayYMD: today,
+      usesCouponStock: true,
+      couponSource: "ecoupon",
+      status: { $in: ["ordered", "at_shop"] },
+    });
+
     return NextResponse.json({
       ok: true,
       restaurant: {
@@ -151,6 +161,7 @@ export async function GET(req) {
         name: restaurant.name,
         usesCouponStock: !!restaurant.usesCouponStock,
         couponStockLowThreshold: lowThreshold,
+        stockFallbackToECoupon: !!restaurant.stockFallbackToECoupon,
       },
       today,
       byStatus,
@@ -158,6 +169,7 @@ export async function GET(req) {
       expiredStillAvailable,
       expiringSoon,
       isLow: availableNotExpired <= lowThreshold,
+      fallbackECouponToday,
       batches,
     });
   } catch (e) {

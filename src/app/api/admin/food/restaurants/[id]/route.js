@@ -80,13 +80,18 @@ export async function PATCH(req, { params }) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { couponEnabled, usesCouponStock, couponStockLowThreshold } =
-      body || {};
+    const {
+      couponEnabled,
+      usesCouponStock,
+      couponStockLowThreshold,
+      stockFallbackToECoupon,
+    } = body || {};
 
     if (
       couponEnabled === undefined &&
       usesCouponStock === undefined &&
-      couponStockLowThreshold === undefined
+      couponStockLowThreshold === undefined &&
+      stockFallbackToECoupon === undefined
     ) {
       return jsonError("ไม่มีข้อมูลที่ต้องการแก้ไข", 400);
     }
@@ -95,6 +100,12 @@ export async function PATCH(req, { params }) {
     }
     if (usesCouponStock !== undefined && typeof usesCouponStock !== "boolean") {
       return jsonError("usesCouponStock ต้องเป็น true/false", 400);
+    }
+    if (
+      stockFallbackToECoupon !== undefined &&
+      typeof stockFallbackToECoupon !== "boolean"
+    ) {
+      return jsonError("stockFallbackToECoupon ต้องเป็น true/false", 400);
     }
 
     const before = await Restaurant.findById(id).lean();
@@ -117,6 +128,15 @@ export async function PATCH(req, { params }) {
       couponEnabled: nextCouponEnabled,
       usesCouponStock: nextUsesStock,
     };
+
+    // คูปองกระดาษหมด -> ออก e-coupon แทน (มีความหมายเฉพาะร้าน stock)
+    // ปิดทีหลังได้เสมอ — ออเดอร์ e-coupon ที่ออกไปแล้วยังใช้ได้ตามเดิม
+    if (stockFallbackToECoupon !== undefined) {
+      if (stockFallbackToECoupon === true && !nextUsesStock) {
+        return jsonError("ต้องเปิดใช้คูปอง stock ก่อน จึงจะตั้งค่านี้ได้", 400);
+      }
+      update.stockFallbackToECoupon = stockFallbackToECoupon;
+    }
 
     // ✅ P2: เกณฑ์เตือนคูปองเหลือน้อย
     if (couponStockLowThreshold !== undefined) {
@@ -142,11 +162,13 @@ export async function PATCH(req, { params }) {
         couponEnabled: !!before.couponEnabled,
         usesCouponStock: !!before.usesCouponStock,
         couponStockLowThreshold: before.couponStockLowThreshold ?? 5,
+        stockFallbackToECoupon: !!before.stockFallbackToECoupon,
       },
       after: {
         couponEnabled: !!item.couponEnabled,
         usesCouponStock: !!item.usesCouponStock,
         couponStockLowThreshold: item.couponStockLowThreshold ?? 5,
+        stockFallbackToECoupon: !!item.stockFallbackToECoupon,
       },
       meta: { scope: "coupon-settings" },
     });

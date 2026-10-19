@@ -163,10 +163,14 @@ export default function FoodReportClient({ todayYMD }) {
     const groups = [...groupBy(allRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
       ([key, rows]) => {
         const x = stockExtras.get(key);
-        const extras = x
+        const counts = countRows(rows);
+        // ร้าน stock: แยกกระดาษ / e-coupon ที่ออกแทนตอนกระดาษหมด
+        const isStockShop = !!x || counts.byType.stock > 0;
+        const extras = isStockShop
           ? [
-              x.awaitingReturn ? `รอคืนคูปอง ${x.awaitingReturn}` : "",
-              x.missingCode ? `ไม่มีโค้ด ${x.missingCode}` : "",
+              `กระดาษ ${counts.byType.stock} · e-coupon ${counts.byType.ecoupon}`,
+              x?.awaitingReturn ? `รอคืนคูปอง ${x.awaitingReturn}` : "",
+              x?.missingCode ? `ไม่มีโค้ด ${x.missingCode}` : "",
             ]
               .filter(Boolean)
               .join(" · ")
@@ -175,7 +179,7 @@ export default function FoodReportClient({ todayYMD }) {
           key,
           name: key === NO_SHOP_KEY ? NO_SHOP_LABEL : shopOf(rows[0])?.name || "-",
           types: typesOf(rows),
-          counts: countRows(rows),
+          counts,
           rows,
           extras,
         };
