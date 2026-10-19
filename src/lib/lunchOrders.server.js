@@ -77,6 +77,16 @@ export function isECouponOrder(order) {
   return getOrderCouponSource(order) === "ecoupon" && !!order?.couponCode;
 }
 
+/**
+ * แสดงบาร์โค้ด Code 128 บนตั๋วหรือไม่: ต้องเป็นออเดอร์ e-coupon และร้าน "ตอนนี้" เปิด showCouponBarcode
+ * (อ่านค่าปัจจุบันของร้าน — เปิด/ปิดแล้วมีผลกับคูปองที่ออกไปแล้วหลังรีเฟรช) · คูปองกระดาษไม่มีวันได้
+ */
+export async function showBarcodeFor(order) {
+  if (!isECouponOrder(order) || !order?.restaurantId) return false;
+  const r = await Restaurant.findById(order.restaurantId).select("showCouponBarcode").lean();
+  return !!r?.showCouponBarcode;
+}
+
 /* ---------------- issue ---------------- */
 
 /**
@@ -279,6 +289,7 @@ export async function getLunchSession(token, now = lunchNow()) {
       couponSource: order.couponSource || "",
       // C2: สถานะคูปอง ณ ตอน render — หน้าแรกถูกต้องทันทีโดยไม่ต้องรอ poll
       coupon: isECouponOrder(order) ? couponStateOf(order, at) : null,
+      showBarcode: await showBarcodeFor(order),
 
       holderName: order.holderName || "",
       nickname: order.nickname || "",

@@ -16,6 +16,9 @@ const RestaurantSchema = new mongoose.Schema(
     // ✅ ร้าน stock: คูปองกระดาษหมด (ไม่มีใบที่ยังไม่หมดอายุ) -> ออก e-coupon จากระบบแทน
     //    ใช้กระดาษก่อนเสมอ ตัดสินทีละออเดอร์ตอน submit · มีผลเฉพาะเมื่อ usesCouponStock
     stockFallbackToECoupon: { type: Boolean, default: false },
+    // ✅ แสดงบาร์โค้ด Code 128 ของรหัส e-coupon บนหน้าผู้เรียน (เครื่องสแกน POS แบบ 1 มิติ)
+    //    มีผลเฉพาะออเดอร์ e-coupon · อ่านค่าปัจจุบันของร้านทุกครั้งที่แสดงผล
+    showCouponBarcode: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -26,6 +26,8 @@ export default function useCouponStatus(token, initial) {
   const [status, setStatus] = useState(() => ({
     state: initialState,
     usedAt: initial?.usedAt || null,
+    // null = ยังไม่ได้ poll ให้ผู้เรียกใช้ค่าจาก server render
+    showBarcode: null,
   }));
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -76,7 +78,11 @@ export default function useCouponStatus(token, initial) {
         const data = await res.json();
         fails = 0;
         setLastUpdated(new Date());
-        setStatus({ state: data.state, usedAt: data.usedAt || null });
+        setStatus({
+          state: data.state,
+          usedAt: data.usedAt || null,
+          showBarcode: typeof data.showBarcode === "boolean" ? data.showBarcode : null,
+        });
 
         if (data.state === "used") {
           stopped = true;
@@ -121,6 +127,7 @@ export default function useCouponStatus(token, initial) {
   return {
     state: status.state,
     usedAt: status.usedAt,
+    showBarcode: status.showBarcode,
     lastUpdated,
     polling: status.state === "unused",
   };

@@ -514,7 +514,8 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               className="mt-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (hasCode && !busy) lookup(code, "typed");
+                // Enter จากคีย์บอร์ดหรือเครื่องสแกนบาร์โค้ด (keyboard wedge: พิมพ์รหัสแล้วกด Enter) มาที่นี่
+                if (hasCode && !busy) lookup(code.trim(), "typed");
               }}
             >
               <div className="relative">

@@ -67,6 +67,22 @@ function ConfirmOff({ confirm, onCancel, onConfirm }) {
   );
 }
 
+/** e-coupon shops only (non-stock, or stock with fallback on): Code 128 barcode on the learner ticket */
+function BarcodeToggle({ checked, disabled, onChange }) {
+  const label = "แสดงบาร์โค้ดบน e-coupon (สำหรับเครื่องสแกน POS แบบ 1 มิติ)";
+  return (
+    <div className="mt-3 flex items-start justify-between gap-4 border-t border-admin-border pt-3">
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-admin-text">{label}</div>
+        <p className="mt-0.5 text-[11px] text-admin-textMuted">
+          บาร์โค้ด Code 128 ของรหัส 9XP-XXXX แสดงใต้ QR บนหน้าคูปองของผู้เรียน
+        </p>
+      </div>
+      <Toggle checked={checked} disabled={disabled} label={label} onChange={onChange} />
+    </div>
+  );
+}
+
 /** Stock summary (both flags on): available count + threshold + link */
 function StockSummary({ restaurant, adminKey, onSaved }) {
   const restaurantId = String(restaurant?._id || "");
@@ -184,6 +200,7 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
   const couponEnabled = !!restaurant?.couponEnabled;
   const usesCouponStock = !!restaurant?.usesCouponStock;
   const stockFallback = !!restaurant?.stockFallbackToECoupon;
+  const showBarcode = !!restaurant?.showCouponBarcode;
   // learners only see priced menus, so flag active menus that have none
   const unpricedCount = menus.filter((m) => m.isActive !== false && !hasPrice(m.price)).length;
 
@@ -297,11 +314,25 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
                   onChange={(v) => patch({ stockFallbackToECoupon: v })}
                 />
               </div>
+              {stockFallback && (
+                <BarcodeToggle
+                  checked={showBarcode}
+                  disabled={saving}
+                  onChange={(v) => patch({ showCouponBarcode: v })}
+                />
+              )}
             </>
           ) : (
-            <p className="mt-2 text-[11px] text-admin-textMuted">
-              ร้านนี้จะใช้ e-coupon (9XP-XXXX) ที่ระบบออกให้
-            </p>
+            <>
+              <p className="mt-2 text-[11px] text-admin-textMuted">
+                ร้านนี้จะใช้ e-coupon (9XP-XXXX) ที่ระบบออกให้
+              </p>
+              <BarcodeToggle
+                checked={showBarcode}
+                disabled={saving}
+                onChange={(v) => patch({ showCouponBarcode: v })}
+              />
+            </>
           )}
         </SettingRow>
       </div>

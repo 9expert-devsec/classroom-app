@@ -1,15 +1,15 @@
 // src/app/api/lunch/[token]/coupon-status/route.js
 //
 // C2: สถานะคูปอง e-coupon แบบเบา ให้หน้าขอบคุณ/สแกนซ้ำ poll ทุก ~4 วินาที
-//   200 { state: "unused" | "used" | "expired", usedAt?, serverTime }
+//   200 { state: "unused" | "used" | "expired", usedAt?, showBarcode, serverTime }
 //   404 invalid / 410 replaced / 409 not_ecoupon (ร้าน stock หรือยังไม่มีคูปอง)
 //
 // findOne ครั้งเดียวด้วย token (unique index) + projection เล็ก ๆ
-// ไม่ดึงร้าน/สต็อก/เมนู และไม่ใช้ session API ตัวหนัก
+// + อ่าน showCouponBarcode ของร้านด้วย _id (field เดียว) · ไม่ดึงสต็อก/เมนู และไม่ใช้ session API ตัวหนัก
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import LunchOrder from "@/models/LunchOrder";
-import { couponStateOf, isECouponOrder } from "@/lib/lunchOrders.server";
+import { couponStateOf, isECouponOrder, showBarcodeFor } from "@/lib/lunchOrders.server";
 import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function GET(_req, { params }) {
 
     await dbConnect();
     const order = await LunchOrder.findOne({ token })
-      .select("status activeKey dayYMD couponSource couponCode stockCodeId redeemedAt")
+      .select("status activeKey dayYMD restaurantId couponSource couponCode stockCodeId redeemedAt")
       .lean();
 
     if (!order) {
@@ -43,7 +43,11 @@ export async function GET(_req, { params }) {
 
     const now = lunchNow();
     return NextResponse.json(
-      { ...couponStateOf(order, now), serverTime: now.toISOString() },
+      {
+        ...couponStateOf(order, now),
+        showBarcode: await showBarcodeFor(order),
+        serverTime: now.toISOString(),
+      },
       { headers: NO_STORE },
     );
   } catch (err) {
