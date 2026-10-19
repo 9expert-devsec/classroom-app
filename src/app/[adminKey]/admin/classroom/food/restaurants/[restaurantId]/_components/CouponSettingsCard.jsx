@@ -67,18 +67,30 @@ function ConfirmOff({ confirm, onCancel, onConfirm }) {
   );
 }
 
-/** e-coupon shops only (non-stock, or stock with fallback on): Code 128 barcode on the learner ticket */
-function BarcodeToggle({ checked, disabled, onChange }) {
+/**
+ * Code 128 barcode on the learner ticket — only shops that issue e-coupons (non-stock, or stock with fallback on).
+ * Ineligible (stock, fallback off): faded + hint; the switch stays usable only to turn an existing ON off.
+ */
+function BarcodeToggle({ checked, disabled, eligible = true, onChange }) {
   const label = "แสดงบาร์โค้ดบน e-coupon (สำหรับเครื่องสแกน POS แบบ 1 มิติ)";
+  // the server rejects true for ineligible shops; false is always allowed
+  const locked = !eligible && !checked;
   return (
     <div className="mt-3 flex items-start justify-between gap-4 border-t border-admin-border pt-3">
-      <div className="min-w-0">
+      <div className={`min-w-0 ${eligible ? "" : "opacity-50"}`}>
         <div className="text-xs font-semibold text-admin-text">{label}</div>
         <p className="mt-0.5 text-[11px] text-admin-textMuted">
-          บาร์โค้ด Code 128 ของรหัส 9XP-XXXX แสดงใต้ QR บนหน้าคูปองของผู้เรียน
+          {eligible
+            ? "บาร์โค้ด Code 128 ของรหัส 9XP-XXXX แสดงใต้ QR บนหน้าคูปองของผู้เรียน"
+            : "เปิด 'เมื่อคูปองกระดาษหมด ให้ออก e-coupon จากระบบแทน' ก่อน จึงจะตั้งค่านี้ได้"}
         </p>
       </div>
-      <Toggle checked={checked} disabled={disabled} label={label} onChange={onChange} />
+      <Toggle
+        checked={checked}
+        disabled={disabled || locked}
+        label={label}
+        onChange={(v) => (eligible || !v) && onChange(v)}
+      />
     </div>
   );
 }
@@ -314,13 +326,12 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
                   onChange={(v) => patch({ stockFallbackToECoupon: v })}
                 />
               </div>
-              {stockFallback && (
-                <BarcodeToggle
-                  checked={showBarcode}
-                  disabled={saving}
-                  onChange={(v) => patch({ showCouponBarcode: v })}
-                />
-              )}
+              <BarcodeToggle
+                checked={showBarcode}
+                disabled={saving}
+                eligible={stockFallback}
+                onChange={(v) => patch({ showCouponBarcode: v })}
+              />
             </>
           ) : (
             <>

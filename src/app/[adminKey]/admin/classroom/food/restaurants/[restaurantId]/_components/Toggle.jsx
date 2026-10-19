@@ -14,6 +14,7 @@ export default function Toggle({
       aria-checked={!!checked}
       aria-label={label || undefined}
       disabled={disabled}
+      aria-disabled={disabled || undefined}
       onClick={() => !disabled && onChange?.(!checked)}
       className={[
         "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition",
