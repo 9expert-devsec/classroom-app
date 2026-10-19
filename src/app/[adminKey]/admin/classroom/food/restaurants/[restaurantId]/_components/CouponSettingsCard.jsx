@@ -72,7 +72,7 @@ function ConfirmOff({ confirm, onCancel, onConfirm }) {
  * Ineligible (stock, fallback off): faded + hint; the switch stays usable only to turn an existing ON off.
  */
 function BarcodeToggle({ checked, disabled, eligible = true, onChange }) {
-  const label = "แสดงบาร์โค้ดบน e-coupon (สำหรับเครื่องสแกน POS แบบ 1 มิติ)";
+  const label = "แสดงบาร์โค้ด (สำหรับเครื่องสแกน POS แบบ 1 มิติ)";
   // the server rejects true for ineligible shops; false is always allowed
   const locked = !eligible && !checked;
   return (
@@ -371,7 +371,7 @@ export default function CouponSettingsCard({
         {/* e-coupon display — its own group so it doesn't read as part of the stock feature */}
         {couponEnabled && (
           <div className="rounded-2xl border border-admin-border bg-white p-3">
-            <div className="text-sm font-semibold text-admin-text">การแสดง e-coupon</div>
+            <div className="text-sm font-semibold text-admin-text">บาร์โค้ดบน e-coupon</div>
             <BarcodeToggle
               checked={showBarcode}
               disabled={saving}
