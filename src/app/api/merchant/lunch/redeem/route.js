@@ -2,6 +2,7 @@
 // POST { restaurantId, code, via: "scan"|"typed" }
 //   -> { state: "used", usedAt, customer, redeemed: true }   ใช้สำเร็จครั้งนี้
 //   -> { state: "used", usedAt, customer }                   ถูกใช้ไปก่อนแล้ว
+//   -> { state: "cancelled", cancelledAt, customer }         ถูกยกเลิก (ไม่มีการเขียน)
 //   -> { state: "expired" | "not_found" }
 // C3c: atomic (findOneAndUpdate ครั้งเดียว) · x-merchant-key · rate limit 20/นาที/IP
 import { NextResponse } from "next/server";

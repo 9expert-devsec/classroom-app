@@ -1,5 +1,5 @@
 // src/app/api/merchant/lunch/lookup/route.js
-// POST { restaurantId, code } -> { state: "unused"|"used"|"expired"|"not_found", customer?, usedAt? }
+// POST { restaurantId, code } -> { state: "unused"|"used"|"expired"|"cancelled"|"not_found", customer?, usedAt?, cancelledAt? }
 // C3c: ต้องมี header x-merchant-key (ไม่ตรง -> 404) · rate limit 30/นาที/IP · ไม่มีราคาใด ๆ
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";

@@ -3,7 +3,7 @@
 // C3d: Merchant shop page — English only, mobile-first, no prices anywhere
 //   home     : Scan QR card, or enter code + Check (not found -> inline error), Recent redemptions + Usage summary
 //   scanning : camera (@zxing/browser, same reader as the old ScanClient)
-//   result   : unused -> Found + Confirm redemption / used -> already used / expired -> expired
+//   result   : unused -> Found + Confirm redemption / used -> already used / cancelled / expired
 //   complete : Coupon redeemed + Scan next / View usage summary
 // ทุก API ส่ง header x-merchant-key — server เป็นคนตัดสินทั้งหมด (ร้าน วัน เวลาปิด)
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -572,6 +572,18 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
                 tone="red"
                 title="This coupon has already been used"
                 body={result.usedAt ? `Used on ${atLabel(result.usedAt)}` : ""}
+                customer={customer}
+                onScan={startScan}
+                onHome={goHome}
+              />
+            ) : null}
+
+            {/* Screen 5 — Cancelled (มาได้ทั้งจาก lookup และ redeem) */}
+            {result.state === "cancelled" ? (
+              <BlockedScreen
+                tone="orange"
+                title="This coupon has been cancelled"
+                body={result.cancelledAt ? `Cancelled on ${atLabel(result.cancelledAt)}` : "It can no longer be used"}
                 customer={customer}
                 onScan={startScan}
                 onHome={goHome}

@@ -6,7 +6,7 @@
 //   recent : รายการที่ใช้แล้ววันนี้ของร้านนี้ (ล่าสุด 10)
 //
 // รหัสต้องตรงทั้งร้าน วันนี้ (เวลาไทยผ่าน lunchNow) สถานะ ordered/at_shop และไม่ถูก void
-// นอกนั้นทั้งหมด (ร้านอื่น วันอื่น ยกเลิก คูปอง stock) = not_found
+// ถูก void (ร้านนี้ วันนี้) = cancelled · นอกนั้นทั้งหมด (ร้านอื่น วันอื่น คูปอง stock) = not_found
 import mongoose from "mongoose";
 
 import LunchOrder from "@/models/LunchOrder";
@@ -99,6 +99,28 @@ function isPastFinalClose(dayYMD, now) {
   return !!fc && new Date(now).getTime() >= fc.getTime();
 }
 
+/**
+ * คูปองที่ถูกยกเลิก (couponVoidedAt) ของร้านนี้ วันนี้ -> cancelled, ไม่ใช่ -> null (ผู้เรียกตอบ not_found)
+ * ร้านอื่น / วันอื่น ยังเป็น not_found เหมือนเดิม · redeemedAt ชนะ (cancel กันไว้แล้ว ไม่ควรเกิด)
+ */
+async function cancelledOf({ restaurantId, code, dayYMD, now }) {
+  const order = await LunchOrder.findOne({
+    eCouponCode: code,
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
+    dayYMD,
+    couponVoidedAt: { $ne: null },
+  })
+    .select(`${PROJECTION} couponVoidedAt`)
+    .lean();
+  if (!order) return null;
+  if (order.redeemedAt) return stateOf(order, now);
+  return {
+    state: "cancelled",
+    cancelledAt: new Date(order.couponVoidedAt).toISOString(),
+    customer: customerOf(order),
+  };
+}
+
 /** สถานะของออเดอร์ที่พบแล้ว: used ชนะทุกอย่าง, แล้วจึงดูเวลาปิด */
 function stateOf(order, now) {
   if (order.redeemedAt) {
@@ -125,7 +147,11 @@ export async function lookupECoupon({ restaurantId, code, now = lunchNow() }) {
   const order = await LunchOrder.findOne(baseFilter({ restaurantId, code: normalized, dayYMD }))
     .select(PROJECTION)
     .lean();
-  if (!order) return { state: "not_found" };
+  if (!order) {
+    return (
+      (await cancelledOf({ restaurantId, code: normalized, dayYMD, now })) || { state: "not_found" }
+    );
+  }
   return stateOf(order, now);
 }
 
@@ -188,9 +214,15 @@ export async function redeemECoupon({ restaurant, code, via, req = null, now = l
     return { ...stateOf(updated, at), redeemed: true };
   }
 
-  // ไม่ match: อ่านซ้ำครั้งเดียวเพื่อบอก used (พร้อมเวลา) / expired / not_found
+  // ไม่ match: อ่านซ้ำเพื่อบอก used (พร้อมเวลา) / expired / cancelled / not_found — ไม่มีการเขียน
   const fresh = await LunchOrder.findOne(filter).select(PROJECTION).lean();
-  if (!fresh) return { state: "not_found" };
+  if (!fresh) {
+    return (
+      (await cancelledOf({ restaurantId: restaurant.id, code: normalized, dayYMD, now: at })) || {
+        state: "not_found",
+      }
+    );
+  }
   return stateOf(fresh, at);
 }
 
