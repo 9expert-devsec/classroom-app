@@ -14,11 +14,8 @@
 //      เส้นปรุคั่นส่วนรหัสกับแถวรายละเอียด (ชื่อ / ชื่อเล่น / ห้อง / วันที่)
 import { Ticket } from "lucide-react";
 import CouponCode from "./CouponCode";
-import LunchQrCode from "@/components/shared/LunchQrCode";
 import useCouponStatus from "./useCouponStatus";
-import CouponBarcode from "./CouponBarcode";
-
-const NAVY = "#0d1b2a";
+import ScanPanel from "./ScanPanel";
 
 function hmBkk(d, withSeconds = false) {
   if (!d) return "";
@@ -96,21 +93,15 @@ function ECouponCard({ order, dateLabel, token }) {
   return (
     <CardShell testId="ecoupon-card" label="E-COUPON" caption="แสดงที่ร้าน">
       <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-3">
-        {/* QR = รหัสเปล่า ๆ เท่านั้น ร้านสแกนแล้วได้ 9XP-XXXX เหมือนพิมพ์เอง */}
-        <LunchQrCode
+        {/* QR = รหัสเปล่า ๆ เท่านั้น ร้านสแกนแล้วได้ 9XP-XXXX เหมือนพิมพ์เอง
+            บาร์โค้ด POS: เฉพาะ e-coupon ที่ร้านเปิดไว้ · ใช้แล้ว = ตราประทับทับ · อื่น ๆ ไม่แสดง
+            แผงสแกนดำบนขาวเสมอ ไม่ตาม dark mode (ดู ScanPanel) */}
+        <ScanPanel
           value={order.couponCode}
-          size={168}
+          qrSize={168}
           status={live.state === "used" ? "used" : "unused"}
-          fgColor={NAVY}
-          className="p-2"
+          showBarcode={showBarcode && (live.state === "unused" || live.state === "used")}
         />
-        {/* บาร์โค้ด POS: เฉพาะ e-coupon ที่ร้านเปิดไว้ · ใช้แล้ว = ตราประทับทับ · อื่น ๆ ไม่แสดง */}
-        {showBarcode && (live.state === "unused" || live.state === "used") ? (
-          <CouponBarcode
-            value={order.couponCode}
-            status={live.state === "used" ? "used" : "unused"}
-          />
-        ) : null}
         <CouponCode code={order.couponCode} size="xl" />
         {/* ร้าน stock ที่ออก e-coupon แทนตอนคูปองกระดาษหมด */}
         {order.stockFallback ? (
