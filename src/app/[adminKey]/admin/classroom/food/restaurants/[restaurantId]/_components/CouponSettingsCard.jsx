@@ -95,18 +95,20 @@ function BarcodeToggle({ checked, disabled, eligible = true, onChange }) {
   );
 }
 
-/** Stock summary (both flags on): available count + threshold + link */
-function StockSummary({ restaurant, adminKey, onSaved }) {
+/**
+ * Coupon-stock summary of a stock shop (coupon on + stock on); null otherwise / while loading.
+ * Lives with the page so the header button pill and the card share one fetch.
+ */
+export function useStockSummary(restaurant) {
   const restaurantId = String(restaurant?._id || "");
+  const enabled = !!restaurant?.couponEnabled && !!restaurant?.usesCouponStock;
   const savedThreshold = restaurant?.couponStockLowThreshold ?? 5;
 
   const [summary, setSummary] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [threshold, setThreshold] = useState(String(savedThreshold));
-  const [savingThreshold, setSavingThreshold] = useState(false);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !enabled) return;
     let ignore = false;
     (async () => {
       try {
@@ -123,7 +125,21 @@ function StockSummary({ restaurant, adminKey, onSaved }) {
     return () => {
       ignore = true;
     };
-  }, [restaurantId, savedThreshold, reloadKey]);
+  }, [restaurantId, enabled, savedThreshold, reloadKey]);
+
+  return {
+    summary: enabled ? summary : null,
+    reload: () => setReloadKey((k) => k + 1),
+  };
+}
+
+/** Stock summary (both flags on): available count + threshold + link */
+function StockSummary({ restaurant, adminKey, onSaved, summary, onReload }) {
+  const restaurantId = String(restaurant?._id || "");
+  const savedThreshold = restaurant?.couponStockLowThreshold ?? 5;
+
+  const [threshold, setThreshold] = useState(String(savedThreshold));
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   async function saveThreshold() {
     const n = Number(threshold);
@@ -144,7 +160,7 @@ function StockSummary({ restaurant, adminKey, onSaved }) {
         return;
       }
       onSaved?.(out.item);
-      setReloadKey((k) => k + 1);
+      onReload?.();
     } catch (err) {
       console.error(err);
       toast.error("บันทึกเกณฑ์เตือนไม่สำเร็จ");
@@ -204,7 +220,19 @@ function StockSummary({ restaurant, adminKey, onSaved }) {
   );
 }
 
-export default function CouponSettingsCard({ restaurant, adminKey, menus = [], onSaved }) {
+/**
+ * stockSummary / onStockReload: from useStockSummary (owned by the caller)
+ * stacked: one column (inside the settings drawer)
+ */
+export default function CouponSettingsCard({
+  restaurant,
+  adminKey,
+  menus = [],
+  onSaved,
+  stockSummary = null,
+  onStockReload,
+  stacked = false,
+}) {
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(null); // { title, body, patch }
 
@@ -275,7 +303,7 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
         {saving && <span className="text-xs text-admin-textMuted">กำลังบันทึก...</span>}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className={stacked ? "grid gap-3" : "grid gap-3 lg:grid-cols-2"}>
         <SettingRow
           title="เปิดให้เลือกเป็นร้านคูปอง"
           description="เปิดไว้เพื่อให้จัดร้านนี้เป็นร้านคูปองใน Food Calendar และให้ผู้เรียนสั่งอาหารล่วงหน้าจากมือถือได้"
@@ -308,7 +336,13 @@ export default function CouponSettingsCard({ restaurant, adminKey, menus = [], o
             </p>
           ) : usesCouponStock ? (
             <>
-              <StockSummary restaurant={restaurant} adminKey={adminKey} onSaved={onSaved} />
+              <StockSummary
+                restaurant={restaurant}
+                adminKey={adminKey}
+                onSaved={onSaved}
+                summary={stockSummary}
+                onReload={onStockReload}
+              />
               <div className="mt-3 flex items-start justify-between gap-4 border-t border-admin-border pt-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-admin-text">

@@ -9,7 +9,7 @@ import { Plus } from "lucide-react";
 import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
-import CouponSettingsCard from "./_components/CouponSettingsCard";
+import CouponSettingsButton from "./_components/CouponSettingsButton";
 import RestaurantTabs from "./_components/RestaurantTabs";
 import MenuTab from "./_components/MenuTab";
 import SetsTab from "./_components/sets/SetsTab";
@@ -668,27 +668,26 @@ function RestaurantDetail({ params }) {
           </div>
         </div>
 
-        {listParams.tab === "sets" ? (
-          <PrimaryButton onClick={openNewSet}>
-            <Plus className="h-4 w-4" />
-            เพิ่มชุดอาหาร
-          </PrimaryButton>
-        ) : (
-          <PrimaryButton onClick={openNewMenu}>
-            <Plus className="h-4 w-4" />
-            เพิ่มเมนู
-          </PrimaryButton>
-        )}
-      </div>
-
-      {/* coupon settings; stock summary shows inside when stock is on */}
-      <div className="shrink-0">
-        <CouponSettingsCard
-          restaurant={restaurant}
-          adminKey={adminKey}
-          menus={menus}
-          onSaved={(item) => setRestaurant(item)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* coupon settings live in a drawer; the pill shows the current coupon status */}
+          <CouponSettingsButton
+            restaurant={restaurant}
+            adminKey={adminKey}
+            menus={menus}
+            onSaved={(item) => setRestaurant(item)}
+          />
+          {listParams.tab === "sets" ? (
+            <PrimaryButton onClick={openNewSet}>
+              <Plus className="h-4 w-4" />
+              เพิ่มชุดอาหาร
+            </PrimaryButton>
+          ) : (
+            <PrimaryButton onClick={openNewMenu}>
+              <Plus className="h-4 w-4" />
+              เพิ่มเมนู
+            </PrimaryButton>
+          )}
+        </div>
       </div>
 
       <div className="shrink-0 space-y-4 rounded-2xl bg-admin-surface p-4 shadow-sm">
