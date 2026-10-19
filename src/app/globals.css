@@ -7,6 +7,13 @@ body {
   @apply bg-front-bg text-front-text antialiased;
 }
 
+/* Merchant (/m): ปลดล็อก h-screen overflow-hidden ของ body (root layout) ให้หน้าเลื่อนได้บนมือถือ
+   specificity (0,1,1) ชนะ .h-screen / .overflow-hidden (0,1,0) */
+body:has([data-merchant-shell]) {
+  height: auto;
+  overflow: visible;
+}
+
 @layer utilities {
   .animate-fadeIn {
     animation: fadeIn 0.25s ease-out;
