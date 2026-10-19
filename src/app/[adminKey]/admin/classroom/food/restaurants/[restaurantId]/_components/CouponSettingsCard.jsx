@@ -76,7 +76,7 @@ function BarcodeToggle({ checked, disabled, eligible = true, onChange }) {
   // the server rejects true for ineligible shops; false is always allowed
   const locked = !eligible && !checked;
   return (
-    <div className="mt-3 flex items-start justify-between gap-4 border-t border-admin-border pt-3">
+    <div className="mt-2 flex items-start justify-between gap-4">
       <div className={`min-w-0 ${eligible ? "" : "opacity-50"}`}>
         <div className="text-xs font-semibold text-admin-text">{label}</div>
         <p className="mt-0.5 text-[11px] text-admin-textMuted">
@@ -360,26 +360,26 @@ export default function CouponSettingsCard({
                   onChange={(v) => patch({ stockFallbackToECoupon: v })}
                 />
               </div>
-              <BarcodeToggle
-                checked={showBarcode}
-                disabled={saving}
-                eligible={stockFallback}
-                onChange={(v) => patch({ showCouponBarcode: v })}
-              />
             </>
           ) : (
-            <>
-              <p className="mt-2 text-[11px] text-admin-textMuted">
-                ร้านนี้จะใช้ e-coupon (9XP-XXXX) ที่ระบบออกให้
-              </p>
-              <BarcodeToggle
-                checked={showBarcode}
-                disabled={saving}
-                onChange={(v) => patch({ showCouponBarcode: v })}
-              />
-            </>
+            <p className="mt-2 text-[11px] text-admin-textMuted">
+              ร้านนี้จะใช้ e-coupon (9XP-XXXX) ที่ระบบออกให้
+            </p>
           )}
         </SettingRow>
+
+        {/* e-coupon display — its own group so it doesn't read as part of the stock feature */}
+        {couponEnabled && (
+          <div className="rounded-2xl border border-admin-border bg-white p-3">
+            <div className="text-sm font-semibold text-admin-text">การแสดง e-coupon</div>
+            <BarcodeToggle
+              checked={showBarcode}
+              disabled={saving}
+              eligible={!usesCouponStock || stockFallback}
+              onChange={(v) => patch({ showCouponBarcode: v })}
+            />
+          </div>
+        )}
       </div>
 
       {confirm && (
