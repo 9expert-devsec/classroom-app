@@ -18,6 +18,7 @@ import {
   toBkkYMD,
 } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
+import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 
 // unique index ต้องมีจริงก่อน insert แรก ไม่งั้น 2 instance ที่ยิงพร้อมกันจะได้แถวซ้ำ
 let indexesReady = null;
@@ -73,7 +74,7 @@ export async function notifyAfterSubmit(order) {
     });
 
     // stock level — เฉพาะออเดอร์ที่เพิ่งได้รหัสจากคลัง
-    if (order.couponSource !== "stock" || !order.restaurantId) return;
+    if (getOrderCouponSource(order) !== "stock" || !order.restaurantId) return;
 
     const [remaining, restaurant] = await Promise.all([
       countAvailable(order.restaurantId, order.dayYMD),

@@ -25,7 +25,7 @@ export async function GET(_req, { params }) {
 
     await dbConnect();
     const order = await LunchOrder.findOne({ token })
-      .select("status activeKey dayYMD couponSource couponCode redeemedAt")
+      .select("status activeKey dayYMD couponSource couponCode stockCodeId redeemedAt")
       .lean();
 
     if (!order) {

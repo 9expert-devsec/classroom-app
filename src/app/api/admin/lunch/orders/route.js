@@ -16,6 +16,7 @@ import CouponStockCode from "@/models/CouponStockCode";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import { computeStatus } from "@/lib/lunchOrders.server";
+import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 import {
   lunchAdminErrorBody,
   reopenBlockedReason,
@@ -121,7 +122,7 @@ export async function GET(req) {
         status,
         restaurantName: o.restaurantName || "",
         couponCode: o.couponCode || "",
-        couponSource: o.couponSource || "",
+        couponSource: o.couponCode ? getOrderCouponSource(o) : "",
         usesCouponStock: !!o.usesCouponStock,
         stockStatus: o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "",
         // P4b: ส่งมอบ / รับคืน

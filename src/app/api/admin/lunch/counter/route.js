@@ -14,6 +14,7 @@ import {
   lunchAdminErrorBody,
 } from "@/lib/lunchAdmin.server";
 import { lunchNow } from "@/lib/lunchClock.server";
+import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,8 @@ export async function GET(req) {
       restaurantName: o.restaurantName || "",
       status: computeStatus(o, now),
       couponCode: o.couponCode || "",
-      couponSource: o.couponSource || "",
+      // ยังไม่ยืนยัน = "" · ยืนยันแล้วตัดสินจากออเดอร์ (ร้าน stock ออก e-coupon แทนได้)
+      couponSource: o.couponCode ? getOrderCouponSource(o) : "",
       couponVoided: !!o.couponVoidedAt,
       stockStatus: o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "",
       handedOutAt: o.handedOutAt || null,

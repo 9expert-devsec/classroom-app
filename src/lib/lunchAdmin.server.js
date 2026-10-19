@@ -28,6 +28,7 @@ import { reissueDeadline, finalCloseAt, finalCloseLabel, toBkkYMD } from "@/lib/
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, bangkokHM } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
+import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 
 /* ---------------- errors ---------------- */
 
@@ -199,7 +200,9 @@ export async function cancelLunchOrder({
       let couponEffect = "none";
       let stockStatusAfter = null;
 
-      if (order.stockCodeId) {
+      // ตัดสินจากออเดอร์ — ร้าน stock ที่ออก e-coupon แทนต้องถูก void แบบร้าน e-coupon
+      const couponSource = getOrderCouponSource(order);
+      if (couponSource === "stock" && order.stockCodeId) {
         try {
           const code = await releaseCode(order.stockCodeId, { session });
           stockStatusAfter = code.status;
@@ -209,7 +212,7 @@ export async function cancelLunchOrder({
           if (!(e instanceof CouponStockError)) throw e;
           couponEffect = "none";
         }
-      } else if (order.couponCode && order.couponSource === "ecoupon") {
+      } else if (order.couponCode && couponSource === "ecoupon") {
         set.couponVoidedAt = at;
         couponEffect = "voided";
       }
@@ -446,7 +449,7 @@ export async function handOutLunchCoupon({
       if (order.status !== "ordered" && order.status !== "at_shop") {
         fail(409, "not_placed", "ออเดอร์นี้ยังไม่ได้ยืนยัน หรือถูกยกเลิกแล้ว");
       }
-      if (!order.usesCouponStock || !order.stockCodeId) {
+      if (getOrderCouponSource(order) !== "stock" || !order.stockCodeId) {
         fail(409, "not_stock", "ออเดอร์นี้เป็น e-coupon ไม่ต้องส่งมอบคูปองกระดาษ");
       }
 

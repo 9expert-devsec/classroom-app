@@ -24,6 +24,7 @@ import LunchOrder from "@/models/LunchOrder";
 import CouponStockCode from "@/models/CouponStockCode";
 
 import { computeStatus } from "@/lib/lunchOrders.server";
+import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
 
@@ -112,9 +113,8 @@ function orderLines(order) {
 }
 
 function sourceOf(order) {
-  if (order.couponSource === "stock" || order.couponSource === "ecoupon") return order.couponSource;
-  if (!order.restaurantId) return "";
-  return order.usesCouponStock ? "stock" : "ecoupon";
+  if (!order.couponSource && !order.restaurantId) return "";
+  return getOrderCouponSource(order);
 }
 
 /**

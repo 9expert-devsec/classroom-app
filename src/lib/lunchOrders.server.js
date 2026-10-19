@@ -25,6 +25,7 @@ import {
   getCouponAvailability,
 } from "@/lib/couponAvailability.server";
 import { countAvailable } from "@/lib/couponStock.server";
+import { getOrderCouponSource, isStockFallbackOrder } from "@/lib/lunchCouponSource";
 
 /* ---------------- token ---------------- */
 
@@ -71,9 +72,9 @@ export function couponStateOf(order, now = lunchNow()) {
   return { state: "unused" };
 }
 
-/** ออเดอร์ที่ใช้ QR + รหัส e-coupon (ร้านที่ไม่ใช้คูปอง stock) */
+/** ออเดอร์ที่ใช้ QR + รหัส e-coupon (ร้าน e-coupon หรือร้าน stock ที่ออก e-coupon แทนตอนกระดาษหมด) */
 export function isECouponOrder(order) {
-  return order?.couponSource === "ecoupon" && !!order?.couponCode;
+  return getOrderCouponSource(order) === "ecoupon" && !!order?.couponCode;
 }
 
 /* ---------------- issue ---------------- */
@@ -243,7 +244,10 @@ export async function getLunchSession(token, now = lunchNow()) {
       restaurantId: rid,
       restaurantName: order.restaurantName || fromList?.name || "",
       restaurantLogo: fromList?.logo || "",
-      isStock: !!order.usesCouponStock,
+      // ตัดสินจากออเดอร์ ไม่ใช่ร้าน — ร้าน stock ที่ออก e-coupon แทนต้องได้ตั๋ว e-coupon
+      isStock: getOrderCouponSource(order) === "stock",
+      // ร้าน stock แต่ได้ e-coupon แทน -> หน้าคูปองบอกว่าไม่ต้องไปรับกระดาษที่ Counter
+      stockFallback: isStockFallbackOrder(order),
 
       lines: (order.lines || []).map((l) => ({
         menuId: l.menuId ? String(l.menuId) : null,
