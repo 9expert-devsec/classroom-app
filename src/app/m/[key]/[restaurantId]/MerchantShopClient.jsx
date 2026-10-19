@@ -1,19 +1,30 @@
 "use client";
 
 // C3d: Merchant shop page — English only, mobile-first, no prices anywhere
-//   home     : logo + name, Scan QR (primary), or enter code + Check, Recent redemptions + Usage summary link
+//   home     : Scan QR card, or enter code + Check (not found -> inline error), Recent redemptions + Usage summary
 //   scanning : camera (@zxing/browser, same reader as the old ScanClient)
-//   result   : unused (info + Confirm) / used (Used at hh:mm) / expired / not_found
-//   complete : Back, or auto-return to home after 3 s
+//   result   : unused -> Found + Confirm redemption / used -> already used / expired -> expired
+//   complete : Coupon redeemed + Scan next / View usage summary
 // ทุก API ส่ง header x-merchant-key — server เป็นคนตัดสินทั้งหมด (ร้าน วัน เวลาปิด)
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Camera, CheckCircle2, Clock, Ban, XCircle, ArrowLeft, BarChart3 } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Ban,
+  Check,
+  CircleMinus,
+  Loader2,
+  QrCode,
+  ScanLine,
+  Search,
+  UtensilsCrossed,
+} from "lucide-react";
 
 import { ShopLogo, LAST_SHOP_KEY } from "../ShopPickerClient";
 import { optionGroupsOf } from "@/lib/lunchOptionGroups";
 
-const AUTO_RETURN_MS = 3000;
+const NOT_FOUND_MSG = "Coupon not found. Check the code and try again.";
 
 function hm(iso) {
   if (!iso) return "";
@@ -25,11 +36,9 @@ function hm(iso) {
   });
 }
 
-function dateLabel(ymd) {
-  if (!ymd) return "";
-  const d = new Date(`${ymd}T00:00:00+07:00`);
-  if (Number.isNaN(d.getTime())) return ymd;
-  return d.toLocaleDateString("en-GB", {
+function dmy(date) {
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -37,17 +46,49 @@ function dateLabel(ymd) {
   });
 }
 
-// รูปแบบเดียวกับ normalizeECouponCode (merchantLunch.server.js) — ใช้แค่เปิด/ปิดปุ่ม Check, server ตัดสินจริง
-function isCodeShaped(input) {
-  const s = String(input || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return /^9XP[A-Z0-9]{4}$/.test(s) || /^[A-Z0-9]{4}$/.test(s);
+function dateLabel(ymd) {
+  if (!ymd) return "";
+  return dmy(new Date(`${ymd}T00:00:00+07:00`)) || ymd;
 }
 
-/* ---------------- views ---------------- */
+/** "19 Oct 2026 at 10:16" (เวลาไทย) */
+function atLabel(iso) {
+  if (!iso) return "";
+  return `${dmy(new Date(iso))} at ${hm(iso)}`;
+}
+
+/* ---------------- shared pieces ---------------- */
+
+function Header({ merchantKey, restaurant }) {
+  return (
+    <div className="flex items-center gap-3">
+      <Link
+        href={`/m/${merchantKey}`}
+        aria-label="Change restaurant"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5"
+      >
+        <ArrowLeft className="h-5 w-5" />
+      </Link>
+      <ShopLogo src={restaurant.logo} alt={restaurant.name} size={48} />
+      <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-[#0d1b2a]">{restaurant.name}</h1>
+    </div>
+  );
+}
+
+function Card({ children, className = "", testId }) {
+  return (
+    <div
+      className={`rounded-2xl border border-black/5 bg-white p-4 shadow-sm ${className}`}
+      data-testid={testId}
+    >
+      {children}
+    </div>
+  );
+}
 
 function Row({ label, children }) {
   return (
-    <div className="flex justify-between gap-4 py-1.5 text-sm">
+    <div className="flex justify-between gap-4 py-2.5 text-sm">
       <span className="shrink-0 text-slate-500">{label}</span>
       <span className="min-w-0 break-words text-right font-medium text-[#0d1b2a]">
         {children || "-"}
@@ -56,44 +97,46 @@ function Row({ label, children }) {
   );
 }
 
-function CustomerCard({ c }) {
+/** learner info rows + Food items (ไม่มีราคา) — ใช้ในทุกจอผลลัพธ์ */
+function LearnerInfo({ c }) {
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/5" data-testid="merchant-customer">
-      <p className="text-center font-mono text-lg font-bold tracking-widest text-[#0d1b2a]">
-        {c.code}
-      </p>
-      <div className="mt-3 divide-y divide-black/5">
+    <div data-testid="merchant-customer">
+      <div className="divide-y divide-black/5">
         <Row label="Nickname">{c.nickname}</Row>
         <Row label="First name">{c.firstName}</Row>
         <Row label="Last name">{c.lastName}</Row>
-        <Row label="Room / Class">
-          {[c.room, c.className].filter(Boolean).join(" · ")}
-        </Row>
-        <Row label="Date">{dateLabel(c.dayYMD)}</Row>
+        <Row label="Class">{[c.room, c.className].filter(Boolean).join(" · ")}</Row>
+        <Row label="Training date">{dateLabel(c.dayYMD)}</Row>
       </div>
-      <div className="mt-3 border-t border-black/5 pt-3">
+      <div className="mt-2 border-t border-black/5 pt-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Food items</p>
         {c.mode === "at_shop" ? (
           <p className="mt-2 text-sm text-[#0d1b2a]">Ordering at the shop (no pre-order)</p>
         ) : (
-          // 1 บล็อกต่อ 1 รายการ (เหมือนใบสั่งร้าน): "<qty>× <เมนู>" / "<กลุ่ม>: <ค่า>" / "หมายเหตุ: …"
-          <ul className="mt-2 flex flex-col divide-y divide-black/10">
+          // 1 บรรทัดต่อ 1 รายการ: "<qty> × <เมนู>" แล้วตัวเลือก / หมายเหตุใต้ชื่อ
+          <ul className="mt-2 flex flex-col gap-2.5">
             {(c.items || []).map((it, i) => (
-              <li key={i} className="py-2 text-sm text-[#0d1b2a] first:pt-0 last:pb-0">
-                <p className="font-bold">
-                  {it.qty}× {it.name}
-                </p>
-                {optionGroupsOf(it).map((g, k) => (
-                  <p key={k} className="pl-4 text-[13px] text-[#0d1b2a]">
-                    {g.group ? <span className="text-slate-500">{g.group}: </span> : null}
-                    {g.values.join(", ")}
+              <li key={i} className="flex items-start gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2486ff]/10 text-[#2486ff]">
+                  <UtensilsCrossed className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1 pt-1.5 text-sm text-[#0d1b2a]">
+                  <p className="break-words font-semibold">
+                    {it.qty} × {it.name}
                   </p>
-                ))}
-                {it.note ? (
-                  <p className="pl-4 text-[13px] text-[#0d1b2a]">
-                    <span className="font-bold">หมายเหตุ:</span> {it.note}
-                  </p>
-                ) : null}
+                  {optionGroupsOf(it).map((g, k) => (
+                    <p key={k} className="text-[13px] text-[#0d1b2a]">
+                      {g.group ? <span className="text-slate-500">{g.group}: </span> : null}
+                      {g.values.join(", ")}
+                    </p>
+                  ))}
+                  {it.note ? (
+                    <p className="text-[13px] text-[#0d1b2a]">
+                      <span className="text-slate-500">Note: </span>
+                      {it.note}
+                    </p>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -103,42 +146,79 @@ function CustomerCard({ c }) {
   );
 }
 
-function Notice({ icon: Icon, tone, title, body }) {
-  const ring =
-    tone === "green"
-      ? "bg-green-100 text-green-700"
-      : tone === "amber"
-        ? "bg-amber-100 text-amber-700"
-        : "bg-red-100 text-red-700";
+function PrimaryButton({ onClick, disabled, children, testId }) {
   return (
-    <div className="flex flex-col items-center gap-3 py-2 text-center">
-      <div className={`flex h-14 w-14 items-center justify-center rounded-full ${ring}`}>
-        <Icon className="h-7 w-7" />
-      </div>
-      <h2 className="text-lg font-bold text-[#0d1b2a]">{title}</h2>
-      {body ? <p className="text-sm text-slate-500">{body}</p> : null}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+      className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2486ff] text-base font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:scale-[0.99] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 disabled:opacity-60"
+    >
+      {children}
+    </button>
   );
 }
 
-function BackScanButtons({ onBack, onScan }) {
+function SecondaryButton({ onClick, disabled, children, href, testId }) {
+  const cls =
+    "flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a] transition hover:bg-slate-50 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/30 disabled:opacity-50";
+  if (href) {
+    return (
+      <Link href={href} className={cls} data-testid={testId}>
+        {children}
+      </Link>
+    );
+  }
   return (
-    <div className="mt-5 flex gap-3">
-      <button
-        type="button"
-        onClick={onBack}
-        className="h-12 flex-1 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a] active:scale-[0.98]"
-      >
-        Back
-      </button>
-      <button
-        type="button"
-        onClick={onScan}
-        className="h-12 flex-1 rounded-xl bg-[#2486ff] text-base font-semibold text-white active:scale-[0.98]"
-      >
-        Scan again
-      </button>
-    </div>
+    <button type="button" onClick={onClick} disabled={disabled} className={cls} data-testid={testId}>
+      {children}
+    </button>
+  );
+}
+
+function InlineError({ children }) {
+  if (!children) return null;
+  return (
+    <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert" data-testid="merchant-error">
+      {children}
+    </p>
+  );
+}
+
+const TONES = {
+  red: { circle: "bg-red-50 text-red-600", title: "text-red-600", Icon: Ban },
+  orange: { circle: "bg-orange-50 text-orange-500", title: "text-orange-500", Icon: CircleMinus },
+};
+
+/** จอ "ใช้ไม่ได้" (Screen 4 / 5 pattern): วงกลม + หัวข้อสี + บรรทัดเทา + การ์ดรหัส + Scan again / Back to home */
+function BlockedScreen({ tone, title, body, customer, onScan, onHome }) {
+  const t = TONES[tone];
+  return (
+    <>
+      <div className="flex flex-col items-center pt-2 text-center">
+        <div className={`flex h-24 w-24 items-center justify-center rounded-full ${t.circle}`}>
+          <t.Icon className="h-11 w-11" aria-hidden="true" />
+        </div>
+        <h2 className={`mt-4 text-xl font-bold ${t.title}`}>{title}</h2>
+        {body ? <p className="mt-1 text-sm text-slate-500">{body}</p> : null}
+      </div>
+      {customer ? (
+        <Card className="mt-5">
+          <p className="font-mono text-lg font-bold tracking-wider text-[#0d1b2a]">{customer.code}</p>
+          <div className="mt-1">
+            <LearnerInfo c={customer} />
+          </div>
+        </Card>
+      ) : null}
+      <div className="mt-5 flex flex-col gap-3">
+        <PrimaryButton onClick={onScan} testId="merchant-scan-again">
+          <ScanLine className="h-5 w-5" aria-hidden="true" />
+          Scan again
+        </PrimaryButton>
+        <SecondaryButton onClick={onHome}>Back to home</SecondaryButton>
+      </div>
+    </>
   );
 }
 
@@ -188,19 +268,15 @@ function Scanner({ onCode, onCancel }) {
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl bg-black">
+      <div className="overflow-hidden rounded-2xl bg-black shadow-sm">
         <video ref={videoRef} className="aspect-square w-full object-cover" muted playsInline />
       </div>
       <p className="mt-3 text-center text-sm text-slate-500">
-        {err || "Point the camera at the customer's e-coupon QR"}
+        {err || "Point the camera at the learner's QR code"}
       </p>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mt-4 h-12 w-full rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a]"
-      >
-        Cancel
-      </button>
+      <div className="mt-4">
+        <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
+      </div>
     </div>
   );
 }
@@ -215,7 +291,8 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [recent, setRecent] = useState([]);
-  const codeOk = isCodeShaped(code);
+  const hasCode = code.trim() !== "";
+  const reportHref = `/m/${merchantKey}/${restaurant.id}/report`;
 
   const api = useCallback(
     async (path, init = {}) => {
@@ -255,14 +332,6 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
     loadRecent();
   }, [restaurant.id, loadRecent]);
 
-  // Complete -> กลับหน้าแรกเองหลัง 3 วินาที
-  useEffect(() => {
-    if (view !== "complete") return undefined;
-    const t = setTimeout(() => goHome(), AUTO_RETURN_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
-
   function goHome() {
     setView("home");
     setResult(null);
@@ -270,6 +339,18 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
     setCode("");
     loadRecent();
   }
+
+  // not_found -> อยู่หน้าแรก + error ใต้ช่องกรอก, อย่างอื่น -> จอผลลัพธ์
+  const show = useCallback((data) => {
+    if (data?.state === "not_found") {
+      setResult(null);
+      setError(NOT_FOUND_MSG);
+      setView("home");
+      return;
+    }
+    setResult(data);
+    setView(data?.state === "used" && data.redeemed ? "complete" : "result");
+  }, []);
 
   const lookup = useCallback(
     async (raw, how) => {
@@ -281,8 +362,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
           method: "POST",
           body: JSON.stringify({ restaurantId: restaurant.id, code: raw }),
         });
-        setResult(data);
-        setView("result");
+        show(data);
       } catch (e) {
         setError(e.message);
         setView("home");
@@ -290,14 +370,14 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
         setBusy(false);
       }
     },
-    [api, restaurant.id],
+    [api, restaurant.id, show],
   );
 
   const onScanned = useCallback((text) => lookup(text, "scan"), [lookup]);
 
   async function confirm() {
     const c = result?.customer?.code;
-    if (!c) return;
+    if (!c || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -305,8 +385,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
         method: "POST",
         body: JSON.stringify({ restaurantId: restaurant.id, code: c, via }),
       });
-      setResult(data);
-      setView(data.state === "used" && data.redeemed ? "complete" : "result");
+      show(data);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -317,34 +396,20 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
   function startScan() {
     setError("");
     setResult(null);
+    setCode("");
     setView("scanning");
   }
 
+  const customer = result?.customer || null;
+
   return (
     <div className="mx-auto w-full max-w-[520px] px-4 py-5">
-      <div className="flex items-center gap-3">
-        <Link
-          href={`/m/${merchantKey}`}
-          aria-label="Change restaurant"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <ShopLogo src={restaurant.logo} alt={restaurant.name} size={48} />
-        <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-[#0d1b2a]">{restaurant.name}</h1>
-      </div>
-
-      {error ? (
-        <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" data-testid="merchant-error">
-          {error}
-        </p>
-      ) : null}
+      <Header merchantKey={merchantKey} restaurant={restaurant} />
 
       <div className="mt-5">
-        {view === "scanning" ? (
-          <Scanner onCode={onScanned} onCancel={goHome} />
-        ) : null}
+        {view === "scanning" ? <Scanner onCode={onScanned} onCancel={goHome} /> : null}
 
+        {/* Screen 1 — Scan (home) */}
         {view === "home" ? (
           <>
             <button
@@ -352,53 +417,83 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
               onClick={startScan}
               disabled={busy}
               data-testid="merchant-scan"
-              className="flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl bg-[#005cff] px-4 py-3 text-white shadow-card transition hover:bg-[#004bd1] active:scale-[0.99] active:bg-[#004bd1] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#005cff]/40 focus-visible:ring-offset-2 disabled:opacity-60"
+              className="flex w-full flex-col items-center rounded-2xl bg-gradient-to-br from-[#2486ff] to-[#005cff] px-4 pb-6 pt-7 text-white shadow-md transition active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 focus-visible:ring-offset-2 disabled:opacity-60"
             >
-              <Camera className="h-8 w-8" aria-hidden="true" />
-              <span className="text-xl font-bold">Scan QR</span>
-              <span className="text-sm text-white/90">Point the camera at the learner&apos;s QR code</span>
+              <span className="relative flex h-24 w-24 items-center justify-center" aria-hidden="true">
+                <span className="absolute left-0 top-0 h-6 w-6 rounded-tl-lg border-l-[3px] border-t-[3px] border-white" />
+                <span className="absolute right-0 top-0 h-6 w-6 rounded-tr-lg border-r-[3px] border-t-[3px] border-white" />
+                <span className="absolute bottom-0 left-0 h-6 w-6 rounded-bl-lg border-b-[3px] border-l-[3px] border-white" />
+                <span className="absolute bottom-0 right-0 h-6 w-6 rounded-br-lg border-b-[3px] border-r-[3px] border-white" />
+                <ScanLine className="h-11 w-11" />
+              </span>
+              <span className="mt-4 text-xl font-bold">Scan QR code</span>
+              <span className="mt-1 text-sm text-white/90">Point the camera at the learner&apos;s QR code</span>
             </button>
 
-            <div className="mt-4 flex items-center gap-3" aria-hidden="true">
+            <div className="mt-5 flex items-center gap-3" aria-hidden="true">
               <span className="h-px flex-1 bg-black/10" />
-              <span className="text-xs font-medium text-slate-500">or enter code</span>
+              <span className="text-xs font-medium text-slate-500">or enter the code manually</span>
               <span className="h-px flex-1 bg-black/10" />
             </div>
 
             <form
-              className="mt-4 flex gap-2"
+              className="mt-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (codeOk) lookup(code, "typed");
+                if (hasCode && !busy) lookup(code, "typed");
               }}
             >
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. 9XP-B6MW"
-                aria-label="E-coupon code"
-                autoCapitalize="characters"
-                autoComplete="off"
-                className="h-[52px] min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 font-mono text-base uppercase tracking-wider outline-none placeholder:normal-case placeholder:tracking-normal focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
-              />
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <input
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="e.g. 9XP-Z6MW"
+                  aria-label="E-coupon code"
+                  aria-invalid={error ? true : undefined}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-[52px] w-full rounded-xl border border-black/10 bg-white pl-11 pr-14 font-mono text-base tracking-wider text-[#0d1b2a] outline-none placeholder:font-sans placeholder:tracking-normal focus:border-[#2486ff] focus:ring-2 focus:ring-[#2486ff]/20"
+                />
+                <button
+                  type="button"
+                  onClick={startScan}
+                  disabled={busy}
+                  aria-label="Scan QR code"
+                  className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-[#2486ff] hover:bg-[#2486ff]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2486ff]/40 disabled:opacity-50"
+                >
+                  <QrCode className="h-5 w-5" />
+                </button>
+              </div>
+
+              <InlineError>{error}</InlineError>
+
               <button
                 type="submit"
-                disabled={busy || !codeOk}
+                disabled={busy || !hasCode}
+                data-testid="merchant-check"
                 className={
-                  codeOk
-                    ? "h-[52px] shrink-0 rounded-xl bg-[#2486ff] px-5 text-base font-semibold text-white transition hover:bg-[#005cff] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 disabled:opacity-60"
-                    : "h-[52px] shrink-0 rounded-xl bg-slate-200 px-5 text-base font-semibold text-slate-500"
+                  hasCode
+                    ? "mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#2486ff] text-base font-semibold text-white shadow-sm transition hover:bg-[#005cff] active:bg-[#005cff] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#2486ff]/40 disabled:opacity-60"
+                    : "mt-3 flex h-12 w-full items-center justify-center rounded-xl bg-slate-200 text-base font-semibold text-slate-500"
                 }
               >
-                {busy ? "…" : "Check"}
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : null}
+                Check
               </button>
             </form>
 
-            <div className="mt-7">
+            <div className="mt-8">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-slate-500">Recent redemptions</h2>
                 <Link
-                  href={`/m/${merchantKey}/${restaurant.id}/report`}
+                  href={reportHref}
                   data-testid="merchant-usage-summary"
                   className="flex items-center gap-1.5 rounded-md text-sm font-semibold text-[#2486ff] hover:text-[#005cff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2486ff]/40"
                 >
@@ -406,7 +501,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
                   Usage summary
                 </Link>
               </div>
-              <div className="mt-2 overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+              <div className="mt-2 overflow-x-auto rounded-2xl border border-black/5 bg-white shadow-sm">
                 <table className="w-full text-left text-sm" data-testid="merchant-recent">
                   <thead className="text-xs uppercase text-slate-400">
                     <tr>
@@ -441,87 +536,97 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
 
         {view === "result" && result ? (
           <div data-testid="merchant-result" data-state={result.state}>
-            {result.state === "unused" ? (
+            {/* Screen 2 — Found, awaiting confirmation */}
+            {result.state === "unused" && customer ? (
               <>
-                <CustomerCard c={result.customer} />
-                <div className="mt-5 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={goHome}
-                    disabled={busy}
-                    className="h-12 flex-1 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a] disabled:opacity-50"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirm}
-                    disabled={busy}
-                    className="h-12 flex-[1.4] rounded-xl bg-[#2486ff] text-base font-semibold text-white disabled:opacity-60"
-                  >
-                    {busy ? "Confirming…" : "Confirm"}
-                  </button>
+                <Card>
+                  <div className="flex flex-col items-center text-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm font-semibold text-green-700 ring-1 ring-green-600/20">
+                      <Check className="h-4 w-4" aria-hidden="true" />
+                      Found
+                    </span>
+                    <p className="mt-3 font-mono text-2xl font-bold tracking-wider text-[#0d1b2a]">
+                      {customer.code}
+                    </p>
+                  </div>
+                  <div className="mt-3 border-t border-black/5">
+                    <LearnerInfo c={customer} />
+                  </div>
+                </Card>
+                <InlineError>{error}</InlineError>
+                <div className="mt-5 flex flex-col gap-3">
+                  <PrimaryButton onClick={confirm} disabled={busy} testId="merchant-confirm">
+                    {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : null}
+                    Confirm redemption
+                  </PrimaryButton>
+                  <SecondaryButton onClick={goHome} disabled={busy}>
+                    Cancel
+                  </SecondaryButton>
                 </div>
               </>
             ) : null}
 
+            {/* Screen 4 — Already used */}
             {result.state === "used" ? (
-              <>
-                <Notice
-                  icon={Ban}
-                  tone="amber"
-                  title="This e-coupon has already been used"
-                  body={`Used at ${hm(result.usedAt)}`}
-                />
-                {result.customer ? (
-                  <div className="mt-4">
-                    <CustomerCard c={result.customer} />
-                  </div>
-                ) : null}
-                <BackScanButtons onBack={goHome} onScan={startScan} />
-              </>
+              <BlockedScreen
+                tone="red"
+                title="This coupon has already been used"
+                body={result.usedAt ? `Used on ${atLabel(result.usedAt)}` : ""}
+                customer={customer}
+                onScan={startScan}
+                onHome={goHome}
+              />
             ) : null}
 
+            {/* Screen 5 pattern — expired (หลังเวลาปิดของวัน) */}
             {result.state === "expired" ? (
-              <>
-                <Notice
-                  icon={Clock}
-                  tone="red"
-                  title={`This e-coupon has expired (valid until ${result.validUntil || ""})`}
-                />
-                <BackScanButtons onBack={goHome} onScan={startScan} />
-              </>
-            ) : null}
-
-            {result.state === "not_found" ? (
-              <>
-                <Notice
-                  icon={XCircle}
-                  tone="red"
-                  title="Code not found for this restaurant today"
-                />
-                <BackScanButtons onBack={goHome} onScan={startScan} />
-              </>
+              <BlockedScreen
+                tone="orange"
+                title="This coupon has expired"
+                body="It can no longer be used"
+                customer={customer}
+                onScan={startScan}
+                onHome={goHome}
+              />
             ) : null}
           </div>
         ) : null}
 
+        {/* Screen 3 — Redeemed successfully */}
         {view === "complete" && result ? (
           <div data-testid="merchant-complete">
-            <Notice
-              icon={CheckCircle2}
-              tone="green"
-              title="Complete"
-              body={`${result.customer?.code || ""} · used at ${hm(result.usedAt)}`}
-            />
-            <button
-              type="button"
-              onClick={goHome}
-              className="mt-5 h-12 w-full rounded-xl bg-[#2486ff] text-base font-semibold text-white"
-            >
-              Back
-            </button>
-            <p className="mt-2 text-center text-xs text-slate-400">Returning automatically…</p>
+            <div className="flex flex-col items-center pt-2 text-center">
+              <div className="relative flex h-28 w-28 items-center justify-center" aria-hidden="true">
+                <span className="absolute left-0 top-3 h-2.5 w-2.5 rounded-full bg-[#2486ff]/60" />
+                <span className="absolute right-1 top-0 h-2 w-2 rounded-full bg-amber-400" />
+                <span className="absolute -right-2 bottom-6 h-3 w-3 rounded-full bg-green-400" />
+                <span className="absolute bottom-1 left-2 h-2 w-2 rounded-full bg-pink-400" />
+                <span className="absolute -left-3 bottom-10 h-1.5 w-1.5 rounded-full bg-orange-400" />
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-green-50 text-green-600">
+                  <Check className="h-12 w-12" strokeWidth={3} />
+                </div>
+              </div>
+              <h2 className="mt-3 text-xl font-bold text-[#0d1b2a]">Coupon redeemed</h2>
+              <p className="mt-1 font-mono text-lg font-bold tracking-wider text-[#0d1b2a]">
+                {customer?.code || ""}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Redeemed on {atLabel(result.usedAt)}</p>
+            </div>
+            {customer ? (
+              <Card className="mt-5">
+                <p className="text-sm font-semibold text-[#0d1b2a]">Learner details</p>
+                <div className="mt-1">
+                  <LearnerInfo c={customer} />
+                </div>
+              </Card>
+            ) : null}
+            <div className="mt-5 flex flex-col gap-3">
+              <PrimaryButton onClick={startScan} testId="merchant-scan-next">
+                <ScanLine className="h-5 w-5" aria-hidden="true" />
+                Scan next
+              </PrimaryButton>
+              <SecondaryButton href={reportHref}>View usage summary</SecondaryButton>
+            </div>
           </div>
         ) : null}
       </div>
