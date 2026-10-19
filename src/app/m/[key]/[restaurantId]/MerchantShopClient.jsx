@@ -26,6 +26,20 @@ import { optionGroupsOf } from "@/lib/lunchOptionGroups";
 
 const NOT_FOUND_MSG = "Coupon not found. Check the code and try again.";
 
+// ปุ่ม back ของเครื่องบนจอที่ไม่ใช่ Screen 1 -> กลับ Screen 1 (ไม่ออกจากหน้า)
+// ออกจาก Screen 1 = push history 1 รายการ (URL เดิม + marker), กลับ Screen 1 ด้วยปุ่มในแอป = history.back() เก็บ marker คืน
+// มี marker ได้ไม่เกิน 1 รายการเสมอ · Next 14 restore เก็บ history.state ของเราไว้ (preserveCustomHistoryState)
+const HISTORY_MARKER = "merchantScreen";
+
+function isMarked() {
+  return !!window.history.state?.[HISTORY_MARKER];
+}
+
+function pushMarker() {
+  // state เดิมมี __NA ของ Next อยู่แล้ว -> Next ไม่ไปยุ่ง, ไม่ส่ง url = URL เดิม
+  window.history.pushState({ ...window.history.state, [HISTORY_MARKER]: true }, "");
+}
+
 function hm(iso) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-GB", {
@@ -59,16 +73,22 @@ function atLabel(iso) {
 
 /* ---------------- shared pieces ---------------- */
 
-function Header({ merchantKey, restaurant }) {
+/** onBack = กลับ Screen 1 ของร้านนี้ (ไม่มีบน Screen 1 — ห้ามพาไปหน้าเลือกร้าน) */
+function Header({ restaurant, onBack, backDisabled }) {
   return (
     <div className="flex items-center gap-3">
-      <Link
-        href={`/m/${merchantKey}`}
-        aria-label="Change restaurant"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5"
-      >
-        <ArrowLeft className="h-5 w-5" />
-      </Link>
+      {onBack ? (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={backDisabled}
+          aria-label="Back to scan"
+          data-testid="merchant-header-back"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5 disabled:opacity-40"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+      ) : null}
       <ShopLogo src={restaurant.logo} alt={restaurant.name} size={48} />
       <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-[#0d1b2a]">{restaurant.name}</h1>
     </div>
@@ -332,13 +352,61 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
     loadRecent();
   }, [restaurant.id, loadRecent]);
 
-  function goHome() {
+  // กลับ Screen 1 — marker (ถ้ามี) ถูกเก็บคืนโดย effect ด้านล่างเมื่อ view เป็น home
+  const goHome = useCallback(() => {
     setView("home");
     setResult(null);
     setError("");
     setCode("");
     loadRecent();
-  }
+  }, [loadRecent]);
+
+  /* ---- device back ---- */
+  const viewRef = useRef(view);
+  const consumingRef = useRef(false); // เรียก history.back() เองเพื่อเก็บ marker คืน, รอ popstate
+  const redeemingRef = useRef(false); // redeem กำลังส่ง — ห้ามทิ้งจอ Found
+
+  useEffect(() => {
+    viewRef.current = view;
+    if (consumingRef.current) return; // popstate ที่กำลังมาจะจัดการต่อเอง
+    if (view === "home") {
+      // กลับมา Screen 1 (ปุ่มในแอป / not found / error / เปิดหน้าบน entry ที่มี marker) -> เก็บ marker คืน
+      if (isMarked()) {
+        consumingRef.current = true;
+        window.history.back();
+      }
+    } else if (!isMarked()) {
+      pushMarker();
+    }
+  }, [view]);
+
+  useEffect(() => {
+    function onPop() {
+      if (consumingRef.current) {
+        // history.back() ของเราเองเสร็จแล้ว — ถ้าระหว่างรอผู้ใช้ออกจาก Screen 1 อีก ให้ push ใหม่
+        consumingRef.current = false;
+        if (viewRef.current !== "home" && !isMarked()) pushMarker();
+        return;
+      }
+      if (isMarked()) {
+        // ไปข้างหน้า (forward) มาเจอ marker ขณะอยู่ Screen 1 -> เก็บคืน ไม่ให้เป็นกด back เปล่า
+        if (viewRef.current === "home") {
+          consumingRef.current = true;
+          window.history.back();
+        }
+        return;
+      }
+      // device back ออกจาก marker
+      if (redeemingRef.current) {
+        // redeem ยังไม่ตอบ — อยู่จอเดิมรอผล (ไม่ยิงซ้ำ ไม่ทิ้งผล)
+        pushMarker();
+        return;
+      }
+      goHome();
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [goHome]);
 
   // not_found -> อยู่หน้าแรก + error ใต้ช่องกรอก, อย่างอื่น -> จอผลลัพธ์
   const show = useCallback((data) => {
@@ -380,6 +448,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
     if (!c || busy) return;
     setBusy(true);
     setError("");
+    redeemingRef.current = true;
     try {
       const data = await api("/api/merchant/lunch/redeem", {
         method: "POST",
@@ -389,6 +458,7 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
     } catch (e) {
       setError(e.message);
     } finally {
+      redeemingRef.current = false;
       setBusy(false);
     }
   }
@@ -404,7 +474,11 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
 
   return (
     <div className="mx-auto w-full max-w-[520px] px-4 py-5">
-      <Header merchantKey={merchantKey} restaurant={restaurant} />
+      <Header
+        restaurant={restaurant}
+        onBack={view === "home" ? null : goHome}
+        backDisabled={busy && view === "result"}
+      />
 
       <div className="mt-5">
         {view === "scanning" ? <Scanner onCode={onScanned} onCancel={goHome} /> : null}

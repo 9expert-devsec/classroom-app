@@ -283,7 +283,9 @@ export default function PreviewClient({ merchantKey, restaurant }) {
           Back
         </Link>
         <Link
-          href={`/m/${merchantKey}`}
+          replace
+          href={`/m/${merchantKey}/${restaurant.id}`}
+          data-testid="preview-home"
           className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-black/10 bg-white text-base font-medium text-[#0d1b2a]"
         >
           <Home className="h-5 w-5 text-slate-500" />

@@ -93,6 +93,7 @@ export default function ReportClient({ merchantKey, restaurant }) {
     <div className="mx-auto w-full max-w-[520px] px-4 py-5">
       <div className="flex items-center gap-3">
         <Link
+          replace
           href={shopHref}
           aria-label="Back to shop"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-black/5"

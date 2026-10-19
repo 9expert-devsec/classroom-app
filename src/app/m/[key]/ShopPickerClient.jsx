@@ -52,6 +52,7 @@ export default function ShopPickerClient({ merchantKey, restaurants }) {
 
       {last ? (
         <Link
+          replace
           href={`/m/${merchantKey}/${last.id}`}
           className="mt-5 flex items-center justify-between gap-3 rounded-2xl bg-[#2486ff] px-4 py-3 text-white shadow-sm active:scale-[0.99]"
         >
@@ -64,6 +65,7 @@ export default function ShopPickerClient({ merchantKey, restaurants }) {
         {restaurants.map((r) => (
           <li key={r.id}>
             <Link
+              replace
               href={`/m/${merchantKey}/${r.id}`}
               data-testid="merchant-shop"
               className="flex items-center gap-3 rounded-2xl border border-black/5 bg-white p-3 shadow-sm transition hover:border-[#2486ff]/40 active:scale-[0.99]"
