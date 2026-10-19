@@ -12,6 +12,7 @@ import mongoose from "mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import { toBkkYMD } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
+import { ECOUPON_ONLY } from "@/lib/merchantLunch.server";
 
 export const REPORT_RANGES = ["today", "week", "month"];
 export const PAGE_SIZE = 10;
@@ -69,6 +70,8 @@ function filterOf(restaurantId, r) {
     restaurantId: new mongoose.Types.ObjectId(restaurantId),
     dayYMD: { $gte: r.fromYMD, $lte: r.toYMD },
     redeemedAt: { $ne: null },
+    // ร้าน stock ที่ออก e-coupon แทน: รายงานนับเฉพาะ e-coupon
+    ...ECOUPON_ONLY,
   };
 }
 

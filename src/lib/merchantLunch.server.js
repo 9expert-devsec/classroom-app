@@ -1,6 +1,7 @@
 // src/lib/merchantLunch.server.js
 //
 // C3c: Merchant ตัวใหม่บน LunchOrder — ร้านที่เปิดคูปองและไม่ใช้คูปอง stock (วันนี้คือ Kaizen)
+//      + ร้าน stock ที่ออก e-coupon แทนเมื่อคูปองกระดาษหมด (stockFallbackToECoupon)
 //   lookup : ดูข้อมูลลูกค้าจากรหัส e-coupon (ไม่มีราคาใด ๆ)
 //   redeem : กดใช้แบบ atomic — findOneAndUpdate ครั้งเดียวที่มี redeemedAt: null ใน filter
 //   recent : รายการที่ใช้แล้ววันนี้ของร้านนี้ (ล่าสุด 10)
@@ -30,14 +31,33 @@ export function normalizeECouponCode(input) {
 
 /* ---------------- restaurants ---------------- */
 
-const ELIGIBLE = {
-  couponEnabled: true,
-  usesCouponStock: { $ne: true },
-  isActive: { $ne: false },
-};
+/**
+ * ร้านที่ Merchant ให้บริการ:
+ *   - ร้าน e-coupon (ไม่ใช้ stock)
+ *   - ร้าน stock ที่ตั้ง fallback เป็น e-coupon ไว้
+ *   - ร้าน stock ที่เคยออก e-coupon แทนไปแล้ว — ปิด fallback ทีหลังก็ยังใช้/ดูรายงานได้
+ */
+async function eligibleFilter() {
+  const fallbackShopIds = await LunchOrder.distinct("restaurantId", {
+    usesCouponStock: true,
+    couponSource: "ecoupon",
+  });
+  return {
+    couponEnabled: true,
+    isActive: { $ne: false },
+    $or: [
+      { usesCouponStock: { $ne: true } },
+      { stockFallbackToECoupon: true },
+      { _id: { $in: fallbackShopIds.filter(Boolean) } },
+    ],
+  };
+}
 
 export async function listMerchantRestaurants() {
-  const docs = await Restaurant.find(ELIGIBLE).select("name logoUrl").sort({ name: 1 }).lean();
+  const docs = await Restaurant.find(await eligibleFilter())
+    .select("name logoUrl")
+    .sort({ name: 1 })
+    .lean();
   return docs.map((r) => ({ id: String(r._id), name: r.name || "", logo: r.logoUrl || "" }));
 }
 
@@ -45,7 +65,9 @@ export async function listMerchantRestaurants() {
 export async function getMerchantRestaurant(restaurantId) {
   const id = String(restaurantId || "").trim();
   if (!mongoose.Types.ObjectId.isValid(id)) return null;
-  const r = await Restaurant.findOne({ _id: id, ...ELIGIBLE }).select("name logoUrl").lean();
+  const r = await Restaurant.findOne({ _id: id, ...(await eligibleFilter()) })
+    .select("name logoUrl")
+    .lean();
   return r ? { id: String(r._id), name: r.name || "", logo: r.logoUrl || "" } : null;
 }
 
@@ -84,6 +106,7 @@ function customerOf(order) {
 const PROJECTION =
   "status dayYMD eCouponCode couponCode nickname holderName roomName courseName lines.name lines.qty lines.options.choiceName lines.options.groupName lines.note redeemedAt";
 
+// eCouponCode มีเฉพาะออเดอร์ e-coupon — คูปองกระดาษ (stock) จึงไม่มีทาง match (= not_found)
 function baseFilter({ restaurantId, code, dayYMD }) {
   return {
     eCouponCode: code,
@@ -228,12 +251,16 @@ export async function redeemECoupon({ restaurant, code, via, req = null, now = l
 
 /* ---------------- recent ---------------- */
 
+// ร้าน stock: นับ/แสดงเฉพาะออเดอร์ e-coupon (ออเดอร์เก่าไม่มี couponSource -> ดู stockCodeId)
+export const ECOUPON_ONLY = { couponSource: { $ne: "stock" }, stockCodeId: null };
+
 export async function recentRedemptions({ restaurantId, now = lunchNow(), limit = 10 }) {
   if (!mongoose.Types.ObjectId.isValid(String(restaurantId || ""))) return [];
   const rows = await LunchOrder.find({
     restaurantId: new mongoose.Types.ObjectId(restaurantId),
     dayYMD: toBkkYMD(now),
     redeemedAt: { $ne: null },
+    ...ECOUPON_ONLY,
   })
     .sort({ redeemedAt: -1 })
     .limit(limit)

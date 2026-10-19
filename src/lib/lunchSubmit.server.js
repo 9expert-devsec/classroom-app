@@ -279,7 +279,7 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   }
 
   const restaurant = await Restaurant.findById(restaurantId)
-    .select("name logoUrl couponEnabled usesCouponStock")
+    .select("name logoUrl couponEnabled usesCouponStock stockFallbackToECoupon")
     .lean();
   // availability already requires couponEnabled; re-check in case it was
   // switched off in between (usesCouponStock is kept when coupon is off)
@@ -311,6 +311,7 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
 
   // --- 8) coupon + status change, in ONE transaction ---
   const usesCouponStock = !!restaurant.usesCouponStock;
+  const stockFallback = usesCouponStock && !!restaurant.stockFallbackToECoupon;
   const nextStatus = mode === "at_shop" ? "at_shop" : "ordered";
   const at = new Date(now);
 
@@ -325,22 +326,25 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
       let stockCodeId = null;
       let eCouponCode;
 
-      if (usesCouponStock) {
-        const code = await assignCode({
-          restaurantId,
-          dayYMD: order.dayYMD,
-          orderId: order._id,
-          session,
-        });
-        if (!code) {
-          // ทั้ง transaction ถูกยกเลิก ออเดอร์ยังเป็น pending เหมือนเดิม
-          fail(409, "sold_out", "คูปองร้านนี้หมดแล้ว กรุณาเลือกร้านอื่น");
-        }
+      // ร้าน stock ใช้กระดาษก่อนเสมอ — กระดาษหมดแล้วร้านตั้ง fallback ไว้ -> e-coupon แบบร้าน A
+      const code = usesCouponStock
+        ? await assignCode({
+            restaurantId,
+            dayYMD: order.dayYMD,
+            orderId: order._id,
+            session,
+          })
+        : null;
+
+      if (code) {
         couponCode = code.code;
         couponSource = "stock";
         stockCodeId = code._id;
-      } else {
+      } else if (!usesCouponStock || stockFallback) {
         couponSource = "ecoupon";
+      } else {
+        // ทั้ง transaction ถูกยกเลิก ออเดอร์ยังเป็น pending เหมือนเดิม
+        fail(409, "sold_out", "คูปองร้านนี้หมดแล้ว กรุณาเลือกร้านอื่น");
       }
 
       const base = {
@@ -366,7 +370,7 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
         activeKey: { $exists: true },
       };
 
-      if (usesCouponStock) {
+      if (couponSource === "stock") {
         updated = await LunchOrder.findOneAndUpdate(
           filter,
           { $set: { ...base, couponCode } },

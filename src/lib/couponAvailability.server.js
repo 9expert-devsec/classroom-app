@@ -56,6 +56,7 @@ export async function getDaySet(dayYMD) {
  * reason: "class_disabled" | "no_coupon_restaurant" | null
  *
  * ร้าน stock ที่คูปองหมด (stockAvailable = 0) จะ open:false reason:"stock_out"
+ * ยกเว้นร้านที่ตั้ง stockFallbackToECoupon ไว้ ยังเปิดอยู่ (ออก e-coupon แทนตอน submit)
  * ร้านที่ไม่ใช้ stock จะ stockAvailable = null (ออก e-coupon ได้ไม่จำกัด)
  */
 export async function getCouponAvailability({ classDoc, dayYMD, daySet }) {
@@ -81,7 +82,7 @@ export async function getCouponAvailability({ classDoc, dayYMD, daySet }) {
     couponEnabled: true,
     isActive: { $ne: false },
   })
-    .select("_id name usesCouponStock")
+    .select("_id name usesCouponStock stockFallbackToECoupon")
     .lean();
 
   if (usable.length === 0) {
@@ -96,12 +97,15 @@ export async function getCouponAvailability({ classDoc, dayYMD, daySet }) {
         ? await countAvailable(r._id, dayYMD)
         : null;
 
-      const open = usesCouponStock ? stockAvailable > 0 : true;
+      // กระดาษหมดแต่ร้านตั้ง fallback ไว้ -> ยังเปิดรับ (ออก e-coupon แทน)
+      const stockFallback = usesCouponStock && !!r.stockFallbackToECoupon;
+      const open = usesCouponStock ? stockAvailable > 0 || stockFallback : true;
 
       return {
         restaurantId: String(r._id),
         name: r.name || "",
         usesCouponStock,
+        stockFallback,
         stockAvailable,
         open,
         reason: open ? null : "stock_out",

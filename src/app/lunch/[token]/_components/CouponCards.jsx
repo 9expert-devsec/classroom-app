@@ -102,6 +102,15 @@ function ECouponCard({ order, dateLabel, token }) {
           className="p-2"
         />
         <CouponCode code={order.couponCode} size="xl" />
+        {/* ร้าน stock ที่ออก e-coupon แทนตอนคูปองกระดาษหมด */}
+        {order.stockFallback ? (
+          <p
+            data-testid="stock-fallback-line"
+            className="text-center text-[13px] font-semibold text-[color:var(--navy)]"
+          >
+            แสดงคูปองนี้ที่ร้านได้เลย ไม่ต้องรับคูปองกระดาษที่ Counter
+          </p>
+        ) : null}
         {live.state === "used" ? (
           <p
             data-testid="coupon-used-line"

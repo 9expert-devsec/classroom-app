@@ -208,20 +208,27 @@ export async function getLunchSession(token, now = lunchNow()) {
       couponEnabled: true,
       isActive: { $ne: false },
     })
-      .select("name logoUrl usesCouponStock")
+      .select("name logoUrl usesCouponStock stockFallbackToECoupon")
       .lean();
 
     restaurants = await Promise.all(
       docs.map(async (r) => {
-        const isStock = !!r.usesCouponStock;
-        const stockCount = isStock ? await countAvailable(r._id, ymd) : 0;
+        const usesStock = !!r.usesCouponStock;
+        const stockCount = usesStock ? await countAvailable(r._id, ymd) : 0;
+        // กระดาษหมด + ร้านตั้ง fallback -> ไม่ใช่ "คูปองหมด" และออเดอร์ใหม่จะได้ e-coupon
+        const fallingBack = usesStock && !!r.stockFallbackToECoupon && stockCount <= 0;
         return {
           id: String(r._id),
           name: r.name || "",
           logo: r.logoUrl || "",
-          isStock,
+          // ชนิดคูปองที่ออเดอร์ใหม่น่าจะได้ (ป้ายร้าน) — ของจริงตัดสินตอน submit
+          isStock: usesStock && !fallingBack,
           // ไม่ส่งจำนวนคงเหลือออกไป ให้รู้แค่ว่าหมดหรือยัง
-          state: restaurantState(modeById.get(String(r._id)), isStock, stockCount),
+          state: restaurantState(
+            modeById.get(String(r._id)),
+            usesStock && !fallingBack,
+            stockCount,
+          ),
         };
       }),
     );
