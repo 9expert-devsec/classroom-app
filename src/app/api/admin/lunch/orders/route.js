@@ -4,7 +4,7 @@
 //   ?date=YYYY-MM-DD (default วันนี้ เวลาไทย) &classId= &status= &q=
 //
 // แสดง "ใบล่าสุดของผู้เรียนแต่ละคน" (คลาส+ผู้เรียน+วัน) — ใบที่ถูกยกเลิกแล้วมีใบใหม่
-// จะไม่โผล่ซ้ำ ยกเว้นกรองสถานะ "cancelled" ซึ่งแสดงใบที่ยกเลิกทั้งหมด
+// จะไม่โผล่ซ้ำ · R2a: ตัวกรอง "cancelled" ก็ใช้ใบล่าสุดเหมือนกัน (แถวตรงกับการ์ด)
 import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 
@@ -54,7 +54,7 @@ export async function GET(req) {
     const all = await LunchOrder.find(find)
       .sort({ createdAt: 1 })
       .select(
-        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason handedOutAt handedOutBy",
+        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason handedOutAt handedOutBy activeKey token",
       )
       .lean();
 
@@ -68,6 +68,14 @@ export async function GET(req) {
       all.filter((o) => !!o.submittedAt).map((o) => `${o.classId}:${o.studentId}`),
     );
 
+    // R2a: เหตุผลของใบที่ถูกยกเลิกล่าสุดของแต่ละคน (all เรียงตาม createdAt -> ใบหลังทับใบก่อน)
+    const latestCancelReasonByKey = new Map();
+    for (const o of all) {
+      if (o.status === "cancelled") {
+        latestCancelReasonByKey.set(`${o.classId}:${o.studentId}`, o.cancelReason || "");
+      }
+    }
+
     const nameRe = q ? new RegExp(escapeRegExp(q), "i") : null;
     const matchName = (o) =>
       !nameRe || nameRe.test(o.holderName || "") || nameRe.test(o.nickname || "");
@@ -78,10 +86,9 @@ export async function GET(req) {
     const counts = Object.fromEntries(STATUSES.map((s) => [s, 0]));
     for (const o of latest) counts[computeStatus(o, now)] += 1;
 
+    // R2a: ทุกตัวกรอง (รวม cancelled) ใช้ชุด "ใบล่าสุดของแต่ละคน" เดียวกับการ์ด — แถวตรงกับตัวเลข
     let rows;
-    if (statusQ === "cancelled") {
-      rows = all.filter((o) => o.status === "cancelled" && matchName(o));
-    } else if (STATUSES.includes(statusQ)) {
+    if (STATUSES.includes(statusQ)) {
       rows = latest.filter((o) => computeStatus(o, now) === statusQ);
     } else {
       rows = latest;
@@ -145,6 +152,11 @@ export async function GET(req) {
         reopenCount: o.reopenCount || 0,
         cancelReason: o.cancelReason || "",
         isLatest,
+        // R2a: ธงของแถว (ไม่ส่ง token ออกไปในรายการเด็ดขาด — ดู QR ผ่าน POST /qr)
+        latestCancelReason:
+          latestCancelReasonByKey.get(`${o.classId}:${o.studentId}`) ?? "",
+        placedToday,
+        hasLiveToken: o.status !== "cancelled" && !!o.activeKey && !!o.token,
         // ใบล่าสุดของวันนี้ถูกยกเลิก + เคยสั่งแล้ว + ก่อน 15:00 -> ออก QR ใหม่ได้
         canReissue: reissueable && !reissueBlocked,
         reissueBlockedReason: reissueBlocked,
