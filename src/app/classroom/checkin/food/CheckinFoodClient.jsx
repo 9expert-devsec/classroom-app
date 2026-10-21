@@ -331,23 +331,16 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     setDrinkTouched(false);
   }
 
-  function setNoteAuto(nextText) {
-    // ถ้า user พิมพ์เอง (manual) → ไม่ทับ
-    if (noteMode === "manual") return;
-    setNote(String(nextText || ""));
-    setNoteMode("auto");
-  }
-
+  // R2a: กดการ์ดไม่เขียนโน้ตอัตโนมัติ ("ไม่รับอาหาร" / "COUPON") ลงช่องหมายเหตุแล้ว
+  //      ช่องนี้เก็บเฉพาะที่ user พิมพ์เอง — server เติมค่า default ตามตัวเลือกให้เอง
   function chooseNoFood() {
     setChoiceType("noFood");
     resetFoodSelection();
-    setNoteAuto("ไม่รับอาหาร");
   }
 
   function chooseCoupon() {
     setChoiceType("coupon");
     resetFoodSelection();
-    setNoteAuto("COUPON");
   }
 
   function chooseRestaurant(r) {
@@ -410,13 +403,13 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     if (cfChoice === "noFood") {
       setChoiceType("noFood");
       resetFoodSelection();
-      setNote(cfNote.trim() || "ไม่รับอาหาร");
+      setNote(cfNote.trim());
       return;
     }
     if (cfChoice === "coupon") {
       setChoiceType("coupon");
       resetFoodSelection();
-      setNote(cfNote.trim() || "COUPON");
+      setNote(cfNote.trim());
       return;
     }
 

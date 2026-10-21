@@ -6,16 +6,13 @@ import Class from "@/models/Class";
 import FoodMenu from "@/models/FoodMenu";
 import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
-import FoodEditLog from "@/models/FoodEditLog";
 
-// ✅ audit (best-effort)
-import { requireAdmin } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
 import {
   authErrorResponse,
   requireKioskOrAdmin,
+  kioskAuditCtx,
 } from "@/lib/kioskAuth.server";
-import { writeAuditLog } from "@/lib/auditLog.server";
 
 import {
   getCouponAvailability,
@@ -24,7 +21,9 @@ import {
 import { toBkkYMD, isCouponClosedFor } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday } from "@/lib/classDates";
-import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchAdmin.server";
+import { LunchAdminError } from "@/lib/lunchAdmin.server";
+// R2a: ตัวเลือกอาหาร + ออเดอร์ (log / audit อยู่ในนี้ด้วย)
+import { changeFoodChoice } from "@/lib/lunchActions.server";
 import { stripAutoNote } from "@/lib/foodNotes";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +48,6 @@ function uniqStrArr(a) {
         .filter(Boolean),
     ),
   ];
-}
-
-function pickStudentName(st) {
-  return (
-    clean(st?.name) || clean(st?.thaiName) || clean(st?.engName) || "ผู้เรียน"
-  );
 }
 
 function normalizeChoiceType({
@@ -135,123 +128,6 @@ async function isMasterclassClass(classId) {
   }
 }
 
-function normalizeFoodSnapshot(food) {
-  const f = food || {};
-  const addonIds = uniqStrArr(f.addonIds).sort();
-  return JSON.stringify({
-    noFood: !!f.noFood,
-    choiceType: clean(f.choiceType),
-    classId: clean(f.classId),
-    day: Number.isFinite(Number(f.day)) ? Number(f.day) : null,
-
-    restaurantId: clean(f.restaurantId),
-    menuId: clean(f.menuId),
-    addonIds,
-    drinkId: clean(f.drinkId),
-
-    note: clean(f.note),
-  });
-}
-
-function pickFoodAudit(food) {
-  const f = food || {};
-  return {
-    noFood: !!f.noFood,
-    choiceType: clean(f.choiceType),
-    classId: clean(f.classId),
-    day: Number.isFinite(Number(f.day)) ? Number(f.day) : null,
-
-    restaurantId: clean(f.restaurantId),
-    menuId: clean(f.menuId),
-    addonIds: uniqStrArr(f.addonIds).sort(),
-    drinkId: clean(f.drinkId),
-
-    note: clean(f.note),
-  };
-}
-
-async function safeAudit(payload) {
-  try {
-    await writeAuditLog(payload);
-  } catch (e) {
-    console.warn("[food] writeAuditLog failed:", e?.message || e);
-  }
-}
-
-// 기존: FoodEditLog (ยังคงไว้)
-async function writeFoodEditLog({ student, nextFood, prevFood, source = "" }) {
-  try {
-    const before = normalizeFoodSnapshot(prevFood);
-    const after = normalizeFoodSnapshot(nextFood);
-    if (before === after) return;
-
-    await FoodEditLog.create({
-      studentId: String(student?._id || ""),
-      classId: clean(nextFood?.classId),
-      day: Number.isFinite(Number(nextFood?.day)) ? Number(nextFood.day) : null,
-
-      choiceType: clean(nextFood?.choiceType),
-      restaurantId: clean(nextFood?.restaurantId),
-      menuId: clean(nextFood?.menuId),
-      addonIds: uniqStrArr(nextFood?.addonIds),
-      drinkId: clean(nextFood?.drinkId),
-
-      note: clean(nextFood?.note),
-
-      studentName: pickStudentName(student),
-      studentCompany: clean(student?.company),
-
-      source: clean(source),
-    });
-  } catch (e) {
-    console.warn("[food] writeFoodEditLog failed:", e?.message || e);
-  }
-}
-
-// ✅ ใหม่: AuditLog (central) — best-effort และไม่ทำให้ flow พัง
-async function writeFoodAuditLog({
-  adminCtx,
-  req,
-  student,
-  nextFood,
-  prevFood,
-  source = "",
-}) {
-  try {
-    const before = normalizeFoodSnapshot(prevFood);
-    const after = normalizeFoodSnapshot(nextFood);
-    if (before === after) return;
-
-    const sid = String(student?._id || "");
-    const cid = clean(nextFood?.classId);
-    const day = Number.isFinite(Number(nextFood?.day))
-      ? Number(nextFood?.day)
-      : null;
-
-    await safeAudit({
-      ctx: adminCtx || {},
-      req,
-      action: "update",
-      entityType: "food",
-      entityId: `${sid}__${cid || "noClass"}__day${day || 0}`,
-      entityLabel:
-        `${pickStudentName(student)} • food day ${day || "-"}`.trim(),
-      before: pickFoodAudit(prevFood),
-      after: pickFoodAudit(nextFood),
-      meta: {
-        studentId: sid,
-        classId: cid,
-        day,
-        source: clean(source),
-      },
-      // ไม่ต้อง ignore อะไรมาก เพราะ snapshot เล็กอยู่แล้ว
-      ignorePaths: [],
-    });
-  } catch (e) {
-    console.warn("[food] writeFoodAuditLog failed:", e?.message || e);
-  }
-}
-
 /* ---------------- route ---------------- */
 
 export async function POST(req) {
@@ -265,16 +141,9 @@ export async function POST(req) {
 
   await dbConnect();
 
-  // ✅ optional admin context (มี cookie ก็จะ track ผู้แก้ไขได้)
-  // audit ยังเหมือนเดิม: มี admin cookie เมื่อไหร่ก็บันทึกชื่อผู้แก้ไข
-  let adminCtx = auth.kind === "admin" ? auth.ctx : null;
-  if (!adminCtx) {
-    try {
-      adminCtx = await requireAdmin();
-    } catch {
-      adminCtx = null; // kiosk flow ก็ยังทำงานต่อ
-    }
-  }
+  // R2a: actor ของ audit — แท็บเล็ต = ตัวแท็บเล็ตเสมอ (ไม่หยิบ admin cookie
+  //      ที่บังเอิญอยู่ใน browser เดียวกัน) · แอดมินจาก Food Report = แอดมินคนนั้น
+  const actorCtx = auth.kind === "admin" ? auth.ctx : kioskAuditCtx(auth.session);
 
   let body;
   try {
@@ -416,38 +285,33 @@ export async function POST(req) {
 
   // ✅ P3b: เคยเลือกคูปองไว้ แล้วกลับมาเปลี่ยนเป็นอย่างอื่น
   //    pending           -> ยกเลิก LunchOrder ให้อัตโนมัติ
-  //    ordered / at_shop -> ห้ามเปลี่ยนเอง ต้องไปที่ Counter
-  //    R1: ยกเลิกไม่สำเร็จ -> ไม่บันทึกตัวเลือกใหม่ (กันออเดอร์ค้าง live ทั้งที่ไม่ได้เลือกคูปองแล้ว)
-  //        นาฬิกาเดียวกับระบบอาหารกลางวัน (lunchNow) เพื่อให้เวลาทดสอบตรงกัน
-  if (prevFood?.choiceType === "coupon" && finalChoiceType !== "coupon") {
-    let res;
+  //    ordered / at_shop -> ห้ามเปลี่ยนเอง ต้องไปที่ Counter (409 order_locked)
+  //    R1: ยกเลิกไม่สำเร็จ -> ไม่บันทึกตัวเลือกใหม่ (500 lunch_cancel_failed)
+  // R2a (R-i): ทั้งหมดอยู่ใน changeFoodChoice — ยกเลิกใบ + บันทึก Student.food ใน transaction เดียว
+  //            log / audit เขียนหลัง commit · null = สำเร็จ, Response = ตอบกลับทันที
+  const saveChoice = async (nextFood) => {
     try {
-      const lunchAt = lunchNow();
-      res = await cancelPendingLunchOrderOnChoiceChange({
-        studentId: String(student._id),
+      await changeFoodChoice({
+        student,
         classId: safeClassId,
-        dayYMD: toBkkYMD(lunchAt),
-        now: lunchAt,
+        nextFood,
+        prevFood,
+        ctx: actorCtx,
         req,
+        source,
       });
     } catch (e) {
-      console.warn("[food] cancel lunch order failed:", e?.message || e);
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "ยกเลิกออเดอร์คูปองเดิมไม่สำเร็จ ยังไม่ได้บันทึกการเปลี่ยนแปลง กรุณาลองใหม่",
-          reason: "lunch_cancel_failed",
-        },
-        { status: 500 },
-      );
+      if (e instanceof LunchAdminError) {
+        return NextResponse.json(
+          { ok: false, error: e.message, reason: e.reason },
+          { status: e.status },
+        );
+      }
+      throw e;
     }
-    if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: res.message, reason: res.reason },
-        { status: 409 },
-      );
-    }
-  }
+    student.food = nextFood;
+    return null;
+  };
 
   /* ---------------- COUPON / NO FOOD ---------------- */
   if (finalChoiceType === "coupon" || finalChoiceType === "noFood") {
@@ -474,19 +338,8 @@ export async function POST(req) {
       note: safeNote || (isCoupon ? "COUPON" : "ไม่รับอาหาร"),
     };
 
-    student.food = nextFood;
-    student.markModified("food");
-    await student.save();
-
-    await writeFoodEditLog({ student, nextFood, prevFood, source });
-    await writeFoodAuditLog({
-      adminCtx,
-      req,
-      student,
-      nextFood,
-      prevFood,
-      source,
-    });
+    const failed = await saveChoice(nextFood);
+    if (failed) return failed;
 
     return NextResponse.json({
       ok: true,
@@ -519,19 +372,8 @@ export async function POST(req) {
       note: safeNote || "ไม่รับอาหาร",
     };
 
-    student.food = nextFood;
-    student.markModified("food");
-    await student.save();
-
-    await writeFoodEditLog({ student, nextFood, prevFood, source });
-    await writeFoodAuditLog({
-      adminCtx,
-      req,
-      student,
-      nextFood,
-      prevFood,
-      source,
-    });
+    const failed = await saveChoice(nextFood);
+    if (failed) return failed;
 
     return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
@@ -586,19 +428,8 @@ export async function POST(req) {
       note: safeNote || "ไม่รับอาหาร",
     };
 
-    student.food = nextFood;
-    student.markModified("food");
-    await student.save();
-
-    await writeFoodEditLog({ student, nextFood, prevFood, source });
-    await writeFoodAuditLog({
-      adminCtx,
-      req,
-      student,
-      nextFood,
-      prevFood,
-      source,
-    });
+    const failed = await saveChoice(nextFood);
+    if (failed) return failed;
 
     return NextResponse.json({ ok: true, noFood: true, choiceType: "noFood" });
   }
@@ -639,19 +470,8 @@ export async function POST(req) {
     note: safeNote,
   };
 
-  student.food = nextFood;
-  student.markModified("food");
-  await student.save();
-
-  await writeFoodEditLog({ student, nextFood, prevFood, source });
-  await writeFoodAuditLog({
-    adminCtx,
-    req,
-    student,
-    nextFood,
-    prevFood,
-    source,
-  });
+  const failed = await saveChoice(nextFood);
+  if (failed) return failed;
 
   return NextResponse.json({
     ok: true,
