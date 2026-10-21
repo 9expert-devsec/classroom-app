@@ -195,8 +195,12 @@ export function cleanClassTitle(title, courseCode) {
 export function rowType(o) {
   if (o?.type === "set" || o?.type === "none" || o?.type === "coupon") return o.type;
   const choice = String(o?.choiceType || o?.food?.choiceType || "").toLowerCase();
-  let isCoupon = choice === "coupon" || o?.isCoupon === true || o?.food?.coupon === true;
-  let isNoFood = choice === "nofood" || o?.isNoFood === true || o?.food?.noFood === true;
+  // R1: มี choiceType แล้วตัดสินจาก choiceType อย่างเดียว — flag / note เป็น fallback ของข้อมูลเก่า
+  if (choice === "coupon") return "coupon";
+  if (choice === "nofood") return "none";
+  if (choice === "food") return "set";
+  let isCoupon = o?.isCoupon === true || o?.food?.coupon === true;
+  let isNoFood = o?.isNoFood === true || o?.food?.noFood === true;
   if (!choice) {
     const noteLower = String(o?.note || o?.food?.note || "").toLowerCase();
     if (noteLower.includes("coupon")) isCoupon = true;

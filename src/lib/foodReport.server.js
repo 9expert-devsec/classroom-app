@@ -71,11 +71,14 @@ function studentFields(stu) {
   };
 }
 
-// อ่าน Student.food แบบเดียวกับ report เดิม (note มีคำว่า coupon ก็นับเป็น coupon)
+// อ่าน Student.food — R1: choiceType ตัดสินก่อนเสมอ
+// note มีคำว่า coupon นับเป็น coupon เฉพาะข้อมูลเก่าที่ไม่มี choiceType (legacy)
 function readFoodSource(stuFood, menuMap, restaurantMap) {
   const f = stuFood || {};
   const choiceType = cleanLower(f.choiceType);
-  const isCoupon = choiceType === "coupon" || cleanLower(f.note).includes("coupon");
+  const isCoupon = choiceType
+    ? choiceType === "coupon"
+    : cleanLower(f.note).includes("coupon");
   const hasSelection =
     !!f.menuId || !!f.restaurantId || !!f.drink || (Array.isArray(f.addons) && f.addons.length > 0);
   const isNoFood = !isCoupon && (choiceType === "nofood" || f.noFood === true || !hasSelection);
