@@ -14,6 +14,7 @@ import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
 import { ConfirmModal } from "@/components/admin/lunch/LunchModals";
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
+import { FINAL_CLOSE_HHMM } from "@/lib/lunchConfig";
 
 import { STATUS_KEYS, STATUS_META, canReassign } from "./_components/lunchOrdersUi";
 import ClassSection from "./_components/ClassSection";
@@ -52,6 +53,7 @@ function couponEffectLine(row) {
 /* ---------------- confirm dialogs ---------------- */
 
 // ทุก action ที่เปลี่ยนสถานะต้องยืนยันก่อน และบอกผลที่จะเกิดขึ้น
+// R3x-3: lines(row, final) — final = เวลาปิดที่ใช้จริงจาก server (data.closeTimes.final)
 const CONFIRM = {
   cancelCoupon: {
     title: (r) => `ยกเลิกคูปองของ ${r.name}?`,
@@ -67,8 +69,8 @@ const CONFIRM = {
   cancelForEdit: {
     title: (r) => `ยกเลิกเพื่อแก้ไขออเดอร์ของ ${r.name}?`,
     confirmLabel: "ยกเลิกและออก QR ใหม่",
-    lines: (r) => [
-      "ออเดอร์เดิมจะถูกยกเลิก และออก QR ใหม่ให้สั่งได้ภายใน 10 นาที (ไม่เกิน 15:00)",
+    lines: (r, final) => [
+      `ออเดอร์เดิมจะถูกยกเลิก และออก QR ใหม่ให้สั่งได้ภายใน 10 นาที (ไม่เกิน ${final})`,
       couponEffectLine(r),
     ],
     path: "/api/admin/lunch/cancel-for-edit",
@@ -89,10 +91,10 @@ const CONFIRM = {
   issue: {
     title: (r) => `ออก QR ใหม่ให้ ${r.name}?`,
     confirmLabel: "ออก QR ใหม่",
-    lines: (r) => [
+    lines: (r, final) => [
       r.latestCancelReason === "admin_cancel_for_edit" ||
       (!r.latestCancelReason && r.cancelledByAdmin)
-        ? "สั่งได้ภายใน 10 นาที (ไม่เกิน 15:00)"
+        ? `สั่งได้ภายใน 10 นาที (ไม่เกิน ${final})`
         : "สั่งได้ถึงเวลาปิดรับปกติของวันนี้",
     ],
     path: "/api/admin/lunch/issue",
@@ -313,6 +315,7 @@ export default function LunchOrdersPage() {
       room: c?.room || row.room || "",
       status: res.status || "pending",
       deadlineAt: res.deadlineAt || null,
+      finalLabel: data?.closeTimes?.final || FINAL_CLOSE_HHMM,
     });
   }
 
@@ -377,6 +380,8 @@ export default function LunchOrdersPage() {
   }
 
   const counts = data?.counts || {};
+  // R3x-3: เวลาปิดจาก server (ยังโหลดไม่เสร็จ = ค่าปกติ)
+  const finalClose = data?.closeTimes?.final || FINAL_CLOSE_HHMM;
   const modalOpen = !!(confirm || qr || stockAction || reassignRows);
 
   return (
@@ -597,7 +602,7 @@ export default function LunchOrdersPage() {
         >
           <ul className="flex flex-col gap-2">
             {CONFIRM[confirm.kind]
-              .lines(confirm.row)
+              .lines(confirm.row, finalClose)
               .filter(Boolean)
               .map((line) => (
                 <li

@@ -27,13 +27,13 @@ import { getDaySet, getCouponAvailability } from "@/lib/couponAvailability.serve
 import { assignCode } from "@/lib/couponStock.server";
 import { notifyAfterSubmit } from "@/lib/lunchNotify.server";
 import { writeLunchAudit } from "@/lib/lunchAdmin.server";
+import { withCouponCodeRetry } from "@/lib/couponCodeRetry.server";
 
 /* ---------------- limits ---------------- */
 
 export const MAX_LINES = 30;
 export const MAX_QTY = 20;
 export const MAX_NOTE = 200;
-const ECOUPON_ATTEMPTS = 5;
 
 // ตัด 0 O 1 I L ออก เพราะอ่านจากกระดาษแล้วสับสน
 const ECOUPON_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -316,101 +316,103 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   const nextStatus = mode === "at_shop" ? "at_shop" : "ordered";
   const at = new Date(now);
 
-  const session = await mongoose.startSession();
   let updated = null;
   let raced = false;
 
-  try {
-    await session.withTransaction(async () => {
-      let couponCode = "";
-      let couponSource = "";
-      let stockCodeId = null;
-      let eCouponCode;
+  // R3x-1: รหัส e-coupon ชน (E11000) ทำให้ transaction ตาย — retry "ทั้ง transaction" ด้วย session ใหม่
+  //        และรหัสใหม่ทุก attempt (withCouponCodeRetry) · error อื่นโยนต่อทันที
+  const runAttempt = async () => {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        updated = null;
+        raced = false;
+        let couponCode = "";
+        let couponSource = "";
+        let stockCodeId = null;
+        let eCouponCode;
 
-      // ร้าน stock ใช้กระดาษก่อนเสมอ — กระดาษหมดแล้วร้านตั้ง fallback ไว้ -> e-coupon แบบร้าน A
-      const code = usesCouponStock
-        ? await assignCode({
-            restaurantId,
-            dayYMD: order.dayYMD,
-            orderId: order._id,
-            session,
-          })
-        : null;
+        // ร้าน stock ใช้กระดาษก่อนเสมอ — กระดาษหมดแล้วร้านตั้ง fallback ไว้ -> e-coupon แบบร้าน A
+        const code = usesCouponStock
+          ? await assignCode({
+              restaurantId,
+              dayYMD: order.dayYMD,
+              orderId: order._id,
+              session,
+            })
+          : null;
 
-      if (code) {
-        couponCode = code.code;
-        couponSource = "stock";
-        stockCodeId = code._id;
-      } else if (!usesCouponStock || stockFallback) {
-        couponSource = "ecoupon";
-      } else {
-        // ทั้ง transaction ถูกยกเลิก ออเดอร์ยังเป็น pending เหมือนเดิม
-        fail(409, "sold_out", "คูปองร้านนี้หมดแล้ว กรุณาเลือกร้านอื่น");
-      }
-
-      const base = {
-        status: nextStatus,
-        nickname,
-        restaurantId: restaurant._id,
-        restaurantName: restaurant.name || "",
-        usesCouponStock,
-        lines,
-        itemsTotal,
-        budget,
-        overBudget,
-        couponSource,
-        stockCodeId,
-        submitRequestId: requestId,
-        submittedAt: at,
-      };
-
-      // เงื่อนไขสำคัญ: ต้องยังเป็น pending และ activeKey ยังอยู่
-      const filter = {
-        _id: order._id,
-        status: "pending",
-        activeKey: { $exists: true },
-      };
-
-      if (couponSource === "stock") {
-        updated = await LunchOrder.findOneAndUpdate(
-          filter,
-          { $set: { ...base, couponCode } },
-          { new: true, session },
-        ).lean();
-      } else {
-        // e-coupon: ลองจนกว่าจะไม่ชนรหัสซ้ำ
-        let lastErr = null;
-        for (let i = 0; i < ECOUPON_ATTEMPTS; i += 1) {
-          eCouponCode = generateECouponCode();
-          try {
-            updated = await LunchOrder.findOneAndUpdate(
-              filter,
-              { $set: { ...base, couponCode: eCouponCode, eCouponCode } },
-              { new: true, session },
-            ).lean();
-            lastErr = null;
-            break;
-          } catch (err) {
-            if (err?.code === 11000) {
-              lastErr = err;
-              continue;
-            }
-            throw err;
-          }
+        if (code) {
+          couponCode = code.code;
+          couponSource = "stock";
+          stockCodeId = code._id;
+        } else if (!usesCouponStock || stockFallback) {
+          couponSource = "ecoupon";
+        } else {
+          // ทั้ง transaction ถูกยกเลิก ออเดอร์ยังเป็น pending เหมือนเดิม
+          fail(409, "sold_out", "คูปองร้านนี้หมดแล้ว กรุณาเลือกร้านอื่น");
         }
-        if (lastErr) throw lastErr;
-      }
 
-      if (!updated) {
-        // มีคนยิงพร้อมกันแล้วชนะไปก่อน -> ยกเลิกทั้งก้อน
-        // (คูปอง stock ที่เพิ่งจองก็ถูก rollback ไปด้วย)
-        raced = true;
-        throw new SubmitError({
-          status: 409,
-          reason: "__raced__",
-          message: "raced",
-        });
-      }
+        const base = {
+          status: nextStatus,
+          nickname,
+          restaurantId: restaurant._id,
+          restaurantName: restaurant.name || "",
+          usesCouponStock,
+          lines,
+          itemsTotal,
+          budget,
+          overBudget,
+          couponSource,
+          stockCodeId,
+          submitRequestId: requestId,
+          submittedAt: at,
+        };
+
+        // เงื่อนไขสำคัญ: ต้องยังเป็น pending และ activeKey ยังอยู่
+        const filter = {
+          _id: order._id,
+          status: "pending",
+          activeKey: { $exists: true },
+        };
+
+        if (couponSource === "stock") {
+          updated = await LunchOrder.findOneAndUpdate(
+            filter,
+            { $set: { ...base, couponCode } },
+            { new: true, session },
+          ).lean();
+        } else {
+          // e-coupon: รหัสเดียวต่อ attempt — ชนรหัสเดิม = E11000 ทั้ง transaction ตาย
+          // แล้ว withCouponCodeRetry ด้านนอกเริ่มใหม่ทั้งหมดด้วยรหัสใหม่
+          eCouponCode = generateECouponCode();
+          updated = await LunchOrder.findOneAndUpdate(
+            filter,
+            { $set: { ...base, couponCode: eCouponCode, eCouponCode } },
+            { new: true, session },
+          ).lean();
+        }
+
+        if (!updated) {
+          // มีคนยิงพร้อมกันแล้วชนะไปก่อน -> ยกเลิกทั้งก้อน
+          // (คูปอง stock ที่เพิ่งจองก็ถูก rollback ไปด้วย)
+          raced = true;
+          throw new SubmitError({
+            status: 409,
+            reason: "__raced__",
+            message: "raced",
+          });
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+  };
+
+  try {
+    await withCouponCodeRetry(runAttempt, {
+      onExhausted: () =>
+        fail(503, "ecoupon_code_busy", "ออกรหัส e-coupon ไม่สำเร็จ กรุณากดยืนยันอีกครั้ง"),
     });
   } catch (err) {
     if (raced || err?.reason === "__raced__") {
@@ -426,8 +428,6 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
       fail(409, "already_ordered", "รายการนี้ถูกยืนยันไปแล้ว");
     }
     throw err;
-  } finally {
-    await session.endSession();
   }
 
   // P4b: แจ้งเตือนแอดมิน (หลัง commit แล้วเท่านั้น) — notifyAfterSubmit catch เองทั้งหมด

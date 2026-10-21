@@ -36,6 +36,7 @@ import {
   rowId,
   rowType,
   setMenuLabel,
+  setReportCloseTimes,
   shopOf,
   statusKeyOf,
   typeKeyOf,
@@ -104,6 +105,8 @@ export default function FoodReportClient({ todayYMD }) {
       .then((res) => res.json())
       .then((out) => {
         if (!out?.ok) throw new Error(out?.error || "load failed");
+        // R3x-3: เวลาปิดที่ใช้จริงจาก server (ป้าย "ตัดสิทธิ์ (หมดเวลา …)" / KPI)
+        setReportCloseTimes(out.closeTimes);
         setData({
           key: loadKey,
           rows: out.rows || [],

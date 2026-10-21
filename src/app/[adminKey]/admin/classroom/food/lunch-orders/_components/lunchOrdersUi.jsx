@@ -354,7 +354,8 @@ export function canReassign(row) {
  */
 export function statusNote(row) {
   // R2b: ป้ายขั้นจาก server (lunchStage.js ตัวเดียวกับ Food Report)
-  if (row?.status === "forfeited") return row.stageLabel || "หมดเวลา 15:00";
+  // R3x-3: ป้ายจาก server มีเวลาปิดจริงอยู่แล้ว — ไม่มี (ข้อมูลเก่า) = ไม่เดาเวลาเอง
+  if (row?.status === "forfeited") return row.stageLabel || "ตัดสิทธิ์";
   if (row?.status !== "cancelled") return "";
   const reason = String(row.latestCancelReason ?? row.cancelReason ?? "");
   const cur = row.currentChoice;

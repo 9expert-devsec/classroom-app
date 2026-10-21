@@ -5,7 +5,18 @@ import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { stripAutoFoodNote } from "@/lib/foodNotes";
-import { COUPON_STAGE_LABELS } from "@/lib/lunchStage";
+import { COUPON_STAGE_LABELS, forfeitedStageLabel } from "@/lib/lunchStage";
+import { FINAL_CLOSE_HHMM } from "@/lib/lunchConfig";
+
+// R3x-3: เวลาปิดที่ใช้จริง — มาจาก /api/admin/food-orders (closeTimes) ทุกครั้งที่โหลด
+//        client ไม่คำนวณเอง · ยังไม่โหลด = ค่าปกติ (production เหมือนเดิมทุกตัวอักษร)
+let reportFinalClose = FINAL_CLOSE_HHMM;
+export function setReportCloseTimes(closeTimes) {
+  reportFinalClose = closeTimes?.final || FINAL_CLOSE_HHMM;
+}
+export function reportFinalCloseLabel() {
+  return reportFinalClose;
+}
 
 /** R2b: หมายเหตุของแถวสำหรับแสดง / พิมพ์ / export — ตัดโน้ตอัตโนมัติเดิม ("COUPON" / "ไม่รับอาหาร") */
 export function rowNote(o) {
@@ -228,6 +239,9 @@ export const TYPE_LABEL = { set: "Set", none: "ไม่รับอาหาร
 //      no_order = ข้อมูลเก่าที่ server ยังไม่ส่งขั้นมา (fallback)
 export const COUPON_STATE_LABEL = {
   ...COUPON_STAGE_LABELS,
+  get forfeited() {
+    return forfeitedStageLabel(reportFinalClose);
+  },
   no_order: "ไม่มีออเดอร์",
 };
 
@@ -360,7 +374,12 @@ export const STATUS_META = {
   no_qr: { label: COUPON_STAGE_LABELS.no_qr, cls: "bg-slate-100 text-slate-600" },
   pending: { label: COUPON_STAGE_LABELS.pending, cls: "bg-slate-100 text-slate-600" },
   cancelled_wait_qr: { label: COUPON_STAGE_LABELS.cancelled_wait_qr, cls: "bg-slate-100 text-slate-600" },
-  forfeited: { label: COUPON_STAGE_LABELS.forfeited, cls: "bg-slate-100 text-slate-600" },
+  forfeited: {
+    get label() {
+      return forfeitedStageLabel(reportFinalClose);
+    },
+    cls: "bg-slate-100 text-slate-600",
+  },
   no_order: { label: "ไม่มีออเดอร์", cls: "bg-slate-100 text-slate-600" },
   none: { label: "ไม่รับอาหาร", cls: "bg-slate-100 text-slate-600" },
 };

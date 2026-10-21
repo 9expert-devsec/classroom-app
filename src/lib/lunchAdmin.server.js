@@ -326,60 +326,13 @@ export async function cancelLunchOrder({
   return out();
 }
 
-/* ---------------- choice_changed (P3b path) ---------------- */
+/* ---------------- choice_changed ---------------- */
 
 export const ORDER_LOCKED_MESSAGE =
   "ท่านสั่งอาหารแล้ว หากต้องการเปลี่ยน กรุณาติดต่อเจ้าหน้าที่ที่ Counter";
 
-/**
- * ผู้เรียนกลับมาแก้ Step 2 แล้วเลือกอย่างอื่นที่ไม่ใช่คูปอง
- *   pending           -> ยกเลิกผ่าน cancelLunchOrder (คืน stock ได้ด้วย)
- *   ordered / at_shop -> ห้ามเปลี่ยนเอง ต้องให้ Counter จัดการ
- * คืน { ok: true, cancelled } หรือ { ok: false, reason, message }
- */
-export async function cancelPendingLunchOrderOnChoiceChange({
-  studentId,
-  classId,
-  dayYMD,
-  now,
-  req = null,
-}) {
-  if (!studentId || !classId || !dayYMD) return { ok: true, cancelled: false };
-
-  const order = await LunchOrder.findOne({
-    activeKey: activeKeyOf(classId, studentId, dayYMD),
-  }).lean();
-
-  if (!order) return { ok: true, cancelled: false };
-
-  if (order.status === "ordered" || order.status === "at_shop") {
-    return {
-      ok: false,
-      reason: "order_locked",
-      message: ORDER_LOCKED_MESSAGE,
-      orderId: String(order._id),
-    };
-  }
-
-  if (order.status !== "pending") return { ok: true, cancelled: false };
-
-  const res = await cancelLunchOrder({
-    orderId: order._id,
-    adminId: null,
-    reason: "choice_changed",
-    cancelledBy: "learner",
-    auditAction: "lunch.cancel_choice_changed",
-    req,
-    now,
-  });
-
-  return {
-    ok: true,
-    cancelled: true,
-    orderId: res.orderId,
-    couponEffect: res.couponEffect,
-  };
-}
+// R3x-2: cancelPendingLunchOrderOnChoiceChange ถูกลบแล้ว (ไม่มีผู้เรียก) — เปลี่ยนตัวเลือกอาหาร
+//        ไปทาง lunchActions.changeFoodChoice ทั้งหมด ข้อความ ORDER_LOCKED_MESSAGE ยังใช้อยู่ที่นั่น
 
 /* ---------------- reopen (new token) ---------------- */
 

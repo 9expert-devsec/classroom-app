@@ -2,7 +2,7 @@
 
 import { CalendarX, CheckCircle2, Clock, Hand, Ticket, UtensilsCrossed } from "lucide-react";
 
-import { STATUS_META } from "./reportUi";
+import { STATUS_META, reportFinalCloseLabel } from "./reportUi";
 
 // coupon rows whose status keeps its own label — shown under "คูปองทั้งหมด" so the card adds up
 // R2b: no_qr / cancelled_wait_qr แทน no_order เดิม (no_order คงไว้ให้ข้อมูลเก่า)
@@ -59,7 +59,7 @@ export default function KpiCards({ counts }) {
       value: counts.byStatus.expired,
       Icon: CalendarX,
       tone: "bg-red-50 text-red-700",
-      caption: "E-coupon ที่ไม่ได้ใช้ภายใน 15:00",
+      caption: `E-coupon ที่ไม่ได้ใช้ภายใน ${reportFinalCloseLabel()}`,
     },
   ];
 

@@ -43,6 +43,7 @@ import { issueLunchOrder, activeKeyOf, computeStatus } from "@/lib/lunchOrders.s
 import { couponUnavailableMessage, getDaySet } from "@/lib/couponAvailability.server";
 import { assignCode, countAvailable } from "@/lib/couponStock.server";
 import { generateECouponCode } from "@/lib/lunchSubmit.server";
+import { withCouponCodeRetry } from "@/lib/couponCodeRetry.server";
 import {
   toBkkYMD,
   finalCloseAt,
@@ -908,7 +909,9 @@ async function assignReassignCoupon({ target, orderId, dayYMD, needed, session }
       });
     }
   }
-  // e-coupon: เลือกรหัสที่ยังไม่มีใครใช้ก่อนเขียน (E11000 ใน transaction ทำให้ทั้งชุด abort)
+  // e-coupon: เลือกรหัสที่ยังไม่มีใครใช้ก่อนเขียน (อ่านอย่างเดียว ไม่ทำให้ transaction ตาย) — ชุดใหญ่จึงไม่ชน
+  // รหัสที่มีอยู่แล้วจน retry หมด · ยังชนได้ถ้ามีคนเขียนรหัสเดียวกันพร้อมกัน -> E11000 แล้ว
+  // withCouponCodeRetry ใน reassignLunchCoupon ทำทั้งชุดใหม่
   for (let i = 0; i < REASSIGN_ECOUPON_ATTEMPTS; i += 1) {
     const c = generateECouponCode();
     const taken = await LunchOrder.exists({ eCouponCode: c }).session(session);
@@ -1060,51 +1063,61 @@ export async function reassignLunchCoupon({
   let moved = [];
   let target = null;
 
+  // R3x-1: รหัส e-coupon ชนกันตอนเขียน (E11000 — transaction ตาย) -> ทำทั้งชุดใหม่ด้วย transaction ใหม่
+  //        (รหัสสุ่มใหม่ใน attempt ใหม่) · E11000 ของ index อื่น (activeKey) = conflict ไม่ retry
   try {
-    await inTransaction(async (session) => {
-      moved = [];
+    await withCouponCodeRetry(
+      () =>
+        inTransaction(async (session) => {
+          moved = [];
+          target = null;
 
-      const w = reassignWindowProblem(dayYMD, at);
-      if (w) fail(409, w.reason, w.message);
+          const w = reassignWindowProblem(dayYMD, at);
+          if (w) fail(409, w.reason, w.message);
 
-      const shops = await reassignShops(dayYMD, session);
-      target = shops.find((s) => s.id === targetId) || null;
-      if (!target) {
-        fail(409, "target_unavailable", "ร้านปลายทางไม่ได้อยู่ใน Food Calendar ของวันนี้");
-      }
-      if (!target.available && target.reason !== "stock_out") {
-        fail(409, "target_unavailable", `ร้าน ${target.name}: ${target.reasonLabel}`);
-      }
+          const shops = await reassignShops(dayYMD, session);
+          target = shops.find((s) => s.id === targetId) || null;
+          if (!target) {
+            fail(409, "target_unavailable", "ร้านปลายทางไม่ได้อยู่ใน Food Calendar ของวันนี้");
+          }
+          if (!target.available && target.reason !== "stock_out") {
+            fail(409, "target_unavailable", `ร้าน ${target.name}: ${target.reasonLabel}`);
+          }
 
-      const evs = [];
-      for (const learner of list) {
-        evs.push(await evaluateReassignLearner({ learner, dayYMD, at, targetId, session }));
-      }
-      const bad = evs.filter((e) => !e.eligible);
-      if (bad.length) {
-        fail(
-          409,
-          "not_eligible",
-          `โยกไม่ได้ ยังไม่ได้โยกใคร — ${bad.map((b) => `${b.name || "ผู้เรียน"}: ${b.message}`).join(", ")}`,
-          { notEligible: bad.map(publicLearner) },
-        );
-      }
+          const evs = [];
+          for (const learner of list) {
+            evs.push(await evaluateReassignLearner({ learner, dayYMD, at, targetId, session }));
+          }
+          const bad = evs.filter((e) => !e.eligible);
+          if (bad.length) {
+            fail(
+              409,
+              "not_eligible",
+              `โยกไม่ได้ ยังไม่ได้โยกใคร — ${bad.map((b) => `${b.name || "ผู้เรียน"}: ${b.message}`).join(", ")}`,
+              { notEligible: bad.map(publicLearner) },
+            );
+          }
 
-      // ร้าน stock ที่ไม่มี fallback: กระดาษต้องพอทั้งชุด ไม่โยกบางส่วน
-      const needed = evs.length;
-      if (target.usesCouponStock && !target.stockFallback && (target.stockAvailable || 0) < needed) {
-        fail(409, "stock_insufficient", stockShortMessage(target, needed), {
-          needed,
-          available: target.stockAvailable || 0,
-        });
-      }
+          // ร้าน stock ที่ไม่มี fallback: กระดาษต้องพอทั้งชุด ไม่โยกบางส่วน
+          const needed = evs.length;
+          if (target.usesCouponStock && !target.stockFallback && (target.stockAvailable || 0) < needed) {
+            fail(409, "stock_insufficient", stockShortMessage(target, needed), {
+              needed,
+              available: target.stockAvailable || 0,
+            });
+          }
 
-      for (const ev of evs) {
-        moved.push(
-          await reassignOne({ ev, target, dayYMD, needed, at, by, adminId, note, ctx, req, session }),
-        );
-      }
-    });
+          for (const ev of evs) {
+            moved.push(
+              await reassignOne({ ev, target, dayYMD, needed, at, by, adminId, note, ctx, req, session }),
+            );
+          }
+        }),
+      {
+        onExhausted: () =>
+          fail(503, "ecoupon_code_busy", "ออกรหัส e-coupon ไม่สำเร็จ ยังไม่ได้โยกใคร กรุณาลองใหม่"),
+      },
+    );
   } catch (e) {
     if (isDuplicateKey(e)) fail(409, "conflict", REASSIGN_CONFLICT_MESSAGE);
     throw e;

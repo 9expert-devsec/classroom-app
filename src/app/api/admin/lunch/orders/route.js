@@ -18,7 +18,7 @@ import { PERM } from "@/lib/acl";
 import { computeStatus } from "@/lib/lunchOrders.server";
 import { lunchAdminErrorBody } from "@/lib/lunchAdmin.server";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { toBkkYMD, lunchTestTimesLabel } from "@/lib/lunchConfig";
+import { toBkkYMD, lunchTestTimesLabel, lunchCloseLabels } from "@/lib/lunchConfig";
 import { isYMD } from "@/lib/classDates";
 import {
   buildOrderRows,
@@ -89,7 +89,16 @@ export async function GET(req) {
     const items = await buildOrderRows({ rows, context: all, now, classById });
 
     return NextResponse.json(
-      { dayYMD, today: toBkkYMD(now), classes, counts, items, testTimes: lunchTestTimesLabel() },
+      {
+        dayYMD,
+        today: toBkkYMD(now),
+        classes,
+        counts,
+        items,
+        testTimes: lunchTestTimesLabel(),
+        // R3x-3: เวลาปิดที่ใช้จริง สำหรับข้อความในหน้า (client ไม่คำนวณเอง)
+        closeTimes: lunchCloseLabels(),
+      },
       { headers: NO_STORE },
     );
   } catch (err) {

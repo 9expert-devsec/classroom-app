@@ -5,6 +5,7 @@ import { resolveFoodDay, awaitingReturnByShop } from "@/lib/foodReport.server";
 import { isYMD } from "@/lib/classDates";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
+import { lunchCloseLabels } from "@/lib/lunchConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,8 @@ export async function GET(req) {
 
   return NextResponse.json({
     ok: true,
+    // R3x-3: เวลาปิดที่ใช้จริง สำหรับข้อความในหน้า
+    closeTimes: lunchCloseLabels(),
     items: rows,
     rows,
     total: rows.length,
@@ -116,6 +119,7 @@ async function rangeResponse(from, to, classId, q) {
 
   return NextResponse.json({
     ok: true,
+    closeTimes: lunchCloseLabels(),
     from,
     to,
     rows,

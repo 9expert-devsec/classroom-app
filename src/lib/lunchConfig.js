@@ -108,6 +108,15 @@ export function lunchTimes() {
   return { ...t, overridden: true };
 }
 
+/**
+ * R3x-3: เวลาปิดที่ใช้จริง (HH:MM เวลาไทย) สำหรับข้อความ — API ส่งให้ client วาด (client ไม่คำนวณเอง)
+ * production = 11:00 / 11:15 / 15:00 เสมอ
+ */
+export function lunchCloseLabels() {
+  const t = lunchTimes();
+  return { soft: t.soft, hard: t.hard, final: t.final };
+}
+
 /** "TEST TIMES: 16:45–17:00–23:00" เมื่อมีการ override, "" เมื่อไม่มี */
 export function lunchTestTimesLabel() {
   const t = lunchTimes();

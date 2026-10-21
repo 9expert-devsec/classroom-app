@@ -10,12 +10,20 @@
 //   ordered / at_shop : สั่งแล้ว (ขั้นย่อยของใบที่สั่งแล้ว — ส่งมอบ / ร้านใช้ ฯลฯ — ยังเป็นของแต่ละหน้าเหมือนเดิม)
 //
 // รหัส stock ของใบที่ยกเลิกแล้ว (couponCodeState) ต่อท้ายป้ายเมื่อยังต้องตามคืน
+// R3x-3: เวลาใน "ตัดสิทธิ์ (หมดเวลา HH:MM)" = เวลาปิดที่ใช้จริง (finalCloseLabel / ค่าจาก API)
+import { FINAL_CLOSE_HHMM, finalCloseLabel } from "@/lib/lunchConfig";
+
+/** "ตัดสิทธิ์ (หมดเวลา 15:00)" ตามเวลาปิดที่ส่งเข้ามา */
+export function forfeitedStageLabel(finalHHMM = FINAL_CLOSE_HHMM) {
+  return `ตัดสิทธิ์ (หมดเวลา ${finalHHMM || FINAL_CLOSE_HHMM})`;
+}
 
 export const COUPON_STAGE_LABELS = {
   no_qr: "ยังไม่ได้รับ QR",
   pending: "รอสั่ง",
   cancelled_wait_qr: "ยกเลิก รอออก QR ใหม่",
-  forfeited: "ตัดสิทธิ์ (หมดเวลา 15:00)",
+  // ค่าปกติ (production) — ป้ายที่มีเวลาปิดจริงใช้ forfeitedStageLabel()
+  forfeited: forfeitedStageLabel(FINAL_CLOSE_HHMM),
   ordered: "สั่งแล้ว",
   at_shop: "ไปสั่งที่ร้าน",
 };
@@ -39,9 +47,13 @@ export function couponStageOf({ liveOrder = null, latestOrder = null, finalClose
   return latestOrder ? "cancelled_wait_qr" : "no_qr";
 }
 
-/** ป้ายไทยของขั้น + (ถ้ามี) สถานะรหัสที่ยังต้องตามคืน */
-export function couponStageLabel(stage, codeState = null) {
-  const base = COUPON_STAGE_LABELS[stage] || "";
+/**
+ * ป้ายไทยของขั้น + (ถ้ามี) สถานะรหัสที่ยังต้องตามคืน
+ * finalHHMM: เวลาปิดที่ใช้จริง — ไม่ส่ง = finalCloseLabel() (ฝั่ง server ได้ค่า override ของ preview/dev)
+ */
+export function couponStageLabel(stage, codeState = null, finalHHMM = finalCloseLabel()) {
+  const base =
+    stage === "forfeited" ? forfeitedStageLabel(finalHHMM) : COUPON_STAGE_LABELS[stage] || "";
   const live = stage === "ordered" || stage === "at_shop" || stage === "pending";
   const suffix = !live && codeState ? CODE_STATE_SUFFIX[codeState] : "";
   return suffix ? `${base} · ${suffix}` : base;

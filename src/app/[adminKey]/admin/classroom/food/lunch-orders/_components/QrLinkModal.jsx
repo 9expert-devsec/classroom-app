@@ -34,7 +34,8 @@ async function copyText(text) {
 }
 
 /**
- * qr = { title, url, name, nickname, className, room, status, deadlineAt }
+ * qr = { title, url, name, nickname, className, room, status, deadlineAt, finalLabel }
+ *   finalLabel = เวลาปิดที่ใช้จริงจาก server (R3x-3)
  */
 export default function QrLinkModal({ qr, onClose }) {
   const [copied, setCopied] = useState("");
@@ -74,7 +75,7 @@ export default function QrLinkModal({ qr, onClose }) {
       ) : null}
       {qr.status === "forfeited" ? (
         <p className="mt-1 text-center text-xs text-admin-textMuted">
-          หมดเวลา 15:00 แล้ว — ลิงก์นี้จะเปิดหน้าหมดเวลา
+          หมดเวลา {qr.finalLabel || "15:00"} แล้ว — ลิงก์นี้จะเปิดหน้าหมดเวลา
         </p>
       ) : null}
 

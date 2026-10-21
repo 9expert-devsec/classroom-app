@@ -355,8 +355,7 @@ export async function getLunchSession(token, now = lunchNow()) {
 
 /* ---------------- เปลี่ยนใจไม่เอาคูปองแล้ว ---------------- */
 
-// P4a: cancelPendingLunchOrderOnChoiceChange ย้ายไป lunchAdmin.server.js แล้ว
-//      (ยกเลิกผ่าน cancelLunchOrder ตัวเดียว จึงคืนคูปอง stock ได้ด้วย)
+// P4a / R3x-2: การยกเลิกเมื่อเปลี่ยนตัวเลือกอยู่ที่ lunchActions.changeFoodChoice (ผ่าน cancelLunchOrder)
 
 export { activeKeyOf };
 
