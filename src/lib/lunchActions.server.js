@@ -236,7 +236,8 @@ export function noFoodChoice({ classId, day }) {
     drinkId: "",
     addons: [],
     drink: "",
-    note: "ไม่รับอาหาร",
+    // R2b: ไม่เขียนโน้ตอัตโนมัติ — ตัวเลือกดูจาก choiceType
+    note: "",
   };
 }
 

@@ -15,6 +15,7 @@ import {
   formatDateDMY,
   rowId,
   shopText,
+  stageNoteOf,
   statusKeyOf,
   statusTimeOf,
   typeKeyOf,
@@ -123,6 +124,10 @@ export default function ReportTable({
                 <td className={`${TD} whitespace-nowrap font-mono`}>{o.code || "-"}</td>
                 <td className={TD}>
                   <StatusPill status={statusKeyOf(o)} />
+                  {/* R2b: ใบที่ยกเลิกแล้วแต่คูปองกระดาษยังไม่คืน (ตรงกับ couponCodeState) */}
+                  {stageNoteOf(o) ? (
+                    <div className="mt-1 text-[11px] font-medium text-amber-700">{stageNoteOf(o)}</div>
+                  ) : null}
                   {flags.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {flags.map((f) => (

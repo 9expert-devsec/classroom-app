@@ -4,6 +4,14 @@
 import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { stripAutoFoodNote } from "@/lib/foodNotes";
+import { COUPON_STAGE_LABELS } from "@/lib/lunchStage";
+
+/** R2b: หมายเหตุของแถวสำหรับแสดง / พิมพ์ / export — ตัดโน้ตอัตโนมัติเดิม ("COUPON" / "ไม่รับอาหาร") */
+export function rowNote(o) {
+  return stripAutoFoodNote(o?.note ?? o?.food?.note ?? "");
+}
+
 export const TABS = ["overview", "shops", "types", "list"];
 export const PAGE_SIZES = [10, 25, 50, 100];
 export const MAX_RANGE_DAYS = 31;
@@ -216,11 +224,10 @@ export function rowId(o) {
 // print / CSV labels (unchanged from C5c)
 export const TYPE_LABEL = { set: "Set", none: "ไม่รับอาหาร", coupon: "Coupon" };
 
+// R2b: ป้ายขั้นของคูปองมาจาก src/lib/lunchStage.js ตัวเดียวกับหน้าติดตามการสั่งอาหาร
+//      no_order = ข้อมูลเก่าที่ server ยังไม่ส่งขั้นมา (fallback)
 export const COUPON_STATE_LABEL = {
-  ordered: "สั่งแล้ว",
-  at_shop: "สั่งที่ร้าน",
-  pending: "ยังไม่สั่ง",
-  forfeited: "ตัดสิทธิ์",
+  ...COUPON_STAGE_LABELS,
   no_order: "ไม่มีออเดอร์",
 };
 
@@ -249,8 +256,16 @@ export function couponLabelFor(o) {
   return rest ? `Cash Coupon — ${rest}` : "Cash Coupon";
 }
 
+// R2b: ป้ายจาก server (couponStageOf/couponStageLabel) รวม "· รอคืนคูปอง" ของรหัสที่ยังไม่คืน
 export function couponStateText(o) {
-  return COUPON_STATE_LABEL[o?.couponState] || "-";
+  return o?.couponStageLabel || COUPON_STATE_LABEL[o?.couponState] || "-";
+}
+
+/** R2b: บรรทัดเล็กใต้ป้ายสถานะ — รหัสกระดาษของใบที่ยกเลิกแล้วยังรอคืน (ไม่มีใบ live) */
+export function stageNoteOf(o) {
+  return rowType(o) === "coupon" && !o?.orderId && o?.couponCodeState === "awaiting_return"
+    ? "รอคืนคูปอง"
+    : "";
 }
 
 export function sourceBadge(o) {
@@ -341,8 +356,11 @@ export const STATUS_META = {
   expired: { label: "หมดอายุ", cls: "bg-red-100 text-red-700", mapped: true },
   set: { label: "สั่งอาหาร", cls: "bg-slate-200 text-slate-700", mapped: true },
   unused: { label: "ยังไม่ใช้", cls: "bg-slate-100 text-slate-600" },
-  pending: { label: "ยังไม่สั่ง", cls: "bg-slate-100 text-slate-600" },
-  forfeited: { label: "ตัดสิทธิ์", cls: "bg-slate-100 text-slate-600" },
+  // R2b: ขั้นของคูปองที่ยังไม่มีใบที่สั่งแล้ว — ป้ายจาก lunchStage.js
+  no_qr: { label: COUPON_STAGE_LABELS.no_qr, cls: "bg-slate-100 text-slate-600" },
+  pending: { label: COUPON_STAGE_LABELS.pending, cls: "bg-slate-100 text-slate-600" },
+  cancelled_wait_qr: { label: COUPON_STAGE_LABELS.cancelled_wait_qr, cls: "bg-slate-100 text-slate-600" },
+  forfeited: { label: COUPON_STAGE_LABELS.forfeited, cls: "bg-slate-100 text-slate-600" },
   no_order: { label: "ไม่มีออเดอร์", cls: "bg-slate-100 text-slate-600" },
   none: { label: "ไม่รับอาหาร", cls: "bg-slate-100 text-slate-600" },
 };
@@ -367,7 +385,7 @@ export function statusKeyOf(o) {
     if (o.redeemedAt) return "used";
     return o.dayFinalClosed ? "expired" : "unused";
   }
-  if (st === "pending" || st === "forfeited") return st;
+  if (["pending", "forfeited", "no_qr", "cancelled_wait_qr"].includes(st)) return st;
   return "no_order";
 }
 
@@ -503,7 +521,7 @@ export function buildExportAoa(rows) {
       isSet ? (o.drink ?? o.food?.drink ?? "") : "",
       isCoupon ? couponLinesText(o) : "",
       flagLabels(o),
-      o.note ?? o.food?.note ?? "",
+      rowNote(o),
       STATUS_META[statusKeyOf(o)].label,
     ];
   });

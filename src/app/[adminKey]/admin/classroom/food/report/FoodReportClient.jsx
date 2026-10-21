@@ -30,6 +30,7 @@ import {
   cleanClassTitle,
   countRows,
   downloadBlob,
+  emptyCounts,
   matchesSearch,
   rangeLabel,
   rowId,
@@ -103,7 +104,13 @@ export default function FoodReportClient({ todayYMD }) {
       .then((res) => res.json())
       .then((out) => {
         if (!out?.ok) throw new Error(out?.error || "load failed");
-        setData({ key: loadKey, rows: out.rows || [], days: out.days || [], error: "" });
+        setData({
+          key: loadKey,
+          rows: out.rows || [],
+          days: out.days || [],
+          awaitingReturnNow: out.awaitingReturnNow || [],
+          error: "",
+        });
       })
       .catch((err) => {
         if (ctrl.signal.aborted) return;
@@ -144,20 +151,26 @@ export default function FoodReportClient({ todayYMD }) {
   // the date range is the only page-level filter: KPIs, summaries, every tab, export and print use allRows
   const counts = useMemo(() => countRows(allRows), [allRows]);
 
-  // stock extras from the per-day server summary (awaiting return / missing code)
+  // stock extras: missing code from the per-day server summary;
+  // R2b: awaiting return = "รอคืนอยู่ตอนนี้" (server: every awaiting_return code), not per range
   const stockExtras = useMemo(() => {
     const map = new Map();
     data.days.forEach((d) =>
       (d.shops || []).forEach((s) => {
         if (s.source !== "stock") return;
         const x = map.get(s.id) || { awaitingReturn: 0, missingCode: 0 };
-        x.awaitingReturn += s.awaitingReturn || 0;
         x.missingCode += s.missingCode || 0;
         map.set(s.id, x);
       }),
     );
+    (data.awaitingReturnNow || []).forEach((a) => {
+      const x = map.get(a.shopId) || { awaitingReturn: 0, missingCode: 0 };
+      x.awaitingReturn = a.count || 0;
+      x.shopName = a.shopName || "";
+      map.set(a.shopId, x);
+    });
     return map;
-  }, [data.days]);
+  }, [data.days, data.awaitingReturnNow]);
 
   const shopGroups = useMemo(() => {
     const groups = [...groupBy(allRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
@@ -169,7 +182,7 @@ export default function FoodReportClient({ todayYMD }) {
         const extras = isStockShop
           ? [
               `กระดาษ ${counts.byType.stock} · e-coupon ${counts.byType.ecoupon}`,
-              x?.awaitingReturn ? `รอคืนคูปอง ${x.awaitingReturn}` : "",
+              x?.awaitingReturn ? `รอคืนคูปอง (ณ ตอนนี้) ${x.awaitingReturn}` : "",
               x?.missingCode ? `ไม่มีโค้ด ${x.missingCode}` : "",
             ]
               .filter(Boolean)
@@ -190,6 +203,26 @@ export default function FoodReportClient({ todayYMD }) {
         (a.key === NO_SHOP_KEY) - (b.key === NO_SHOP_KEY) || a.name.localeCompare(b.name, "th"),
     );
   }, [allRows, stockExtras]);
+
+  // R2b: สรุปตามร้านค้า = ร้านที่มีแถวในช่วง ∪ ร้านที่มีคูปองรอคืนอยู่ตอนนี้ (แม้ไม่มีแถวในช่วง)
+  const shopSummaryGroups = useMemo(() => {
+    const have = new Set(shopGroups.map((g) => g.key));
+    const extra = (data.awaitingReturnNow || [])
+      .filter((a) => a.count > 0 && !have.has(a.shopId))
+      .map((a) => ({
+        key: a.shopId,
+        name: a.shopName || "-",
+        types: ["stock"],
+        counts: emptyCounts(),
+        rows: [],
+        extras: `รอคืนคูปอง (ณ ตอนนี้) ${a.count}`,
+      }));
+    if (!extra.length) return shopGroups;
+    return [...shopGroups, ...extra].sort(
+      (a, b) =>
+        (a.key === NO_SHOP_KEY) - (b.key === NO_SHOP_KEY) || a.name.localeCompare(b.name, "th"),
+    );
+  }, [shopGroups, data.awaitingReturnNow]);
 
   const typeGroups = useMemo(() => {
     const map = groupBy(allRows, typeKeyOf);
@@ -490,7 +523,7 @@ export default function FoodReportClient({ todayYMD }) {
         <>
           <KpiCards counts={counts} />
           <ShopSummary
-            shops={shopGroups}
+            shops={shopSummaryGroups}
             onPick={(shop) => {
               setFocusShop(shop);
               setParams({ tab: "shops" });
@@ -565,6 +598,7 @@ export default function FoodReportClient({ todayYMD }) {
         <EditFoodModal
           key={rowId(editingRow)}
           row={editingRow}
+          todayYMD={todayYMD}
           onClose={() => setEditingRow(null)}
           onSaved={async () => {
             setEditingRow(null);

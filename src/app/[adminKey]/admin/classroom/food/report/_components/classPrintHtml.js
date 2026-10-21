@@ -12,6 +12,7 @@ import {
   couponLinesText,
   flagLabels,
   cleanClassTitle,
+  rowNote,
 } from "./reportUi";
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
@@ -300,7 +301,7 @@ export function buildClassPrintHtml(rows, printDate) {
             const drink = isSet ? (o.drink ?? o.food?.drink ?? "") : "";
 
             const flags = flagLabels(o);
-            const note = [o.note ?? o.food?.note ?? "", flags ? `⚠ ${flags}` : ""]
+            const note = [rowNote(o), flags ? `⚠ ${flags}` : ""]
               .filter(Boolean)
               .join(" · ");
 

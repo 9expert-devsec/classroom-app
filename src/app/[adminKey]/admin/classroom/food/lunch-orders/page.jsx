@@ -6,7 +6,7 @@
 // R2a-2: ปุ่มของแต่ละแถวมาจาก server (row.actions) — ดู QR / Regenerate QR / ยกเลิกคูปอง /
 //        ยกเลิกเพื่อแก้ไขออเดอร์ / ออก QR ใหม่ / ส่งมอบ / รับคืน ผ่าน /api/admin/lunch/*
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, RefreshCw, Search } from "lucide-react";
+import { CalendarDays, RefreshCw, Search, Undo2 } from "lucide-react";
 
 import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
@@ -17,6 +17,7 @@ import { STATUS_KEYS, STATUS_META } from "./_components/lunchOrdersUi";
 import ClassSection from "./_components/ClassSection";
 import OrderDrawer from "./_components/OrderDrawer";
 import QrLinkModal from "./_components/QrLinkModal";
+import { AwaitingReturnPanel, CodeSearchResult } from "./_components/CrossDayPanels";
 
 const POLL_MS = 30_000;
 const STATUS_FILTERS = ["all", ...STATUS_KEYS];
@@ -168,13 +169,27 @@ export default function LunchOrdersPage() {
     return () => clearTimeout(t);
   }, [q]);
 
+  // R2b: ผลค้นหารหัสคูปองข้ามวัน + รายการรอรับคืนทุกวัน (โหลดพร้อมรายการหลัก)
+  const [codeHit, setCodeHit] = useState(null); // { found, code, primary, history }
+  const [awaiting, setAwaiting] = useState([]);
+  const [showAwaiting, setShowAwaiting] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const p = new URLSearchParams({ date, status });
       if (classId) p.set("classId", classId);
       if (qDebounced) p.set("q", qDebounced);
-      const res = await fetch(`/api/admin/lunch/orders?${p}`, { cache: "no-store" });
+      const [res, codeRes, awaitRes] = await Promise.all([
+        fetch(`/api/admin/lunch/orders?${p}`, { cache: "no-store" }),
+        // คำค้นที่ตรงกับรหัสคูปอง (ตรงตัว) ค้นทุกวัน — ชื่อ / อื่น ๆ ยังค้นแบบเดิมในรายการหลัก
+        qDebounced
+          ? fetch(`/api/admin/lunch/code-search?${new URLSearchParams({ code: qDebounced })}`, {
+              cache: "no-store",
+            })
+          : null,
+        fetch("/api/admin/lunch/awaiting-return", { cache: "no-store" }),
+      ]);
       const json = await safeJson(res);
       if (!res.ok) {
         setLoadError(json.error || "โหลดข้อมูลไม่สำเร็จ");
@@ -183,6 +198,10 @@ export default function LunchOrdersPage() {
       setData(json);
       setLoadError("");
       setUpdatedAt(new Date());
+
+      const codeJson = codeRes && codeRes.ok ? await safeJson(codeRes) : null;
+      setCodeHit(codeJson?.found ? codeJson : null);
+      if (awaitRes.ok) setAwaiting((await safeJson(awaitRes)).items || []);
     } catch {
       setLoadError("เชื่อมต่อไม่สำเร็จ");
     } finally {
@@ -213,10 +232,13 @@ export default function LunchOrdersPage() {
   }, [data]);
 
   // แถวที่เลือก = ข้อมูลล่าสุดหลังรีเฟรช; หายจากรายการ (เช่นถูกกรองออก) -> drawer ปิด
-  const selected = useMemo(
-    () => (selectedId ? (data?.items || []).find((it) => it.orderId === selectedId) || null : null),
-    [data, selectedId],
-  );
+  // R2b: แถวหลักของผลค้นหารหัสคูปอง (อาจเป็นวันอื่น) เปิด drawer ได้เหมือนแถวปกติ
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    const fromList = (data?.items || []).find((it) => it.orderId === selectedId);
+    if (fromList) return fromList;
+    return codeHit?.primary?.orderId === selectedId ? codeHit.primary : null;
+  }, [data, codeHit, selectedId]);
   const closeDrawer = useCallback(() => setSelectedId(""), []);
 
   const post = postLunchAdmin;
@@ -254,8 +276,9 @@ export default function LunchOrdersPage() {
       url: res.qrUrl,
       name: row.name,
       nickname: row.nickname,
-      className: c?.name || "",
-      room: c?.room || "",
+      // แถวจากผลค้นหาข้ามวันไม่มีในรายชื่อคลาสของวันที่เลือก -> ใช้ชื่อคลาสของแถวเอง
+      className: c?.name || row.className || "",
+      room: c?.room || row.room || "",
       status: res.status || "pending",
       deadlineAt: res.deadlineAt || null,
     });
@@ -352,6 +375,24 @@ export default function LunchOrdersPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* R2b: คูปองกระดาษรอรับคืน ทุกวัน */}
+            <button
+              type="button"
+              data-testid="awaiting-toggle"
+              aria-pressed={showAwaiting}
+              onClick={() => setShowAwaiting((v) => !v)}
+              className={`inline-flex h-12 items-center gap-2 rounded-xl border px-4 text-sm font-semibold shadow-sm ${
+                showAwaiting
+                  ? "border-amber-300 bg-amber-100 text-amber-800"
+                  : "border-admin-border bg-white text-amber-800 hover:bg-amber-50"
+              }`}
+            >
+              <Undo2 className="h-4 w-4" />
+              รอรับคืน
+              <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs tabular-nums text-amber-900">
+                {awaiting.length}
+              </span>
+            </button>
             <button
               type="button"
               onClick={load}
@@ -428,13 +469,28 @@ export default function LunchOrdersPage() {
           </p>
         ) : null}
 
+        {/* R2b: รอรับคืนทุกวัน (เปิดจากปุ่มบนหัว) */}
+        {showAwaiting ? (
+          <AwaitingReturnPanel items={awaiting} busy={busy} onAction={onAction} />
+        ) : null}
+
+        {/* R2b: คำค้นตรงกับรหัสคูปอง -> ผู้ถือปัจจุบัน (แถวปกติ) + ผู้ถือก่อนหน้า */}
+        {codeHit ? (
+          <CodeSearchResult
+            hit={codeHit}
+            selectedId={selected ? selectedId : ""}
+            onSelect={setSelectedId}
+            actionProps={actionProps}
+          />
+        ) : null}
+
         {/* class sections */}
         {!data && loading ? (
           <p className="rounded-2xl border border-admin-border bg-white p-6 text-center text-sm text-admin-textMuted">
             กำลังโหลด…
           </p>
         ) : null}
-        {data && groups.length === 0 ? (
+        {data && groups.length === 0 && !codeHit ? (
           <p className="rounded-2xl border border-admin-border bg-white p-6 text-center text-sm text-admin-textMuted">
             ไม่มีออเดอร์ตามตัวกรองนี้
           </p>

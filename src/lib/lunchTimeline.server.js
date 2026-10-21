@@ -39,7 +39,7 @@ const AUDIT_KIND = {
 const COUPON_EFFECT_LABELS = {
   released: "รหัสคูปองคืนเข้าคลัง",
   awaiting_return: "ต้องรับคูปองกระดาษคืน",
-  voided: "e-coupon ถูกยกเลิก",
+  voided: "e-coupon ถูกยกเลิก (ร้านรับไม่ได้)",
 };
 
 function dayRange(dayYMD) {
@@ -144,13 +144,22 @@ function orderEvents(order, stockById, adminNameById = new Map()) {
     });
   }
 
+  // R2b: e-coupon ถูก void พร้อมการยกเลิกใบเดียวกันเสมอ (cancelLunchOrder) — ไม่แยกเป็นขั้นที่สอง
+  //      ใส่เป็นบรรทัดรายละเอียดของขั้น "ยกเลิก" แทน (ข้อความเดียวกับ couponEffect ของ audit)
   if (order.couponVoidedAt) {
-    push({
-      at: order.couponVoidedAt,
-      kind: "voided",
-      label: "e-coupon ถูกยกเลิก (ร้านรับไม่ได้)",
-      detail: joinDetail([order.couponCode]),
-    });
+    const cancel = ev.find((e) => e.kind === "cancelled");
+    // รหัสอยู่ในรายละเอียดของขั้นยกเลิกอยู่แล้ว -> บรรทัดนี้บอกแค่ว่าถูก void
+    const voidLine = COUPON_EFFECT_LABELS.voided;
+    if (cancel) {
+      cancel.detail = joinDetail([cancel.detail, voidLine]);
+    } else {
+      push({
+        at: order.couponVoidedAt,
+        kind: "cancelled",
+        label: "ยกเลิก",
+        detail: joinDetail([order.restaurantName, order.couponCode, voidLine]),
+      });
+    }
   }
 
   return ev;

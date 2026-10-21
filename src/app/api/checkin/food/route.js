@@ -262,7 +262,7 @@ export async function POST(req) {
   }
 
   // R1: โน้ตอัตโนมัติ ("COUPON" / "ไม่รับอาหาร") จาก client ไหนก็ตามถูกตัดทิ้ง
-  //     แล้วค่อยเติมค่า default ตามตัวเลือกที่บันทึกจริงด้านล่าง
+  // R2b: ไม่เติมโน้ตอัตโนมัติกลับลงไปอีก — หมายเหตุเก็บเฉพาะที่คนพิมพ์ ตัวเลือกดูจาก choiceType
   //     (กัน noFood / food ที่ติดโน้ต "COUPON" ค้างมาจากตัวเลือกเดิม)
   const safeNote = stripAutoNote(note);
 
@@ -335,7 +335,7 @@ export async function POST(req) {
       addons: [],
       drink: "",
 
-      note: safeNote || (isCoupon ? "COUPON" : "ไม่รับอาหาร"),
+      note: safeNote,
     };
 
     const failed = await saveChoice(nextFood);
@@ -369,7 +369,7 @@ export async function POST(req) {
       drinkId: "",
       addons: [],
       drink: "",
-      note: safeNote || "ไม่รับอาหาร",
+      note: safeNote,
     };
 
     const failed = await saveChoice(nextFood);
@@ -425,7 +425,7 @@ export async function POST(req) {
       drinkId: "",
       addons: [],
       drink: "",
-      note: safeNote || "ไม่รับอาหาร",
+      note: safeNote,
     };
 
     const failed = await saveChoice(nextFood);

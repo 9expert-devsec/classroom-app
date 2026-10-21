@@ -11,7 +11,7 @@
 //     ไม่ใช่ของบรรทัดไหน -> แสดงแยกเป็นบรรทัดสุดท้ายหลังเส้นคั่น
 import { optionGroupsOf } from "@/lib/lunchOptionGroups";
 
-import { addonsOf, rowType } from "./reportUi";
+import { addonsOf, rowNote, rowType } from "./reportUi";
 
 export function itemsCellModel(o) {
   const t = rowType(o);
@@ -40,6 +40,6 @@ export function itemsCellModel(o) {
 
   return {
     blocks,
-    trailingNote: String(o?.note ?? o?.food?.note ?? "").trim(),
+    trailingNote: rowNote(o),
   };
 }

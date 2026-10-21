@@ -5,7 +5,8 @@ import { CalendarX, CheckCircle2, Clock, Hand, Ticket, UtensilsCrossed } from "l
 import { STATUS_META } from "./reportUi";
 
 // coupon rows whose status keeps its own label — shown under "คูปองทั้งหมด" so the card adds up
-const OWN_LABEL_COUPON = ["unused", "pending", "forfeited", "no_order"];
+// R2b: no_qr / cancelled_wait_qr แทน no_order เดิม (no_order คงไว้ให้ข้อมูลเก่า)
+const OWN_LABEL_COUPON = ["unused", "no_qr", "pending", "cancelled_wait_qr", "forfeited", "no_order"];
 
 export default function KpiCards({ counts }) {
   const ownLabelLine = OWN_LABEL_COUPON.filter((k) => counts.byStatus[k] > 0)

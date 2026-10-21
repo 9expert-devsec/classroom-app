@@ -101,7 +101,7 @@ export function sourceLabel(row) {
 
 // R2a-3: รหัสของใบที่ยกเลิกแล้ว (row.couponCodeState จาก server) — ใบเก็บรหัสไว้เป็นประวัติ
 //        แต่ต้องไม่ดูเหมือนยังถืออยู่ · strike = ขีดฆ่า + จาง, chip = ป้ายสถานะ
-const CODE_STATE = {
+export const CODE_STATE = {
   awaiting_return: { strike: false, chip: "รอคืน", tone: "bg-amber-100 text-amber-800" },
   returned: { strike: true, chip: "คืนแล้ว", tone: "bg-slate-100 text-slate-600" },
   released: { strike: true, chip: "คืนเข้า stock", tone: "bg-slate-100 text-slate-600" },
@@ -340,7 +340,8 @@ export function RowActionList({ row, busy, onAction }) {
  * ตัดสิทธิ์ = "หมดเวลา 15:00"
  */
 export function statusNote(row) {
-  if (row?.status === "forfeited") return "หมดเวลา 15:00";
+  // R2b: ป้ายขั้นจาก server (lunchStage.js ตัวเดียวกับ Food Report)
+  if (row?.status === "forfeited") return row.stageLabel || "หมดเวลา 15:00";
   if (row?.status !== "cancelled") return "";
   const reason = String(row.latestCancelReason ?? row.cancelReason ?? "");
   const cur = row.currentChoice;

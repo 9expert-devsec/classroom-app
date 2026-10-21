@@ -23,14 +23,15 @@ import FoodMenu from "@/models/FoodMenu";
 import LunchOrder from "@/models/LunchOrder";
 import CouponStockCode from "@/models/CouponStockCode";
 
-import { computeStatus } from "@/lib/lunchOrders.server";
 import { getOrderCouponSource } from "@/lib/lunchCouponSource";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
+import { couponStageOf, couponStageLabel } from "@/lib/lunchStage";
+import { couponCodeStateOf } from "@/lib/lunchCodeState";
 
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
-  "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia " +
+  "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia couponVoidedAt " +
   "lines.name lines.qty lines.options.choiceName lines.options.groupName lines.note nickname holderName roomName " +
   "submittedAt createdAt";
 
@@ -151,6 +152,17 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   const liveByKey = new Map();
   for (const o of liveOrders) liveByKey.set(keyOf(o.classId, o.studentId), o); // activeKey: ≤1 ใบ
 
+  // R2b: ใบล่าสุดของแต่ละคน (รวมใบที่ยกเลิก) — บอกขั้นของคนที่เลือกคูปองแต่ไม่มีใบ live
+  const latestByKey = new Map();
+  for (const o of [...allOrders].sort(
+    (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+  )) {
+    latestByKey.set(keyOf(o.classId, o.studentId), o);
+  }
+  // เวลาปิดของวันนั้น (finalCloseAt ตาม lunchTimes — เวลาทดสอบใช้ได้)
+  const finalCloseTs = finalCloseAt(dateYMD);
+  const dayClosed = !!finalCloseTs && now.getTime() >= finalCloseTs.getTime();
+
   // ออเดอร์ที่ไม่มี Checkin วันนั้น — ต้องดึง Student/Class เพิ่ม
   const ciKeys = new Set(checkins.map((ch) => keyOf(ch.classId, ch.studentId)));
   const orphanOrders = liveOrders.filter((o) => !ciKeys.has(keyOf(o.classId, o.studentId)));
@@ -164,7 +176,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       ? Class.find({ _id: { $in: orphanOrders.map((o) => o.classId) } }).lean()
       : [],
     stockIds.length
-      ? CouponStockCode.find({ _id: { $in: stockIds } }).select("code status handedOutAt").lean()
+      ? CouponStockCode.find({ _id: { $in: stockIds } }).select("code status handedOutAt orderId").lean()
       : [],
   ]);
   const studentById = new Map(orphanStudents.map((s) => [idStr(s._id), s]));
@@ -194,7 +206,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
     menuDocs.map((m) => [idStr(m._id), { name: m.name || "", restaurantId: idStr(m.restaurant) }]),
   );
 
-  function buildRow({ id, date, cls, stu, order, hasCheckin }) {
+  function buildRow({ id, date, cls, stu, order, latest = null, hasCheckin }) {
     const src = readFoodSource(stu?.food, menuMap, restaurantMap);
     const flags = [];
     let type;
@@ -205,7 +217,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       if (src.kind !== "coupon") flags.push("mismatch");
       const couponSource = sourceOf(order);
       const stock = order.stockCodeId ? stockById.get(idStr(order.stockCodeId)) : null;
-      const state = computeStatus(order, now);
+      // R2b: ขั้นเดียวกับหน้าติดตามการสั่งอาหาร (pending / forfeited / ordered / at_shop)
+      const state = couponStageOf({ liveOrder: order, latestOrder: order, finalClosed: dayClosed });
       if (
         couponSource === "stock" &&
         (state === "ordered" || state === "at_shop") &&
@@ -215,6 +228,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       }
       coupon = {
         couponState: state,
+        couponStageLabel: couponStageLabel(state),
+        couponCodeState: couponCodeStateOf(order, stock),
         orderId: idStr(order._id),
         couponShopId: idStr(order.restaurantId),
         couponShopName: order.restaurantName || "",
@@ -236,8 +251,15 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       };
     } else if (src.kind === "coupon") {
       type = "coupon";
+      // R2b: แทน "ไม่มีออเดอร์" ด้วยขั้นที่แม่นขึ้น — ยังไม่ได้รับ QR / ยกเลิก รอออก QR ใหม่ / ตัดสิทธิ์
+      //      ใบล่าสุดที่ยกเลิกไปแล้วยังบอกได้ว่ารหัส stock รอคืนอยู่ไหม (couponCodeState)
+      const stage = couponStageOf({ liveOrder: null, latestOrder: latest, finalClosed: dayClosed });
+      const latestStock = latest?.stockCodeId ? stockById.get(idStr(latest.stockCodeId)) : null;
+      const codeState = latest ? couponCodeStateOf(latest, latestStock) : null;
       coupon = {
-        couponState: "no_order",
+        couponState: stage,
+        couponStageLabel: couponStageLabel(stage, codeState),
+        couponCodeState: codeState,
         orderId: "",
         couponShopId: "",
         couponShopName: "",
@@ -272,6 +294,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       type,
       ...(coupon || {
         couponState: "",
+        couponStageLabel: "",
+        couponCodeState: null,
         orderId: "",
         couponShopId: "",
         couponShopName: "",
@@ -320,6 +344,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         cls: ch.classId,
         stu: ch.studentId,
         order: liveByKey.get(keyOf(ch.classId, ch.studentId)) || null,
+        latest: latestByKey.get(keyOf(ch.classId, ch.studentId)) || null,
         hasCheckin: true,
       }),
     ),
@@ -434,7 +459,10 @@ function summarize(rows, allOrders, stockById) {
     if (!r.couponShopId) {
       if (r.couponState === "pending") cls.noShopYet.pending += 1;
       else if (r.couponState === "forfeited") cls.noShopYet.forfeited += 1;
-      else if (r.couponState === "no_order") cls.noShopYet.noOrder += 1;
+      // R2b: no_qr / cancelled_wait_qr แทน no_order เดิม (นับรวมช่องเดิม)
+      else if (["no_qr", "cancelled_wait_qr", "no_order"].includes(r.couponState)) {
+        cls.noShopYet.noOrder += 1;
+      }
       continue;
     }
     if (!active) continue; // pending/forfeited ที่เลือกร้านแล้วนับใน totals เท่านั้น
@@ -496,4 +524,25 @@ function ensureShop(shops, id, name, source) {
   const s = shops.get(id);
   if (!s.name && name) s.name = name;
   return s;
+}
+
+/**
+ * R2b: รหัสคูปองกระดาษที่ "รอคืนอยู่ตอนนี้" ต่อร้าน (ไม่ขึ้นกับช่วงวันที่ที่เลือก)
+ * = CouponStockCode.status "awaiting_return" ทั้งหมด — ร้านโผล่ในสรุปตามร้านค้าแม้ไม่มีแถวในช่วงนั้น
+ * คืน [{ shopId, shopName, count }]
+ */
+export async function awaitingReturnByShop() {
+  const grouped = await CouponStockCode.aggregate([
+    { $match: { status: "awaiting_return" } },
+    { $group: { _id: "$restaurant", count: { $sum: 1 } } },
+  ]);
+  const ids = grouped.map((g) => g._id).filter(Boolean);
+  const shops = ids.length
+    ? await Restaurant.find({ _id: { $in: ids } }).select("name").lean()
+    : [];
+  const nameById = new Map(shops.map((r) => [idStr(r._id), r.name || ""]));
+  return grouped
+    .filter((g) => g._id)
+    .map((g) => ({ shopId: idStr(g._id), shopName: nameById.get(idStr(g._id)) || "", count: g.count }))
+    .sort((a, b) => a.shopName.localeCompare(b.shopName, "th"));
 }

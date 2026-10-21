@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import { kioskGuard } from "@/lib/kioskAuth.server";
+// R2b: preview ไม่ส่งโน้ตอัตโนมัติ ("COUPON" / "ไม่รับอาหาร") — ตัวเลือกดูจาก choiceType
+import { stripAutoNote } from "@/lib/foodNotes";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Restaurant from "@/models/Restaurant";
@@ -109,7 +111,7 @@ export async function GET(req) {
         menuName: "",
         addons: [],
         drink: "",
-        note: sf.note || "COUPON",
+        note: stripAutoNote(sf.note),
       };
     } else if (choiceType === "noFood" || noFood) {
       foodPreview = {
@@ -118,7 +120,7 @@ export async function GET(req) {
         menuName: "",
         addons: [],
         drink: "",
-        note: sf.note || "ไม่รับอาหาร",
+        note: stripAutoNote(sf.note),
       };
     } else {
       // 2) เคส food

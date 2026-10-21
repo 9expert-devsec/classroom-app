@@ -1,7 +1,7 @@
 // src/app/api/admin/food-orders/route.js
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
-import { resolveFoodDay } from "@/lib/foodReport.server";
+import { resolveFoodDay, awaitingReturnByShop } from "@/lib/foodReport.server";
 import { isYMD } from "@/lib/classDates";
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -111,11 +111,15 @@ async function rangeResponse(from, to, classId, q) {
     r.rows.map((row) => ({ ...row, dayYMD: r.dateYMD, dayFinalClosed: r.finalClosed })),
   );
 
+  // R2b: รอคืนคูปอง "ณ ตอนนี้" ต่อร้าน — ไม่ขึ้นกับช่วงวันที่ (ร้านที่ไม่มีแถวในช่วงก็ยังขึ้น)
+  const awaitingReturnNow = await awaitingReturnByShop();
+
   return NextResponse.json({
     ok: true,
     from,
     to,
     rows,
+    awaitingReturnNow,
     total: rows.length,
     days: results.map((r) => ({
       dayYMD: r.dateYMD,

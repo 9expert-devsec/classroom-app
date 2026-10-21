@@ -4,6 +4,7 @@
 //   - แถว = Food Report rows type "set" ของร้านนั้นในวันนั้น (ไม่รับอาหาร / คูปอง ไม่อยู่ใน sheet)
 //   - สรุปครัว: ตารางเลข 1–3 นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
 import { CSS, compactHeaderHtml, esc, headerHtml, summaryTableHtml } from "./orderSheetHtml";
+import { rowNote } from "./_components/reportUi";
 
 function addonList(r) {
   // addons อาจอยู่ทั้ง r.addons และ r.food.addons (array หรือ string คั่นด้วย "/")
@@ -99,7 +100,7 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
                       .join("") || "-"
                   }</td>
                   <td class="td">${esc(drinkOf(r) || "-")}</td>
-                  <td class="td">${esc(String(r.note ?? r.food?.note ?? "").trim() || "-")}</td>
+                  <td class="td">${esc(rowNote(r) || "-")}</td>
                 </tr>`,
             )
             .join("")}

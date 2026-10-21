@@ -1,9 +1,15 @@
 "use client";
 
 // admin edit of a learner's food choice — same flow as before (POST /api/checkin/food),
-// not bound by the 15:00 cutoff, never issues a lunch QR. Mounted per row (key = row id).
+// not bound by the 15:00 cutoff. Mounted per row (key = row id).
+// R2b: saving never issues a lunch QR by itself. After a coupon save (today, before close,
+//      no live order) the success state offers "ออก QR ทันที" — a separate, explicit call to
+//      POST /api/admin/lunch/issue, which re-validates everything server-side.
 import { useEffect, useMemo, useState } from "react";
 
+import { stripAutoFoodNote } from "@/lib/foodNotes";
+import { postLunchAdmin } from "@/components/admin/lunch/lunchApi";
+import QrLinkModal from "../../lunch-orders/_components/QrLinkModal";
 import Modal from "./Modal";
 import {
   classDayIndex,
@@ -19,7 +25,7 @@ function initialChoice(row) {
   return t === "coupon" ? "coupon" : t === "none" ? "noFood" : "food";
 }
 
-export default function EditFoodModal({ row, onClose, onSaved }) {
+export default function EditFoodModal({ row, todayYMD = "", onClose, onSaved }) {
   const f = row.food || {};
   // C5c: ใช้ type ที่ server ตัดสินแล้ว (LunchOrder ชนะ Student.food)
   const startChoice = initialChoice(row);
@@ -38,8 +44,14 @@ export default function EditFoodModal({ row, onClose, onSaved }) {
     Array.isArray(f.addons) ? f.addons : Array.isArray(row.addons) ? row.addons : [],
   );
   const [editDrink, setEditDrink] = useState(String(f.drink ?? row.drink ?? ""));
-  const [editNote, setEditNote] = useState(String(f.note ?? row.note ?? ""));
+  // R2b: ไม่ prefill โน้ตอัตโนมัติเดิม ("COUPON" / "ไม่รับอาหาร")
+  const [editNote, setEditNote] = useState(stripAutoFoodNote(f.note ?? row.note ?? ""));
   const [savingEdit, setSavingEdit] = useState(false);
+  // R2b: หลังบันทึกเป็นคูปองแล้วยังไม่มี QR -> แสดงหน้าบันทึกสำเร็จ + ปุ่ม "ออก QR ทันที"
+  const [savedCoupon, setSavedCoupon] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const [issueError, setIssueError] = useState("");
+  const [qr, setQr] = useState(null);
 
   const [foodOptions, setFoodOptions] = useState([]);
   const [optLoading, setOptLoading] = useState(false);
@@ -184,9 +196,7 @@ export default function EditFoodModal({ row, onClose, onSaved }) {
 
     setSavingEdit(true);
     try {
-      const cleanedNote = ["ไม่รับอาหาร", "COUPON"].includes(String(editNote || "").trim())
-        ? ""
-        : String(editNote || "");
+      const cleanedNote = stripAutoFoodNote(editNote);
 
       const payloadBase = {
         studentId: row.studentId,
@@ -267,6 +277,20 @@ export default function EditFoodModal({ row, onClose, onSaved }) {
         return;
       }
 
+      // R2b: คูปอง + วันนี้ + ยังไม่ถึงเวลาปิด (dayFinalClosed มาจาก server ตาม lunchTimes)
+      //      + ยังไม่มีออเดอร์ live -> เสนอ "ออก QR ทันที" (ไม่ออกให้เอง)
+      if (
+        editChoiceType === "coupon" &&
+        !!todayYMD &&
+        reportYMD === todayYMD &&
+        !row.dayFinalClosed &&
+        !row.orderId
+      ) {
+        setSavingEdit(false);
+        setSavedCoupon(true);
+        return;
+      }
+
       await onSaved();
       return;
     } catch (err) {
@@ -274,6 +298,75 @@ export default function EditFoodModal({ row, onClose, onSaved }) {
       alert("เกิดข้อผิดพลาดในการบันทึก");
     }
     setSavingEdit(false);
+  }
+
+  // R2b: ปุ่มลัด — server ตรวจซ้ำทุกข้อ (วันนี้ / ก่อนเวลาปิด / ตัวเลือกเป็นคูปอง / เช็คอินแล้ว / ไม่มีใบ live)
+  async function issueNow() {
+    setIssuing(true);
+    setIssueError("");
+    try {
+      const r = await postLunchAdmin("/api/admin/lunch/issue", {
+        classId: row.classId || "",
+        studentId: row.studentId,
+      });
+      setQr({
+        title: "ออก QR แล้ว",
+        url: r.qrUrl,
+        name: row.studentName || "",
+        nickname: "",
+        className: row.className || "",
+        room: row.roomName || "",
+        status: "pending",
+        deadlineAt: r.deadlineAt || null,
+      });
+    } catch (e) {
+      setIssueError(e.message || "ออก QR ไม่สำเร็จ");
+    } finally {
+      setIssuing(false);
+    }
+  }
+
+  if (qr) return <QrLinkModal qr={qr} onClose={() => onSaved()} />;
+
+  if (savedCoupon) {
+    return (
+      <Modal open title={`แก้ไขอาหาร: ${row?.studentName || ""}`} onClose={() => onSaved()}>
+        <div className="space-y-4" data-testid="edit-food-saved">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            บันทึกแล้ว — ตัวเลือกเป็น COUPON
+          </div>
+          <p className="text-[12px] text-admin-textMuted">
+            การบันทึกไม่ออก QR ให้เอง ผู้เรียนยังไม่มี QR สั่งอาหารของวันนี้ — ออกได้ที่นี่
+            หรือที่หน้าติดตามการสั่งอาหาร
+          </p>
+          {issueError ? <p className="text-sm text-red-600">{issueError}</p> : null}
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => onSaved()}
+              disabled={issuing}
+              className="rounded-xl border border-admin-border bg-white px-3 py-2 text-sm hover:bg-admin-surfaceMuted disabled:opacity-50"
+            >
+              ปิด
+            </button>
+            <button
+              type="button"
+              data-testid="issue-qr-now"
+              onClick={issueNow}
+              disabled={issuing}
+              className={cx(
+                "rounded-xl px-4 py-2 text-sm font-semibold",
+                issuing
+                  ? "bg-admin-border text-admin-textMuted"
+                  : "bg-brand-primary text-white hover:opacity-90",
+              )}
+            >
+              {issuing ? "กำลังออก QR..." : "ออก QR ทันที"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -294,7 +387,7 @@ export default function EditFoodModal({ row, onClose, onSaved }) {
               </span>
             </div>
             <div className="mt-2 text-[11px] text-admin-textMuted">
-              ออเดอร์คูปองจัดการในหน้า Lunch — การแก้ไขที่นี่ไม่สร้างออเดอร์หรือ QR
+              ออเดอร์คูปองจัดการในหน้าติดตามการสั่งอาหาร — การแก้ไขที่นี่ไม่สร้างออเดอร์หรือ QR
             </div>
           </div>
         )}
