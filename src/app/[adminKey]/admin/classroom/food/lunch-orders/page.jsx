@@ -5,19 +5,22 @@
 // R3b: หน้าตาใหม่ (การ์ดสถานะ / การ์ดคลาสพับได้ / drawer รายละเอียด)
 // R2a-2: ปุ่มของแต่ละแถวมาจาก server (row.actions) — ดู QR / Regenerate QR / ยกเลิกคูปอง /
 //        ยกเลิกเพื่อแก้ไขออเดอร์ / ออก QR ใหม่ / ส่งมอบ / รับคืน ผ่าน /api/admin/lunch/*
+// R3: โยกไปร้านอื่น — เมนู ⋯ ของแถว หรือเลือกหลายคน (checkbox เฉพาะแถวที่ server บอกว่าโยกได้)
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, RefreshCw, Search, Undo2 } from "lucide-react";
+import { ArrowRightLeft, CalendarDays, RefreshCw, Search, Undo2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
 import { ConfirmModal } from "@/components/admin/lunch/LunchModals";
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
-import { STATUS_KEYS, STATUS_META } from "./_components/lunchOrdersUi";
+import { STATUS_KEYS, STATUS_META, canReassign } from "./_components/lunchOrdersUi";
 import ClassSection from "./_components/ClassSection";
 import OrderDrawer from "./_components/OrderDrawer";
 import QrLinkModal from "./_components/QrLinkModal";
 import { AwaitingReturnPanel, CodeSearchResult } from "./_components/CrossDayPanels";
+import ReassignDialog from "./_components/ReassignDialog";
 
 const POLL_MS = 30_000;
 const STATUS_FILTERS = ["all", ...STATUS_KEYS];
@@ -163,6 +166,9 @@ export default function LunchOrdersPage() {
   const [selectedId, setSelectedId] = useState("");
   // R2a-2: เพิ่มทุกครั้งหลังทำรายการ -> drawer โหลดประวัติใหม่
   const [timelineKey, setTimelineKey] = useState(0);
+  // R3: แถวที่เลือกไว้โยก (orderId) + แถวที่กำลังโยกในโมดัล
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
+  const [reassignRows, setReassignRows] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
@@ -240,6 +246,32 @@ export default function LunchOrdersPage() {
     return codeHit?.primary?.orderId === selectedId ? codeHit.primary : null;
   }, [data, codeHit, selectedId]);
   const closeDrawer = useCallback(() => setSelectedId(""), []);
+
+  // R3: แถวที่เลือก = ข้อมูลล่าสุดหลังรีเฟรช และยังโยกได้อยู่ (แถวที่โยกไม่ได้แล้วหลุดออกเอง)
+  const checkedRows = useMemo(
+    () => (data?.items || []).filter((it) => checkedIds.has(it.orderId) && canReassign(it)),
+    [data, checkedIds],
+  );
+  const checkedSet = useMemo(() => new Set(checkedRows.map((r) => r.orderId)), [checkedRows]);
+  const onCheck = useCallback((rows, on) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      for (const r of rows) {
+        if (on && canReassign(r)) next.add(r.orderId);
+        else next.delete(r.orderId);
+      }
+      return next;
+    });
+  }, []);
+
+  async function onReassignDone(res) {
+    const n = res?.moved?.length || 0;
+    setReassignRows(null);
+    setCheckedIds(new Set());
+    toast.success(`โยกไปร้าน ${res?.target?.name || ""} แล้ว ${n} คน`);
+    setTimelineKey((k) => k + 1);
+    await load();
+  }
 
   const post = postLunchAdmin;
 
@@ -321,6 +353,7 @@ export default function LunchOrdersPage() {
   // ปุ่มในตารางและใน drawer ใช้ dispatcher ตัวเดียวกัน
   function onAction(key, row) {
     if (key === "viewQr") return viewQr(row);
+    if (key === "reassign") return setReassignRows([row]);
     if (key === "handout" || key === "return") {
       setStockError("");
       return setStockAction({ kind: key, row });
@@ -344,7 +377,7 @@ export default function LunchOrdersPage() {
   }
 
   const counts = data?.counts || {};
-  const modalOpen = !!(confirm || qr || stockAction);
+  const modalOpen = !!(confirm || qr || stockAction || reassignRows);
 
   return (
     // layout แม่ (<main>) เป็น overflow-hidden — หน้านี้ scroll เอง
@@ -496,6 +529,35 @@ export default function LunchOrdersPage() {
           </p>
         ) : null}
 
+        {/* R3: แถบเลือกหลายคน */}
+        {checkedRows.length ? (
+          <div
+            data-testid="reassign-bulk-bar"
+            className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-2.5 shadow-sm"
+          >
+            <span className="text-sm text-sky-800">เลือกไว้ {checkedRows.length} คน</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCheckedIds(new Set())}
+                className="h-9 rounded-xl border border-admin-border bg-white px-3 text-sm text-admin-text hover:bg-admin-surfaceMuted"
+              >
+                ล้าง
+              </button>
+              <button
+                type="button"
+                data-testid="reassign-bulk"
+                disabled={busy}
+                onClick={() => setReassignRows(checkedRows)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                โยกไปร้านอื่น ({checkedRows.length} คน)
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {groups.map((g) => (
           <ClassSection
             key={g.id}
@@ -505,6 +567,8 @@ export default function LunchOrdersPage() {
             selectedId={selected ? selectedId : ""}
             onSelect={setSelectedId}
             actionProps={actionProps}
+            checked={checkedSet}
+            onCheck={onCheck}
           />
         ))}
       </div>
@@ -547,6 +611,14 @@ export default function LunchOrdersPage() {
         </ConfirmModal>
       ) : null}
       {qr ? <QrLinkModal qr={qr} onClose={() => setQr(null)} /> : null}
+      {reassignRows ? (
+        <ReassignDialog
+          rows={reassignRows}
+          onClose={() => setReassignRows(null)}
+          onDone={onReassignDone}
+          onRefresh={load}
+        />
+      ) : null}
       {stockAction ? (
         <ConfirmModal
           title={

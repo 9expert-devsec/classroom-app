@@ -45,7 +45,18 @@ export function CodeSearchResult({ hit, selectedId, onSelect, actionProps }) {
         <Tag className="h-4 w-4" />
         ผลค้นหารหัสคูปอง
         <CouponCode code={hit.code} size="table" />
-        <span className="text-xs font-normal text-admin-textMuted">(ค้นทุกวัน · ผู้ถือปัจจุบัน)</span>
+        {p.noHolder ? (
+          // R3: ไม่มีใบไหนถือรหัสนี้อยู่ — แถวด้านล่างคือผู้ถือคนล่าสุด (ไม่มีปุ่มเปลี่ยนสถานะ)
+          <span
+            data-testid="code-no-holder"
+            className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-700"
+          >
+            {p.noHolderLabel || "ไม่มีผู้ถือ"}
+          </span>
+        ) : null}
+        <span className="text-xs font-normal text-admin-textMuted">
+          {p.noHolder ? "(ค้นทุกวัน · ผู้ถือคนล่าสุด)" : "(ค้นทุกวัน · ผู้ถือปัจจุบัน)"}
+        </span>
       </h2>
 
       <ClassSection

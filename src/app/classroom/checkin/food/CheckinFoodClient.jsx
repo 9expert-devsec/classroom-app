@@ -614,7 +614,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
               menuId: "",
               addonIds: [],
               drinkId: "",
-              note: String(note || "").trim() || "ไม่รับอาหาร",
+              // R3: ไม่ส่งโน้ตอัตโนมัติ ("ไม่รับอาหาร" / "COUPON") — ส่งเฉพาะที่พิมพ์เอง
+              note: String(note || "").trim(),
             }
           : choiceType === "coupon"
             ? {
@@ -626,7 +627,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
                 menuId: "",
                 addonIds: [],
                 drinkId: "",
-                note: String(note || "").trim() || "COUPON",
+                note: String(note || "").trim(),
               }
             : {
                 ...base,

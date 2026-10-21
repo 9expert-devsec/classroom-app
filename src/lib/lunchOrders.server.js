@@ -191,9 +191,28 @@ function restaurantState(entryMode, isStock, stockCount) {
 }
 
 /**
+ * R3: ใบที่ถูกยกเลิกเพราะ "โยกไปร้านอื่น" -> token ของใบใหม่ที่ยังใช้งานอยู่ ("" = ไม่มี)
+ * ตามต่อได้หลายทอด (โยกซ้ำ) — ใบใหม่ของคนเดียวกัน/วันเดียวกันที่ reassignedFrom.orderId = ใบนี้
+ */
+async function reassignedTokenOf(order) {
+  let cur = order;
+  for (let i = 0; i < 5 && cur?.status === "cancelled" && cur.cancelReason === "reassigned"; i += 1) {
+    cur = await LunchOrder.findOne({
+      classId: cur.classId,
+      studentId: cur.studentId,
+      dayYMD: cur.dayYMD,
+      "reassignedFrom.orderId": cur._id,
+    })
+      .select("status activeKey token cancelReason classId studentId dayYMD")
+      .lean();
+  }
+  return cur && cur !== order && cur.status !== "cancelled" && cur.activeKey ? cur.token || "" : "";
+}
+
+/**
  * DTO ของหน้าสั่งอาหาร
  *   null            -> ไม่รู้จัก token
- *   { gone: true }  -> ถูกยกเลิก/ถูกแทนที่แล้ว
+ *   { gone: true }  -> ถูกยกเลิก/ถูกแทนที่แล้ว (R3: nextToken = ถูกโยกไปร้านอื่น -> ใบใหม่)
  */
 export async function getLunchSession(token, now = lunchNow()) {
   const t = String(token || "").trim();
@@ -204,7 +223,8 @@ export async function getLunchSession(token, now = lunchNow()) {
 
   // ยกเลิกแล้ว = token ใบนี้ตายแล้ว (P4 จะออกใบใหม่แทน)
   if (order.status === "cancelled" || !order.activeKey) {
-    return { gone: true };
+    const nextToken = await reassignedTokenOf(order);
+    return nextToken ? { gone: true, nextToken } : { gone: true };
   }
 
   const at = new Date(now);
@@ -305,6 +325,10 @@ export async function getLunchSession(token, now = lunchNow()) {
       roomName: order.roomName || "",
       dayYMD: ymd,
       submittedAt: order.submittedAt || null,
+      // R3: เจ้าหน้าที่โยกมาจากร้านอื่น -> หน้าคูปองแสดงประกาศด้านบน
+      reassigned: order.reassignedFrom
+        ? { fromRestaurantName: order.reassignedFrom.restaurantName || "" }
+        : null,
     };
   }
 

@@ -8,6 +8,8 @@
 //   - used -> หยุดถาวร; expired -> หยุดถาวร + router.refresh() ให้ด่านตรวจ (C1) พาไปหน้าหมดเวลา
 //   - เน็ตล้ม -> poll ต่อแบบถอยเวลา 8 -> 16 -> 30 วิ (เพดาน) ไม่ขึ้น error เต็มจอ
 //   - ไม่ใช้ WebSocket / SSE
+//   - R3: initial.state "watch" (คูปองกระดาษ) = poll เพื่อรู้ว่าถูกยกเลิก/โยกร้านเท่านั้น
+//         410 -> router.refresh() -> ด่านตรวจพาไปคูปองใบใหม่
 // ค่าเริ่มต้นมาจาก server render จึงถูกตั้งแต่ paint แรกโดยไม่ต้องรอ poll
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -33,7 +35,7 @@ export default function useCouponStatus(token, initial) {
 
   useEffect(() => {
     // poll เฉพาะคูปองที่ยังไม่ใช้ — used / expired เป็นสถานะสุดท้าย
-    if (!token || initialState !== "unused") return undefined;
+    if (!token || (initialState !== "unused" && initialState !== "watch")) return undefined;
 
     let timer = null;
     let stopped = false;
@@ -78,6 +80,11 @@ export default function useCouponStatus(token, initial) {
         const data = await res.json();
         fails = 0;
         setLastUpdated(new Date());
+        // R3: คูปองกระดาษยังใช้งานอยู่ — ไม่มีอะไรเปลี่ยนบนหน้า poll ต่อ
+        if (data.state === "watch") {
+          schedule(POLL_MS);
+          return;
+        }
         setStatus({
           state: data.state,
           usedAt: data.usedAt || null,

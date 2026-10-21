@@ -34,6 +34,8 @@ const AUDIT_KIND = {
   "lunch.return": "returned",
   "lunch.view_qr": "view_qr",
   "lunch.special_open": "special_open",
+  // R3: โยกไปร้านอื่น — ขั้นเดียว (ไม่แยกเป็นยกเลิก + ออกใหม่)
+  "lunch.reassign": "reassigned",
 };
 
 const COUPON_EFFECT_LABELS = {
@@ -41,6 +43,20 @@ const COUPON_EFFECT_LABELS = {
   awaiting_return: "ต้องรับคูปองกระดาษคืน",
   voided: "e-coupon ถูกยกเลิก (ร้านรับไม่ได้)",
 };
+
+// R3: ป้าย / รายละเอียดของขั้น "โยกร้าน" (ใช้ทั้งจาก field ของออเดอร์และจาก audit)
+function reassignLabel(fromName, toName) {
+  return fromName ? `โยกจากร้าน ${fromName} ไปร้าน ${toName || "-"}` : `โยกไปร้าน ${toName || "-"}`;
+}
+
+function reassignDetail({ oldCode, newCode, couponEffect, reason }) {
+  return joinDetail([
+    oldCode ? `รหัสเดิม ${oldCode}` : "",
+    newCode ? `รหัสใหม่ ${newCode}` : "",
+    COUPON_EFFECT_LABELS[couponEffect] || "",
+    reason ? `เหตุผล: ${reason}` : "",
+  ]);
+}
 
 function dayRange(dayYMD) {
   const start = new Date(`${dayYMD}T00:00:00.000+07:00`);
@@ -78,15 +94,35 @@ function orderEvents(order, stockById, adminNameById = new Map()) {
   const id = String(order._id);
   const ev = [];
   const push = (e) => ev.push({ orderId: id, actorName: null, ...e });
+  // R3: ใบที่ได้จากการโยกร้าน — ใบใหม่ไม่มีขั้น "ออก QR" / "สั่ง" ของตัวเอง แต่เป็นขั้น "โยกร้าน" ขั้นเดียว
+  //     (ใบ pending ที่ถูกโยก = ใบเดิม จึงยังมี "ออก QR" ของตัวเอง)
+  const rf = order.reassignedFrom || null;
+  const reassignedNew = !!rf && String(rf.orderId || "") !== id;
 
-  push({
-    at: order.tokenIssuedAt || order.createdAt,
-    kind: "issued",
-    label: order.reopenCount > 0 ? "ออก QR ใหม่" : "ออก QR",
-    detail: order.deadlineAt ? `ส่งก่อน ${bangkokHM(order.deadlineAt)}` : null,
-  });
+  if (!reassignedNew) {
+    push({
+      at: order.tokenIssuedAt || order.createdAt,
+      kind: "issued",
+      label: order.reopenCount > 0 ? "ออก QR ใหม่" : "ออก QR",
+      detail: order.deadlineAt ? `ส่งก่อน ${bangkokHM(order.deadlineAt)}` : null,
+    });
+  }
 
-  if (order.submittedAt) {
+  if (rf) {
+    push({
+      at: rf.at || order.submittedAt || order.createdAt,
+      kind: "reassigned",
+      label: reassignLabel(rf.restaurantName, order.restaurantName),
+      actorName: rf.by || null,
+      detail: reassignDetail({
+        oldCode: rf.couponCode,
+        newCode: order.couponCode,
+        couponEffect: rf.couponEffect,
+        reason: rf.reason,
+      }),
+      fromOrderId: reassignedNew ? String(rf.orderId) : null,
+    });
+  } else if (order.submittedAt) {
     const mode = placedMode(order);
     push({
       at: order.submittedAt,
@@ -197,7 +233,20 @@ function auditEvent(a) {
     returned: "รับคูปองคืนแล้ว",
     view_qr: "เปิดดู QR",
     special_open: "เปิดเวลาพิเศษ",
+    reassigned: reassignLabel(meta.fromRestaurantName, meta.toRestaurantName),
   };
+  if (kind === "reassigned") {
+    return {
+      ...base,
+      label: labels.reassigned,
+      detail: reassignDetail({
+        oldCode: meta.oldCouponCode,
+        newCode: meta.couponCode,
+        couponEffect: meta.couponEffect,
+        reason: meta.reason,
+      }),
+    };
+  }
   return {
     ...base,
     label: labels[kind],
@@ -219,7 +268,7 @@ export async function buildLunchTimeline({ classId, studentId, dayYMD }) {
 
   const orders = await LunchOrder.find({ classId: cid, studentId: sid, dayYMD: ymd })
     .select(
-      "status tokenIssuedAt createdAt updatedAt deadlineAt reopenCount submittedAt restaurantName couponCode nickname lines.name handedOutAt handedOutBy redeemedAt redeemedVia cancelledAt cancelledBy cancelReason couponVoidedAt stockCodeId",
+      "status tokenIssuedAt createdAt updatedAt deadlineAt reopenCount submittedAt restaurantName couponCode nickname lines.name handedOutAt handedOutBy redeemedAt redeemedVia cancelledAt cancelledBy cancelReason couponVoidedAt stockCodeId reassignedFrom",
     )
     .sort({ createdAt: 1 })
     .lean();
@@ -270,6 +319,24 @@ export async function buildLunchTimeline({ classId, studentId, dayYMD }) {
     }
   }
 
+  // R3: ใบเดิมที่ถูกยกเลิกเพราะโยกร้าน -> รวมเข้ากับขั้น "โยกร้าน" ของใบใหม่ (ไม่แสดงเป็นยกเลิกแยก)
+  //     ปุ่ม "รับคืน" ของรหัสกระดาษใบเดิม (ถ้ายังรอคืน) ย้ายมาอยู่ที่ขั้นโยกร้าน
+  for (const r of events.filter((e) => e.kind === "reassigned" && e.fromOrderId)) {
+    const i = events.findIndex((e) => e.kind === "cancelled" && e.orderId === r.fromOrderId);
+    if (i < 0) continue;
+    const [c] = events.splice(i, 1);
+    byKey.delete(`${c.orderId}:cancelled`);
+    if (c.awaitingReturn) {
+      Object.assign(r, {
+        awaitingReturn: true,
+        stockCodeId: c.stockCodeId,
+        couponCode: c.couponCode,
+        returnOrderId: c.orderId,
+      });
+    }
+    if (c.couponCodeState) r.couponCodeState = c.couponCodeState;
+  }
+
   for (const a of audits) {
     const e = auditEvent(a);
     if (!e) continue;
@@ -286,7 +353,7 @@ export async function buildLunchTimeline({ classId, studentId, dayYMD }) {
   events.sort((x, y) => new Date(x.at).getTime() - new Date(y.at).getTime());
 
   return {
-    events: events.map(({ mergedAudit, ...e }) => ({
+    events: events.map(({ mergedAudit, fromOrderId, ...e }) => ({
       ...e,
       at: e.at ? new Date(e.at).toISOString() : null,
       hm: e.at ? bangkokHM(e.at) : "",

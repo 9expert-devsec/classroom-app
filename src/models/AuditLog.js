@@ -57,6 +57,8 @@ const AuditLogSchema = new mongoose.Schema(
         "lunch.cancel_coupon",
         "lunch.cancel_for_edit",
         "lunch.view_qr",
+        // ✅ R3: โยกไปร้านอื่น
+        "lunch.reassign",
       ],
       default: "custom",
       index: true,

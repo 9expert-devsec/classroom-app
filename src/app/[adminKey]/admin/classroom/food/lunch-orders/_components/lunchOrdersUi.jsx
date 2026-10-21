@@ -3,6 +3,7 @@
 // ชิ้นส่วนที่ใช้ร่วมกันของหน้า "ติดตามการสั่งอาหาร" (การ์ดสถานะ / ตาราง / drawer)
 // สถานะ = ค่าจริงจาก /api/admin/lunch/orders (computeStatus) — ไม่ได้เพิ่มสถานะใหม่
 import {
+  ArrowRightLeft,
   Check,
   CircleX,
   Clock,
@@ -176,6 +177,12 @@ export const ACTION_META = {
     Icon: RefreshCcw,
     cls: `${OUTLINE} border-green-200 text-green-700 hover:bg-green-50`,
   },
+  // R3: มีเฉพาะเมื่อ server บอกว่าโยกได้
+  reassign: {
+    label: "โยกไปร้านอื่น",
+    Icon: ArrowRightLeft,
+    cls: `${OUTLINE} border-sky-200 text-sky-700 hover:bg-sky-50`,
+  },
   cancelForEdit: {
     label: "ยกเลิกเพื่อแก้ไขออเดอร์",
     Icon: Pencil,
@@ -195,6 +202,7 @@ const ACTION_ORDER = [
   "issue",
   "return",
   "regenerate",
+  "reassign",
   "cancelForEdit",
   "cancelCoupon",
 ];
@@ -331,6 +339,11 @@ export function RowActionList({ row, busy, onAction }) {
       ))}
     </div>
   );
+}
+
+/** R3: แถวที่เลือกเข้าชุด "โยกไปร้านอื่น" ได้ (ตาม row.actions จาก server) */
+export function canReassign(row) {
+  return !!row?.actions?.reassign?.allowed;
 }
 
 /* ---------------- cancelled reason ---------------- */

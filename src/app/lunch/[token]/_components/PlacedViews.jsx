@@ -4,7 +4,7 @@
 //   ThankYouView : มาจากการ submit (?done=1) — 4 แบบ: stock/e-coupon × order/at_shop
 //   RescanView   : สแกน QR เดิมซ้ำ — ดูอย่างเดียว ไม่มีปุ่มพาไปสั่ง
 import Image from "next/image";
-import { Check, ImageOff, Info, Lock } from "lucide-react";
+import { ArrowRightLeft, Check, ImageOff, Info, Lock } from "lucide-react";
 
 import { LogoTile, LOGO, LOGO_W, LOGO_H } from "./Shell";
 import CouponCard from "./CouponCards";
@@ -71,6 +71,30 @@ function InfoBox({ children, testId }) {
   );
 }
 
+// R3: เจ้าหน้าที่โยกไปร้านอื่น — ประกาศด้านบนของหน้าคูปอง
+function ReassignedNotice({ order }) {
+  if (!order?.reassigned) return null;
+  return (
+    <div
+      data-testid="reassigned-notice"
+      className="flex gap-3 rounded-2xl border border-[#d98a13]/40 bg-[#d98a13]/10 px-4 py-3.5"
+    >
+      <ArrowRightLeft aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[#b8720a]" />
+      <div className="min-w-0 text-[14px] leading-relaxed text-[#0d1b2a]">
+        <p className="font-bold">ท่านถูกย้ายไปร้าน {order.restaurantName}</p>
+        <p>
+          {order.isStock
+            ? "กรุณารับคูปองกระดาษที่ Counter แล้วไปสั่งที่ร้านโดยใช้คูปองนี้"
+            : "กรุณาไปสั่งที่ร้านโดยใช้คูปองนี้"}
+          {order.reassigned.fromRestaurantName
+            ? ` (คูปองร้าน ${order.reassigned.fromRestaurantName} เดิมใช้ไม่ได้แล้ว)`
+            : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- thank-you ---------------- */
 
 export function ThankYouView({ order, dateLabel, token }) {
@@ -78,6 +102,7 @@ export function ThankYouView({ order, dateLabel, token }) {
 
   return (
     <div className="flex flex-col gap-5 px-4 py-6" data-testid="thank-you">
+      <ReassignedNotice order={order} />
       <div className="text-center">
         <SuccessIcon />
         <h1 className="mt-3 text-[21px] font-bold text-[color:var(--navy)]">
@@ -105,6 +130,7 @@ export function RescanView({ order, dateLabel, token }) {
 
   return (
     <div className="flex flex-col gap-4 px-4 py-5" data-testid="rescan">
+      <ReassignedNotice order={order} />
       <div className="flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-[19px] font-bold text-[#0d1b2a]">
           <Lock className="h-5 w-5 text-slate-400" />

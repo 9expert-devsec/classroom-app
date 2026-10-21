@@ -2,6 +2,7 @@
 //
 // C2: สถานะคูปอง e-coupon แบบเบา ให้หน้าขอบคุณ/สแกนซ้ำ poll ทุก ~4 วินาที
 //   200 { state: "unused" | "used" | "expired", usedAt?, showBarcode, serverTime }
+//   200 { state: "watch" } — R3: คูปองกระดาษที่สั่งแล้ว (poll แค่เพื่อรู้ว่าถูกยกเลิก / โยกร้าน)
 //   404 invalid / 410 replaced / 409 not_ecoupon (ร้าน stock หรือยังไม่มีคูปอง)
 //
 // findOne ครั้งเดียวด้วย token (unique index) + projection เล็ก ๆ
@@ -33,6 +34,15 @@ export async function GET(_req, { params }) {
     }
     if (order.status === "cancelled" || !order.activeKey) {
       return NextResponse.json({ error: "replaced" }, { status: 410, headers: NO_STORE });
+    }
+    // R3: คูปองกระดาษที่สั่งแล้ว — ไม่มีสถานะให้แสดง แต่หน้าคูปองยัง poll เพื่อรู้ว่าถูกยกเลิก/โยกร้าน
+    //     ถึงเวลาปิดแล้ว = expired (หน้า refresh ไปหน้าหมดเวลา แล้วหยุด poll)
+    if (!isECouponOrder(order) && (order.status === "ordered" || order.status === "at_shop")) {
+      const st = couponStateOf(order, lunchNow());
+      return NextResponse.json(
+        { state: st.state === "expired" ? "expired" : "watch" },
+        { headers: NO_STORE },
+      );
     }
     if (!isECouponOrder(order)) {
       return NextResponse.json(

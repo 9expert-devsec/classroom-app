@@ -8,6 +8,8 @@
 //   - issueLunchQrForCoupon : แอดมินออก QR ให้คนที่เลือกคูปองแต่ยังไม่มีใบ (R-g)
 //   - getLunchQr            : แอดมินดู QR ของใบที่ยังใช้งานได้ (R-h)
 //   - wasPlacedToday        : "เคยสั่งแล้ว" ดูทุกใบของวันนั้น (R-c)
+//   - reassignLunchCoupon   : R3 แอดมินโยกผู้เรียน (คูปอง) ไปร้านอื่น ทั้งชุดใน transaction เดียว
+//   - previewLunchReassign  : R3 ตรวจสิทธิ์ทีละคน + ความจุร้านปลายทาง (อ่านอย่างเดียว)
 //
 // กติกา:
 //   - การเขียนทุกอย่างของ 1 action อยู่ใน transaction เดียว (withTransaction)
@@ -16,6 +18,7 @@
 //     route แปลงเป็น { error, reason } ด้วย lunchAdminErrorBody ตัวเดิม
 //   - สำเร็จ = คืน { ok: true, ... } (มี qrUrl เมื่อมีใบใหม่ / ดู QR)
 
+import crypto from "node:crypto";
 import mongoose from "mongoose";
 
 import LunchOrder from "@/models/LunchOrder";
@@ -23,6 +26,7 @@ import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
 import FoodEditLog from "@/models/FoodEditLog";
+import Restaurant from "@/models/Restaurant";
 
 import {
   LunchAdminError,
@@ -31,14 +35,24 @@ import {
   wasPlacedToday,
   assertCouponChoiceToday,
   afterFinalCloseMessage,
+  adminDisplayName,
   ALREADY_USED_MESSAGE,
   ORDER_LOCKED_MESSAGE,
 } from "@/lib/lunchAdmin.server";
 import { issueLunchOrder, activeKeyOf, computeStatus } from "@/lib/lunchOrders.server";
-import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
-import { toBkkYMD, finalCloseAt, reissueDeadline, isCouponClosed } from "@/lib/lunchConfig";
+import { couponUnavailableMessage, getDaySet } from "@/lib/couponAvailability.server";
+import { assignCode, countAvailable } from "@/lib/couponStock.server";
+import { generateECouponCode } from "@/lib/lunchSubmit.server";
+import {
+  toBkkYMD,
+  finalCloseAt,
+  reissueDeadline,
+  isCouponClosed,
+  finalCloseLabel,
+  LUNCH_BUDGET_THB,
+} from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
+import { classDayIndexToday, isCheckinToday, isYMD } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import { getBaseUrl } from "@/lib/baseUrl.server";
 import {
@@ -691,6 +705,467 @@ export async function getLunchQr({ orderId, ctx = null, req = null }) {
   };
 }
 
+/* ---------------- R3: โยกไปร้านอื่น (reassign) ---------------- */
+
+// กติกา (ตรวจซ้ำใน transaction ทุกครั้ง):
+//   ทั้งชุด : วันนี้เท่านั้น / ก่อนเวลาปิด (finalCloseAt — เวลาทดสอบใช้ได้)
+//   ร้านปลายทาง : อยู่ใน Food Calendar ของวันนั้นแบบ coupon (ไม่ใช่ closed) + ร้านเปิดใช้งาน + couponEnabled
+//               ร้าน stock ที่ไม่มี fallback และคูปองกระดาษไม่พอทั้งชุด -> ไม่โยกใครเลย
+//   ผู้เรียน : ตัวเลือกปัจจุบันของคลาส/วันนี้เป็นคูปอง + คลาสไม่ได้ปิดคูปอง + มีใบ live
+//             (pending / ordered / at_shop) + ร้านยังไม่ได้ใช้คูปอง + ร้านปัจจุบันไม่ใช่ร้านปลายทาง
+// ผล (ต่อคน):
+//   ordered / at_shop : ยกเลิกใบเดิมด้วย cancelLunchOrder (reason "reassigned" — คูปองเดิมตามกติกาเดิม:
+//                       กระดาษยังไม่ส่งมอบคืนคลัง / ส่งมอบแล้วรอคืน / e-coupon void) แล้วออกใบใหม่
+//   pending           : ยังไม่มีออเดอร์ให้ยกเลิก — ใบ pending กลายเป็นใบของร้านปลายทางเลย (QR เดิมพาไปคูปองใหม่)
+//   ใบของร้านปลายทาง = at_shop ไม่มีรายการอาหาร งบ 180 + คูปองแบบเดียวกับ lunchSubmit
+//   (ร้าน stock: กระดาษก่อน ขาดเท่าไรร้านที่ตั้ง fallback ออก e-coupon แทน · ร้านอื่น: e-coupon)
+
+const REASSIGN_MAX = 200;
+const REASSIGN_STATUSES = ["pending", "ordered", "at_shop"];
+const REASSIGN_ECOUPON_ATTEMPTS = 8;
+const REASSIGN_CONFLICT_MESSAGE = "ข้อมูลเพิ่งเปลี่ยน ยังไม่ได้โยกใคร กรุณาลองใหม่";
+
+const SHOP_REASON_LABELS = {
+  closed: "ร้านปิดวันนี้ (Food Calendar)",
+  inactive: "ร้านถูกปิดใช้งาน",
+  coupon_disabled: "ร้านไม่ได้เปิดใช้ระบบคูปอง",
+  stock_out: "คูปองกระดาษหมด",
+};
+
+function normalizeReassignLearners(learners) {
+  if (!Array.isArray(learners) || learners.length < 1) {
+    fail(400, "bad_request", "กรุณาเลือกผู้เรียน");
+  }
+  if (learners.length > REASSIGN_MAX) {
+    fail(400, "too_many", `โยกได้ครั้งละไม่เกิน ${REASSIGN_MAX} คน`);
+  }
+  const byKey = new Map();
+  for (const l of learners) {
+    const studentId = clean(l?.studentId);
+    const classId = clean(l?.classId);
+    if (!isObjectId(studentId) || !isObjectId(classId)) {
+      fail(400, "bad_request", "ข้อมูลผู้เรียนไม่ครบ");
+    }
+    byKey.set(`${classId}:${studentId}`, { studentId, classId });
+  }
+  return [...byKey.values()];
+}
+
+// ปัญหาระดับทั้งชุด (วัน / เวลาปิด) — null = ผ่าน
+function reassignWindowProblem(dayYMD, at) {
+  if (dayYMD !== toBkkYMD(at)) {
+    return { reason: "not_today", message: "โยกร้านได้เฉพาะวันนี้เท่านั้น" };
+  }
+  const fc = finalCloseAt(dayYMD);
+  if (fc && at.getTime() >= fc.getTime()) {
+    return { reason: "after_final_close", message: `หลัง ${finalCloseLabel()} น. โยกร้านไม่ได้` };
+  }
+  return null;
+}
+
+/**
+ * ร้านคูปองของวันนั้นจาก Food Calendar (mode coupon / closed) พร้อมสถานะที่ใช้เป็นร้านปลายทางได้ไหม
+ * stockAvailable = จำนวนกระดาษที่ยังไม่หมดอายุ (null = ร้าน e-coupon)
+ */
+async function reassignShops(dayYMD, session = null) {
+  const daySet = await getDaySet(dayYMD);
+  const modeById = new Map();
+  for (const e of daySet?.entries || []) {
+    if (e?.restaurant && (e.mode === "coupon" || e.mode === "closed")) {
+      modeById.set(String(e.restaurant), e.mode);
+    }
+  }
+  if (!modeById.size) return [];
+
+  const docs = await Restaurant.find({ _id: { $in: [...modeById.keys()] } })
+    .select("name isActive couponEnabled usesCouponStock stockFallbackToECoupon")
+    .session(session)
+    .lean();
+
+  const out = [];
+  for (const r of docs) {
+    const id = String(r._id);
+    const usesCouponStock = !!r.usesCouponStock;
+    const stockFallback = usesCouponStock && !!r.stockFallbackToECoupon;
+    const stockAvailable = usesCouponStock ? await countAvailable(r._id, dayYMD) : null;
+
+    let reason = null;
+    if (modeById.get(id) === "closed") reason = "closed";
+    else if (r.isActive === false) reason = "inactive";
+    else if (!r.couponEnabled) reason = "coupon_disabled";
+    else if (usesCouponStock && !stockFallback && stockAvailable <= 0) reason = "stock_out";
+
+    out.push({
+      id,
+      name: r.name || "",
+      usesCouponStock,
+      stockFallback,
+      stockAvailable,
+      available: !reason,
+      reason,
+      reasonLabel: reason ? SHOP_REASON_LABELS[reason] : "",
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** ความจุของร้านปลายทางสำหรับ needed คน (กระดาษก่อน ขาดเท่าไร fallback ออก e-coupon) */
+function reassignCapacity(shop, needed) {
+  if (!shop) return null;
+  const paper = shop.usesCouponStock ? Math.min(shop.stockAvailable || 0, needed) : 0;
+  const generated = shop.usesCouponStock ? (shop.stockFallback ? needed - paper : 0) : needed;
+  const enough =
+    shop.available && (!shop.usesCouponStock || shop.stockFallback || shop.stockAvailable >= needed);
+  return { ...shop, needed, paper, generated, enough };
+}
+
+function stockShortMessage(shop, needed) {
+  return `คูปองกระดาษของร้าน ${shop.name} ไม่พอ (ต้องการ ${needed} ใบ เหลือ ${shop.stockAvailable || 0} ใบ) — ยังไม่ได้โยกใคร`;
+}
+
+/**
+ * ตรวจผู้เรียน 1 คน (อ่านอย่างเดียว) — คืน { eligible, reason, message, ... , live }
+ * อ่านทีละ query (ไม่ Promise.all) เพราะ session เดียวใน transaction ห้ามยิงขนานกัน
+ */
+async function evaluateReassignLearner({ learner, dayYMD, at, targetId, session = null }) {
+  const { studentId, classId } = learner;
+  const out = {
+    studentId,
+    classId,
+    eligible: false,
+    reason: null,
+    message: "",
+    name: "",
+    nickname: "",
+    status: "",
+    fromRestaurantId: "",
+    fromRestaurantName: "",
+    couponCode: "",
+    live: null,
+  };
+  const no = (reason, message) => ({ ...out, reason, message });
+
+  const student = await Student.findById(studentId)
+    .select("name thaiName engName food")
+    .session(session)
+    .lean();
+  if (!student) return no("student_not_found", "ไม่พบผู้เรียน");
+  out.name = pickStudentName(student);
+
+  const klass = await Class.findById(classId)
+    .select("date days dayCount duration.dayCount disableCoupon")
+    .session(session)
+    .lean();
+  if (!klass) return no("class_not_found", "ไม่พบคลาส");
+  if (klass.disableCoupon) return no("class_disabled", couponUnavailableMessage("class_disabled"));
+  if (!classDayIndexToday(klass, at)) return no("not_class_day", "วันนี้ไม่ใช่วันเรียนของคลาสนี้");
+
+  const live = await LunchOrder.findOne({ activeKey: activeKeyOf(classId, studentId, dayYMD) })
+    .session(session)
+    .lean();
+  if (live) {
+    out.name = live.holderName || out.name;
+    out.nickname = live.nickname || "";
+    out.status = live.status;
+    out.fromRestaurantId = live.restaurantId ? String(live.restaurantId) : "";
+    out.fromRestaurantName = live.restaurantName || "";
+    out.couponCode = live.couponCode || "";
+  }
+
+  // ตัวเลือกปัจจุบันของคลาส/วันนี้ต้องเป็นคูปอง (Set / ไม่รับอาหาร = ไม่เกี่ยว)
+  if (couponChoiceProblem(student.food, klass, classId, dayYMD)) {
+    return no("food_choice_not_coupon", "ตัวเลือกอาหารไม่ใช่คูปอง (Set / ไม่รับอาหาร)");
+  }
+  if (!live) {
+    const any = await LunchOrder.exists({ classId, studentId, dayYMD }).session(session);
+    return any
+      ? no("no_live_order", "ออเดอร์ถูกยกเลิก ยังไม่มี QR ใหม่")
+      : no("no_qr", "ยังไม่ได้รับ QR");
+  }
+  if (!REASSIGN_STATUSES.includes(live.status)) {
+    return no("not_allowed_status", "สถานะนี้โยกร้านไม่ได้");
+  }
+  if (live.redeemedAt) return no("already_used", "ร้านใช้คูปองแล้ว โยกร้านไม่ได้");
+  if (targetId && out.fromRestaurantId === String(targetId)) {
+    return no("same_shop", "อยู่ร้านนี้อยู่แล้ว");
+  }
+  return { ...out, eligible: true, live };
+}
+
+function publicLearner({ live, ...rest }) {
+  return rest;
+}
+
+/** คูปองของใบที่ร้านปลายทาง — ลำดับเดียวกับ lunchSubmit (กระดาษก่อน -> fallback e-coupon / ร้าน e-coupon) */
+async function assignReassignCoupon({ target, orderId, dayYMD, needed, session }) {
+  if (target.usesCouponStock) {
+    const code = await assignCode({ restaurantId: target.id, dayYMD, orderId, session });
+    if (code) return { couponCode: code.code, couponSource: "stock", stockCodeId: code._id };
+    if (!target.stockFallback) {
+      fail(409, "stock_insufficient", stockShortMessage(target, needed), {
+        needed,
+        available: target.stockAvailable || 0,
+      });
+    }
+  }
+  // e-coupon: เลือกรหัสที่ยังไม่มีใครใช้ก่อนเขียน (E11000 ใน transaction ทำให้ทั้งชุด abort)
+  for (let i = 0; i < REASSIGN_ECOUPON_ATTEMPTS; i += 1) {
+    const c = generateECouponCode();
+    const taken = await LunchOrder.exists({ eCouponCode: c }).session(session);
+    if (!taken) return { couponCode: c, couponSource: "ecoupon", stockCodeId: null, eCouponCode: c };
+  }
+  fail(500, "ecoupon_failed", "ออก e-coupon ไม่สำเร็จ ยังไม่ได้โยกใคร กรุณาลองใหม่");
+  return null;
+}
+
+/** โยก 1 คน (อยู่ใน transaction ของทั้งชุด) */
+async function reassignOne({ ev, target, dayYMD, needed, at, by, adminId, note, ctx, req, session }) {
+  const live = ev.live;
+  let orderId = live._id;
+  let cancel = null;
+
+  if (live.status !== "pending") {
+    // ยกเลิกใบเดิมด้วยกติกาเดิม (คืนคลัง / รอคืน / void) — audit เขียนเป็น lunch.reassign ครั้งเดียวด้านล่าง
+    cancel = await cancelLunchOrder({
+      orderId: live._id,
+      adminId,
+      reason: "reassigned",
+      auditAction: "lunch.reassign",
+      ctx,
+      req,
+      now: at,
+      session,
+    });
+    const res = await issueLunchOrder({
+      studentId: live.studentId,
+      classId: live.classId,
+      dayYMD,
+      now: at,
+      reopenCount: live.reopenCount || 0,
+      session,
+    });
+    if (!res.ok) fail(409, res.reason || "issue_failed", issueReasonMessage(res.reason));
+    if (!res.created) fail(409, "conflict", REASSIGN_CONFLICT_MESSAGE);
+    orderId = res.order._id;
+  }
+
+  const coupon = await assignReassignCoupon({ target, orderId, dayYMD, needed, session });
+  const reassignedFrom = {
+    orderId: live._id,
+    status: live.status,
+    restaurantId: live.restaurantId || null,
+    restaurantName: live.restaurantName || "",
+    couponCode: live.couponCode || "",
+    couponEffect: cancel?.couponEffect || "",
+    at,
+    by,
+    reason: note,
+  };
+
+  const updated = await LunchOrder.findOneAndUpdate(
+    { _id: orderId, status: "pending", activeKey: { $exists: true }, redeemedAt: null },
+    {
+      $set: {
+        status: "at_shop",
+        nickname: live.nickname || "",
+        restaurantId: target.id,
+        restaurantName: target.name,
+        usesCouponStock: target.usesCouponStock,
+        lines: [],
+        itemsTotal: 0,
+        budget: LUNCH_BUDGET_THB,
+        overBudget: 0,
+        couponCode: coupon.couponCode,
+        couponSource: coupon.couponSource,
+        stockCodeId: coupon.stockCodeId,
+        ...(coupon.eCouponCode ? { eCouponCode: coupon.eCouponCode } : {}),
+        // ไม่ตรงกับ requestId ของผู้เรียนคนไหน -> submit ที่ค้างอยู่ตอบ already_ordered
+        submitRequestId: `reassign:${crypto.randomUUID()}`,
+        submittedAt: at,
+        reassignedFrom,
+      },
+    },
+    { new: true, session },
+  ).lean();
+  if (!updated) fail(409, "conflict", `${ev.name}: ${REASSIGN_CONFLICT_MESSAGE}`);
+
+  return { ev, order: updated, from: reassignedFrom, couponEffect: cancel?.couponEffect || "none" };
+}
+
+/**
+ * R3 (B2): ตรวจก่อนโยก (อ่านอย่างเดียว) — ไม่ส่ง targetRestaurantId = ดูรายชื่อร้าน + สิทธิ์ของแต่ละคน
+ * คืน { ok, dayYMD, window, shops, learners, eligibleCount, target }
+ */
+export async function previewLunchReassign({ learners, date, targetRestaurantId, now }) {
+  const at = now ? new Date(now) : lunchNow();
+  const list = normalizeReassignLearners(learners);
+  const dayYMD = isYMD(clean(date)) ? clean(date) : toBkkYMD(at);
+  const targetId = isObjectId(targetRestaurantId) ? String(targetRestaurantId) : "";
+
+  const shops = await reassignShops(dayYMD);
+  const rows = [];
+  for (const learner of list) {
+    rows.push(publicLearner(await evaluateReassignLearner({ learner, dayYMD, at, targetId })));
+  }
+  const eligibleCount = rows.filter((r) => r.eligible).length;
+
+  let target = null;
+  if (targetId) {
+    target = reassignCapacity(shops.find((s) => s.id === targetId), eligibleCount) || {
+      id: targetId,
+      available: false,
+      reason: "not_in_calendar",
+      reasonLabel: "ร้านนี้ไม่ได้อยู่ใน Food Calendar ของวันนี้",
+      enough: false,
+    };
+  }
+
+  return {
+    ok: true,
+    dayYMD,
+    window: reassignWindowProblem(dayYMD, at),
+    shops,
+    learners: rows,
+    eligibleCount,
+    target,
+  };
+}
+
+/**
+ * R3 (B1): โยกผู้เรียน (คูปอง) ไปร้านอื่น — ทั้งชุดใน transaction เดียว (ได้ทุกคน หรือไม่ได้เลย)
+ *   learners : [{ studentId, classId }]
+ *   actor    : ctx ของ requirePerm (ผู้ทำ = แอดมิน)
+ * คืน { ok, dayYMD, target, moved: [{ name, fromRestaurantName, toRestaurantName, oldCouponCode, newCouponCode, ... }] }
+ */
+export async function reassignLunchCoupon({
+  learners,
+  date,
+  targetRestaurantId,
+  actor = null,
+  reason = "",
+  req = null,
+  now,
+}) {
+  const at = now ? new Date(now) : lunchNow();
+  const ctx = actor || null;
+  const adminId = ctx?.userId || null;
+  const by = adminDisplayName(ctx) || (adminId ? String(adminId) : "");
+  const list = normalizeReassignLearners(learners);
+  const dayYMD = clean(date);
+  if (!isYMD(dayYMD)) fail(400, "bad_request", "ข้อมูลไม่ครบ (วันที่)");
+  if (!isObjectId(targetRestaurantId)) fail(400, "bad_request", "กรุณาเลือกร้านปลายทาง");
+  const targetId = String(targetRestaurantId);
+  const note = clean(reason).slice(0, 300);
+
+  let moved = [];
+  let target = null;
+
+  try {
+    await inTransaction(async (session) => {
+      moved = [];
+
+      const w = reassignWindowProblem(dayYMD, at);
+      if (w) fail(409, w.reason, w.message);
+
+      const shops = await reassignShops(dayYMD, session);
+      target = shops.find((s) => s.id === targetId) || null;
+      if (!target) {
+        fail(409, "target_unavailable", "ร้านปลายทางไม่ได้อยู่ใน Food Calendar ของวันนี้");
+      }
+      if (!target.available && target.reason !== "stock_out") {
+        fail(409, "target_unavailable", `ร้าน ${target.name}: ${target.reasonLabel}`);
+      }
+
+      const evs = [];
+      for (const learner of list) {
+        evs.push(await evaluateReassignLearner({ learner, dayYMD, at, targetId, session }));
+      }
+      const bad = evs.filter((e) => !e.eligible);
+      if (bad.length) {
+        fail(
+          409,
+          "not_eligible",
+          `โยกไม่ได้ ยังไม่ได้โยกใคร — ${bad.map((b) => `${b.name || "ผู้เรียน"}: ${b.message}`).join(", ")}`,
+          { notEligible: bad.map(publicLearner) },
+        );
+      }
+
+      // ร้าน stock ที่ไม่มี fallback: กระดาษต้องพอทั้งชุด ไม่โยกบางส่วน
+      const needed = evs.length;
+      if (target.usesCouponStock && !target.stockFallback && (target.stockAvailable || 0) < needed) {
+        fail(409, "stock_insufficient", stockShortMessage(target, needed), {
+          needed,
+          available: target.stockAvailable || 0,
+        });
+      }
+
+      for (const ev of evs) {
+        moved.push(
+          await reassignOne({ ev, target, dayYMD, needed, at, by, adminId, note, ctx, req, session }),
+        );
+      }
+    });
+  } catch (e) {
+    if (isDuplicateKey(e)) fail(409, "conflict", REASSIGN_CONFLICT_MESSAGE);
+    throw e;
+  }
+
+  // audit หลัง commit: 1 รายการต่อคน (ไม่มี audit ยกเลิกแยกของใบเดิม)
+  for (const m of moved) {
+    await writeLunchAudit({
+      ctx,
+      req,
+      action: "lunch.reassign",
+      order: m.order,
+      before: {
+        status: m.from.status,
+        restaurantName: m.from.restaurantName,
+        couponCode: m.from.couponCode,
+      },
+      after: {
+        status: "at_shop",
+        restaurantName: m.order.restaurantName,
+        couponCode: m.order.couponCode,
+      },
+      meta: {
+        statusBefore: m.from.status,
+        statusAfter: "at_shop",
+        oldOrderId: String(m.from.orderId),
+        newOrderId: String(m.order._id),
+        fromRestaurantId: m.from.restaurantId ? String(m.from.restaurantId) : "",
+        fromRestaurantName: m.from.restaurantName,
+        toRestaurantId: String(m.order.restaurantId || ""),
+        toRestaurantName: m.order.restaurantName,
+        oldCouponCode: m.from.couponCode,
+        couponCode: m.order.couponCode,
+        couponSource: m.order.couponSource,
+        couponEffect: m.couponEffect,
+        reason: note,
+        adminId: adminId ? String(adminId) : null,
+      },
+    });
+  }
+
+  return {
+    ok: true,
+    dayYMD,
+    target: { id: target.id, name: target.name },
+    moved: moved.map((m) => ({
+      studentId: m.ev.studentId,
+      classId: m.ev.classId,
+      name: m.ev.name,
+      orderId: String(m.order._id),
+      oldOrderId: String(m.from.orderId),
+      fromRestaurantName: m.from.restaurantName,
+      toRestaurantName: m.order.restaurantName,
+      oldCouponCode: m.from.couponCode,
+      newCouponCode: m.order.couponCode,
+      couponSource: m.order.couponSource,
+      couponEffect: m.couponEffect,
+    })),
+  };
+}
+
 /* ---------------- R2a-2: ปุ่มของแต่ละแถว (pure — ที่เดียวที่ตัดสินว่าแสดง/กดได้ไหม) ---------------- */
 
 const ALLOW = Object.freeze({ allowed: true, reason: null });
@@ -718,7 +1193,7 @@ function choiceProblemOf(currentChoice, strict) {
 
 /**
  * ปุ่มของแถว (ใบล่าสุดของผู้เรียนคนนั้นในวันนั้น)
- *   คืน { viewQr, regenerate, cancelCoupon, cancelForEdit, issue, handout, return }
+ *   คืน { viewQr, regenerate, cancelCoupon, cancelForEdit, issue, handout, return, reassign }
  *   แต่ละตัว = { allowed, reason } · ไม่เกี่ยวกับสถานะนั้น = ไม่มี key
  * เงื่อนไขเดียวกับฟังก์ชันจริงด้านบน (server ตรวจซ้ำอีกครั้งตอนกด)
  *   status        : computeStatus ของใบ (pending / forfeited / ordered / at_shop / cancelled)
@@ -739,6 +1214,17 @@ export function rowActions({ order, status, stockStatus = "", currentChoice = nu
       win || (order.submittedAt ? { message: "ออเดอร์นี้สั่งไปแล้ว" } : null),
     );
     a.cancelCoupon = fromProblem(win || choiceProblemOf(currentChoice, true));
+  }
+
+  // R3: โยกไปร้านอื่น — มีเฉพาะเมื่อโยกได้ (ร้านปลายทางเลือกในโมดัล · server ตรวจซ้ำทั้งหมดตอนกด)
+  //     รอสั่ง / สั่งแล้ว / ไปสั่งที่ร้าน + มีใบ live + วันนี้ก่อนปิด + ร้านยังไม่ใช้คูปอง + ตัวเลือกเป็นคูปอง
+  if (
+    ["pending", "ordered", "at_shop"].includes(status) &&
+    live &&
+    !win &&
+    !choiceProblemOf(currentChoice, false)
+  ) {
+    a.reassign = ALLOW;
   }
 
   if (status === "ordered" || status === "at_shop") {

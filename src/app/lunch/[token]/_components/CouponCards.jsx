@@ -3,7 +3,7 @@
 // src/app/lunch/[token]/_components/CouponCards.jsx
 //
 // การ์ดคูปองหลังยืนยัน — ใช้ทั้งหน้าขอบคุณและหน้าสแกนซ้ำ
-//   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter) — ไม่ poll
+//   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter) — R3: poll แค่เพื่อรู้ว่าถูกยกเลิก/โยกร้าน
 //   ร้านอื่น      -> ECouponCard (แสดง QR + รหัสที่ร้าน)
 // ข้อมูลทั้งหมดมาจาก session.order — ไม่มีชื่อสำรอง
 //
@@ -132,7 +132,9 @@ function ECouponCard({ order, dateLabel, token }) {
   );
 }
 
-function CounterCard({ order, dateLabel }) {
+function CounterCard({ order, dateLabel, token }) {
+  // R3: ไม่มีสถานะให้แสดง — poll เพื่อให้หน้าที่เปิดค้างไว้ไปคูปองใบใหม่เมื่อถูกโยกร้าน/ยกเลิก
+  useCouponStatus(token, { state: "watch" });
   return (
     <CardShell testId="counter-card" label="COUPON" caption="รับคูปองกระดาษที่ Counter">
       <div className="flex flex-col gap-4 p-4">
@@ -160,7 +162,7 @@ function CounterCard({ order, dateLabel }) {
 
 export default function CouponCard({ order, dateLabel, token }) {
   return order.isStock ? (
-    <CounterCard order={order} dateLabel={dateLabel} />
+    <CounterCard order={order} dateLabel={dateLabel} token={token} />
   ) : (
     <ECouponCard order={order} dateLabel={dateLabel} token={token} />
   );

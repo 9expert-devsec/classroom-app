@@ -67,6 +67,7 @@ const KIND_TONE = {
   food_choice: "bg-slate-400",
   view_qr: "bg-slate-300",
   special_open: "bg-slate-400",
+  reassigned: "bg-sky-500",
 };
 
 // loading = ผลล่าสุดยังไม่ใช่ของคำขอนี้ (ระหว่างโหลดใหม่ยังแสดงรายการเดิมไว้)

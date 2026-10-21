@@ -6,6 +6,7 @@
 //     (รหัส CASA อาจมีขีด แต่ไม่มีช่องว่าง)
 //   - primary = ผู้ถือปัจจุบัน: ใบที่รหัสยัง held / awaiting_return (ล่าสุด) ไม่มี = ใบล่าสุดที่มีรหัสนี้
 //     เป็นแถวปกติรูปเดียวกับ /orders (buildOrderRows) พร้อมปุ่มตามกติกาเดิม
+//     R3: ไม่มีผู้ถือปัจจุบัน -> primary.noHolder / noHolderLabel และไม่มีปุ่มที่เปลี่ยนสถานะ
 //   - history = ผู้ถือก่อนหน้า (อ่านอย่างเดียว): วันที่ / ผู้เรียน / คลาส / สถานะรหัส / เหตุผลยกเลิก
 // /api/admin/lunch/counter ไม่เปลี่ยน
 import { NextResponse } from "next/server";
@@ -32,6 +33,13 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "Cache-Control": "no-store" };
 const MAX_CODE = 40;
 const MAX_HITS = 50;
+
+// R3 (A1): ป้ายของแถวหลักเมื่อไม่มีผู้ถือรหัสแล้ว (ตามสถานะรหัสของใบล่าสุด)
+function noHolderLabel(state) {
+  if (state === "voided") return "ไม่มีผู้ถือ (ยกเลิกแล้ว)";
+  if (state === "returned" || state === "released") return "ไม่มีผู้ถือ (คืนแล้ว)";
+  return "ไม่มีผู้ถือ";
+}
 
 export async function GET(req) {
   try {
@@ -72,7 +80,21 @@ export async function GET(req) {
       .sort({ createdAt: 1 })
       .select(ORDER_ROW_FIELDS)
       .lean();
-    const [primaryRow] = await buildOrderRows({ rows: [primary], context, now });
+    const [built] = await buildOrderRows({ rows: [primary], context, now });
+
+    // R3 (A1): ไม่มีใบไหนถือรหัสนี้อยู่ (ทุกใบ คืนแล้ว / คืนเข้า stock / void) -> แถวหลักเป็นแค่
+    //          ใบล่าสุดที่เคยถือ: ติดป้าย "ไม่มีผู้ถือ" ตามสถานะรหัส และซ่อนปุ่มที่เปลี่ยนสถานะทั้งหมด
+    const noHolder = holders.length === 0;
+    const primaryRow = noHolder
+      ? {
+          ...built,
+          noHolder: true,
+          noHolderLabel: noHolderLabel(stateOf(primary)),
+          actions: {},
+          canReissue: false,
+          canCancel: false,
+        }
+      : built;
 
     const classIds = [...new Set(hits.map((o) => String(o.classId)))];
     const classDocs = await Class.find({ _id: { $in: classIds } }).select(CLASS_ROW_FIELDS).lean();

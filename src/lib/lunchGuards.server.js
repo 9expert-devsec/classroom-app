@@ -6,6 +6,8 @@
 //   ถึง 15:00 แล้ว -> expired (ไม่ว่าสถานะใด)
 //   สั่งไปแล้ว -> ให้ sub-route เด้งกลับหน้าแรก
 //   เลยเส้นตายแต่ยังไม่ถึง 15:00 -> short (สั่งแบบย่อ at_shop เท่านั้น)
+import { redirect } from "next/navigation";
+
 import { getLunchSession } from "@/lib/lunchOrders.server";
 import { lunchNow } from "@/lib/lunchClock.server";
 
@@ -34,7 +36,12 @@ export async function loadLunchGate(token) {
   const session = await getLunchSession(token, lunchNow());
 
   if (!session) return { gate: LUNCH_GATE.INVALID, session: null };
-  if (session.gone) return { gate: LUNCH_GATE.REPLACED, session: null };
+  if (session.gone) {
+    // R3: ใบนี้ถูกโยกไปร้านอื่น -> พาไปคูปองของใบใหม่ (ทุกหน้าใต้ /lunch/[token] ผ่านตรงนี้
+    //     รวมถึง router.refresh() หลัง poll สถานะเจอว่าใบเดิมถูกยกเลิก)
+    if (session.nextToken) redirect(`/lunch/${session.nextToken}`);
+    return { gate: LUNCH_GATE.REPLACED, session: null };
+  }
 
   if (session.window?.phase === "expired") {
     return {

@@ -3,7 +3,14 @@
 // การ์ดต่อคลาส (พับได้) + ตารางผู้เรียนของคลาสนั้น
 import { ChevronDown, Clock, GraduationCap, Hand, Layers, Store, Tag, Users } from "lucide-react";
 
-import { CodeCell, RowActionsCell, StatusWithNote, baht, sourceLabel } from "./lunchOrdersUi";
+import {
+  CodeCell,
+  RowActionsCell,
+  StatusWithNote,
+  baht,
+  canReassign,
+  sourceLabel,
+} from "./lunchOrdersUi";
 
 function IconLine({ Icon, children }) {
   return (
@@ -23,7 +30,14 @@ export default function ClassSection({
   selectedId,
   onSelect,
   actionProps,
+  // R3: เลือกหลายคนเพื่อโยกไปร้านอื่น (ไม่ส่ง = ไม่มีคอลัมน์ checkbox)
+  checked = null,
+  onCheck = null,
 }) {
+  const selectable = !!onCheck;
+  const eligibleRows = selectable ? group.rows.filter(canReassign) : [];
+  const allChecked =
+    eligibleRows.length > 0 && eligibleRows.every((r) => checked?.has(r.orderId));
   return (
     <section
       data-testid="class-card"
@@ -62,7 +76,18 @@ export default function ClassSection({
           <table className="w-full min-w-[880px] text-sm">
             <thead className="bg-admin-surfaceMuted/60">
               <tr>
-                <th className={`${TH} pl-4`}>ผู้เรียน</th>
+                {selectable ? (
+                  <th className="w-10 py-2.5 pl-4">
+                    <input
+                      type="checkbox"
+                      aria-label="เลือกทุกคนที่โยกได้ในคลาสนี้"
+                      disabled={!eligibleRows.length}
+                      checked={allChecked}
+                      onChange={() => onCheck(eligibleRows, !allChecked)}
+                    />
+                  </th>
+                ) : null}
+                <th className={`${TH} ${selectable ? "" : "pl-4"}`}>ผู้เรียน</th>
                 <th className={TH}>สถานะ</th>
                 <th className={TH}>รายละเอียดออเดอร์</th>
                 <th className={TH}>ยอดเงิน</th>
@@ -82,7 +107,20 @@ export default function ClassSection({
                       selected ? "bg-blue-50/70" : "hover:bg-admin-surfaceMuted/60"
                     }`}
                   >
-                    <td className="py-3 pl-4 pr-3">
+                    {selectable ? (
+                      <td className="w-10 py-3 pl-4" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          data-testid="reassign-check"
+                          aria-label={`เลือก ${r.name || ""}`}
+                          disabled={!canReassign(r)}
+                          title={canReassign(r) ? undefined : "โยกไปร้านอื่นไม่ได้"}
+                          checked={!!checked?.has(r.orderId)}
+                          onChange={(e) => onCheck([r], e.target.checked)}
+                        />
+                      </td>
+                    ) : null}
+                    <td className={`py-3 pr-3 ${selectable ? "pl-3" : "pl-4"}`}>
                       <div className="min-w-0">
                         <div className="truncate font-medium text-admin-text">{r.name || "-"}</div>
                         <div className="truncate text-xs text-admin-textMuted">{r.nickname || "-"}</div>

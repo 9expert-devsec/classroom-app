@@ -151,6 +151,28 @@ const LunchOrderSchema = new Schema(
       enum: ["scan", "typed", null],
       default: null,
     },
+
+    /* ---------------- reassign (R3) ---------------- */
+    // แอดมิน "โยกไปร้านอื่น": ใบนี้คือใบที่ร้านปลายทาง (at_shop) — เก็บว่าโยกมาจากไหน
+    //   orderId = ใบเดิมที่ถูกยกเลิก (cancelReason "reassigned")
+    //             ใบเดิมที่ยังไม่สั่ง (pending) ถูกเปลี่ยนเป็นใบนี้เลย -> orderId = ตัวเอง (QR เดิมใช้ต่อได้)
+    reassignedFrom: {
+      type: new Schema(
+        {
+          orderId: { type: Schema.Types.ObjectId, ref: "LunchOrder", default: null },
+          status: { type: String, default: "" },
+          restaurantId: { type: Schema.Types.ObjectId, ref: "Restaurant", default: null },
+          restaurantName: { type: String, default: "" },
+          couponCode: { type: String, default: "" },
+          couponEffect: { type: String, default: "" },
+          at: { type: Date, default: null },
+          by: { type: String, default: "" },
+          reason: { type: String, default: "" },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   { timestamps: true, collection: "lunchorders" },
 );
@@ -161,5 +183,9 @@ LunchOrderSchema.index({ classId: 1, dayYMD: 1, status: 1 });
 // C3c: Merchant "Recent redemptions" + รายงานการใช้ (C4) ของร้านต่อวัน
 LunchOrderSchema.index({ restaurantId: 1, dayYMD: 1, redeemedAt: -1 });
 
-export default mongoose.models.LunchOrder ||
-  mongoose.model("LunchOrder", LunchOrderSchema);
+// R3: ลงทะเบียน model ใหม่ทุกครั้งที่ไฟล์นี้ถูกโหลด (แบบเดียวกับ AuditLog)
+// dev server (hot reload) จะใช้ model ที่ compile ไว้ก่อนมี reassignedFrom แล้วตัด field นี้ทิ้งเงียบ ๆ
+// production โหลดไฟล์นี้ครั้งเดียวต่อ process จึงเหมือนเดิม
+if (mongoose.models.LunchOrder) mongoose.deleteModel("LunchOrder");
+
+export default mongoose.model("LunchOrder", LunchOrderSchema);
