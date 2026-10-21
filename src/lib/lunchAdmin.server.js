@@ -16,6 +16,7 @@ import mongoose from "mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import Class from "@/models/Class";
 import CouponStockCode from "@/models/CouponStockCode";
+import Student from "@/models/Student";
 
 import { issueLunchOrder, activeKeyOf } from "@/lib/lunchOrders.server";
 import {
@@ -29,6 +30,7 @@ import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, bangkokHM } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import { getOrderCouponSource } from "@/lib/lunchCouponSource";
+import { couponChoiceProblem } from "@/lib/lunchChoice";
 
 /* ---------------- errors ---------------- */
 
@@ -121,6 +123,20 @@ async function assertToday(classId, dayYMD, now) {
 // จึงใช้บอกได้ว่าใบที่ยกเลิกไปแล้วเคยสั่งหรือไม่
 export function wasPlaced(order) {
   return !!order?.submittedAt;
+}
+
+/**
+ * R2a-2: ออก QR / reopen ได้เฉพาะเมื่อ "ตัวเลือกอาหารปัจจุบันของคลาส/วันนั้น" เป็นคูปอง
+ * (กันผู้เรียนที่เปลี่ยนไปเป็น Set / ไม่รับอาหาร แล้วได้ QR คูปองกลับมา)
+ * ไม่ผ่าน -> 409 food_choice_not_coupon
+ */
+export async function assertCouponChoiceToday({ classId, studentId, dayYMD, session = null }) {
+  const [student, klass] = await Promise.all([
+    Student.findById(studentId).select("food").session(session).lean(),
+    Class.findById(classId).select("date days dayCount duration.dayCount").session(session).lean(),
+  ]);
+  const problem = couponChoiceProblem(student?.food, klass, classId, dayYMD);
+  if (problem) fail(409, problem.reason, problem.message);
 }
 
 /**
@@ -412,6 +428,8 @@ export async function reopenLunchOrder({
   if (!(await wasPlacedToday({ classId, studentId, dayYMD }))) {
     fail(409, "never_placed", NEVER_PLACED_MESSAGE);
   }
+  // R2a-2: ตัวเลือกปัจจุบันต้องยังเป็นคูปอง
+  await assertCouponChoiceToday({ classId, studentId, dayYMD });
 
   const deadlineAt = reissueDeadline(dayYMD, at);
   const res = await issueLunchOrder({

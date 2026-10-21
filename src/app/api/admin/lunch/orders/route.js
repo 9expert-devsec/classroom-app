@@ -12,6 +12,8 @@ import dbConnect from "@/lib/mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import Class from "@/models/Class";
 import CouponStockCode from "@/models/CouponStockCode";
+import Student from "@/models/Student";
+import Restaurant from "@/models/Restaurant";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -25,6 +27,8 @@ import {
 import { lunchNow } from "@/lib/lunchClock.server";
 import { toBkkYMD, lunchTestTimesLabel } from "@/lib/lunchConfig";
 import { bangkokHM, isYMD } from "@/lib/classDates";
+import { rowActions } from "@/lib/lunchActions.server";
+import { currentChoiceFor } from "@/lib/lunchChoice";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +58,7 @@ export async function GET(req) {
     const all = await LunchOrder.find(find)
       .sort({ createdAt: 1 })
       .select(
-        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason handedOutAt handedOutBy activeKey token",
+        "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason cancelledBy handedOutAt handedOutBy activeKey token",
       )
       .lean();
 
@@ -105,9 +109,28 @@ export async function GET(req) {
     const classIds = [...new Set(all.map((o) => String(o.classId)))];
     const classDocs = classIds.length
       ? await Class.find({ _id: { $in: classIds } })
-          .select("title courseName customCourseName room")
+          .select("title courseName customCourseName room date days dayCount duration.dayCount")
           .lean()
       : [];
+    const classById = new Map(classDocs.map((c) => [String(c._id), c]));
+
+    // R2a-2: ตัวเลือกอาหารปัจจุบันของผู้เรียน (เฉพาะเมื่อเป็นของคลาส/วันของแถว)
+    const studentIds = [...new Set(rows.map((o) => String(o.studentId)))];
+    const studentDocs = studentIds.length
+      ? await Student.find({ _id: { $in: studentIds } }).select("food").lean()
+      : [];
+    const foodByStudent = new Map(studentDocs.map((s) => [String(s._id), s.food || null]));
+    const setRestaurantIds = [
+      ...new Set(
+        studentDocs
+          .map((s) => String(s.food?.restaurantId || ""))
+          .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+      ),
+    ];
+    const restaurantDocs = setRestaurantIds.length
+      ? await Restaurant.find({ _id: { $in: setRestaurantIds } }).select("name").lean()
+      : [];
+    const restaurantName = new Map(restaurantDocs.map((r) => [String(r._id), r.name || ""]));
     const classes = classDocs
       .map((c) => ({
         id: String(c._id),
@@ -126,6 +149,22 @@ export async function GET(req) {
       const reissueable = status === "cancelled" && isLatest && dayYMD === today;
       const reissueBlocked = reissueable ? reopenBlockedReason(o, now, placedToday) : "";
       const cancelBlocked = cancelBlockedReason(o, now);
+      const rowStockStatus = o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "";
+      const cur = currentChoiceFor(
+        foodByStudent.get(String(o.studentId)),
+        classById.get(String(o.classId)),
+        o.classId,
+        o.dayYMD,
+      );
+      const currentChoice = cur
+        ? {
+            choiceType: String(cur.food.choiceType || ""),
+            restaurantName:
+              cur.food.choiceType === "food"
+                ? restaurantName.get(String(cur.food.restaurantId || "")) || ""
+                : "",
+          }
+        : null;
       return {
         orderId: String(o._id),
         classId: String(o.classId),
@@ -151,12 +190,18 @@ export async function GET(req) {
         deadlineHM: o.deadlineAt ? bangkokHM(o.deadlineAt) : "",
         reopenCount: o.reopenCount || 0,
         cancelReason: o.cancelReason || "",
+        // R2a-2: ยกเลิกโดยแอดมิน (ไว้ทำป้าย "ยกเลิกโดยผู้ดูแล" ของใบที่ไม่มีเหตุผล)
+        cancelledByAdmin:
+          o.status === "cancelled" && !!o.cancelledBy && o.cancelledBy !== "learner",
         isLatest,
         // R2a: ธงของแถว (ไม่ส่ง token ออกไปในรายการเด็ดขาด — ดู QR ผ่าน POST /qr)
         latestCancelReason:
           latestCancelReasonByKey.get(`${o.classId}:${o.studentId}`) ?? "",
         placedToday,
         hasLiveToken: o.status !== "cancelled" && !!o.activeKey && !!o.token,
+        // R2a-2: ตัวเลือกปัจจุบัน + ปุ่มของแถว (ที่เดียวที่ตัดสิน — UI แค่วาดตามนี้)
+        currentChoice,
+        actions: rowActions({ order: o, status, stockStatus: rowStockStatus, currentChoice, now }),
         // ใบล่าสุดของวันนี้ถูกยกเลิก + เคยสั่งแล้ว + ก่อน 15:00 -> ออก QR ใหม่ได้
         canReissue: reissueable && !reissueBlocked,
         reissueBlockedReason: reissueBlocked,

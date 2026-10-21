@@ -29,6 +29,7 @@ import {
   cancelLunchOrder,
   writeLunchAudit,
   wasPlacedToday,
+  assertCouponChoiceToday,
   afterFinalCloseMessage,
   ALREADY_USED_MESSAGE,
   ORDER_LOCKED_MESSAGE,
@@ -40,6 +41,11 @@ import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import { getBaseUrl } from "@/lib/baseUrl.server";
+import {
+  couponChoiceProblem,
+  FOOD_CHOICE_MISMATCH_MESSAGE,
+  FOOD_CHOICE_NOT_COUPON_MESSAGE,
+} from "@/lib/lunchChoice";
 
 export { wasPlacedToday };
 
@@ -103,15 +109,22 @@ export function lunchQrUrl(token) {
 /* ---------------- R-b: เงื่อนไขของ action แอดมินที่เปลี่ยนสถานะ ---------------- */
 
 // วันนี้เท่านั้น (เวลาไทยตาม lunchNow) / ก่อนปิด 15:00 / ร้านยังไม่ได้ใช้คูปอง
-function assertActionWindow(order, now) {
+// R2a-2: pure — ใช้ทั้งตอนทำรายการจริงและตอนคำนวณปุ่มของแต่ละแถว (null = ผ่าน)
+export function actionWindowProblem(order, now) {
   if (String(order?.dayYMD || "") !== toBkkYMD(now)) {
-    fail(409, "not_today", "ทำได้เฉพาะออเดอร์ของวันนี้เท่านั้น");
+    return { reason: "not_today", message: "ทำได้เฉพาะออเดอร์ของวันนี้เท่านั้น" };
   }
   const fc = finalCloseAt(order.dayYMD);
   if (fc && new Date(now).getTime() >= fc.getTime()) {
-    fail(409, "after_final_close", afterFinalCloseMessage());
+    return { reason: "after_final_close", message: afterFinalCloseMessage() };
   }
-  if (order.redeemedAt) fail(409, "already_used", ALREADY_USED_MESSAGE);
+  if (order.redeemedAt) return { reason: "already_used", message: ALREADY_USED_MESSAGE };
+  return null;
+}
+
+function assertActionWindow(order, now) {
+  const p = actionWindowProblem(order, now);
+  if (p) fail(409, p.reason, p.message);
 }
 
 async function loadOrder(orderId, session) {
@@ -324,24 +337,12 @@ export async function cancelCoupon({ orderId, adminId = null, ctx = null, req = 
       .select("date days dayCount duration.dayCount")
       .session(session)
       .lean();
-    const dayIndex = klass ? classDayIndexToday(klass, at) : null;
     const f = student.food || {};
 
-    // ตัวเลือกอาหารที่เก็บไว้ต้องเป็นของคลาสนี้ / วันนี้ — ไม่ใช่ = ไม่เดา
-    if (!dayIndex || String(f.classId || "") !== String(order.classId) || Number(f.day) !== dayIndex) {
-      fail(
-        409,
-        "food_choice_mismatch",
-        "ข้อมูลอาหารของผู้เรียนไม่ใช่ของคลาส/วันนี้ ยกเลิกคูปองจากหน้านี้ไม่ได้ กรุณาตรวจสอบใน Food Report",
-      );
-    }
-    if (f.choiceType !== "coupon") {
-      fail(
-        409,
-        "food_choice_not_coupon",
-        "ข้อมูลอาหารของผู้เรียนไม่ได้เป็นคูปอง ยกเลิกคูปองจากหน้านี้ไม่ได้ กรุณาตรวจสอบใน Food Report",
-      );
-    }
+    // ตัวเลือกอาหารที่เก็บไว้ต้องเป็นคูปองของคลาสนี้ / วันนี้ — ไม่ใช่ = ไม่เดา
+    const problem = couponChoiceProblem(f, klass, order.classId, order.dayYMD, { strict: true });
+    if (problem) fail(409, problem.reason, problem.message);
+    const dayIndex = classDayIndexToday(klass, at);
 
     prevFood = f;
     nextFood = noFoodChoice({ classId: order.classId, day: dayIndex });
@@ -579,6 +580,11 @@ export async function assertLunchIssueAllowed({ classId, studentId }) {
  *   - เคยสั่งแล้ว (R-c) และใบล่าสุดถูกยกเลิกเพื่อแก้ไข -> ใช้เส้นตายแบบ reopen (C1)
  */
 export async function issueLunchQrForCoupon({ classId, studentId, ctx = null, req = null }) {
+  if (!isObjectId(classId) || !isObjectId(studentId)) fail(400, "bad_request", "ข้อมูลไม่ครบ");
+  // R2a-2: ตัวเลือกปัจจุบันของคลาส/วันนี้ต้องเป็นคูปอง (reason food_choice_not_coupon)
+  //        วันเดียวกับที่ assertLunchIssueAllowed ใช้ (toBkkYMD(new Date()) แบบแท็บเล็ต)
+  await assertCouponChoiceToday({ classId, studentId, dayYMD: toBkkYMD(new Date()) });
+
   const guard = await assertLunchIssueAllowed({ classId, studentId });
   if (!guard.ok) fail(guard.status, guard.reason, issueReasonMessage(guard.reason));
 
@@ -601,8 +607,7 @@ export async function issueLunchQrForCoupon({ classId, studentId, ctx = null, re
         .session(session)
         .lean();
       const placed = await wasPlacedToday({ classId, studentId, dayYMD, session });
-      reopenPath =
-        placed && latest?.status === "cancelled" && latest?.cancelReason === "admin_cancel_for_edit";
+      reopenPath = placed && latest?.status === "cancelled" && isEditCancel(latest);
 
       const res = await issueLunchOrder({
         studentId,
@@ -683,4 +688,72 @@ export async function getLunchQr({ orderId, ctx = null, req = null }) {
     path: `/lunch/${order.token}`,
     qrUrl: lunchQrUrl(order.token),
   };
+}
+
+/* ---------------- R2a-2: ปุ่มของแต่ละแถว (pure — ที่เดียวที่ตัดสินว่าแสดง/กดได้ไหม) ---------------- */
+
+const ALLOW = Object.freeze({ allowed: true, reason: null });
+const deny = (message) => ({ allowed: false, reason: message || "ทำรายการนี้ไม่ได้" });
+const fromProblem = (p) => (p ? deny(p.message) : ALLOW);
+
+/**
+ * ใบที่ถูกยกเลิกเพื่อแก้ไขออเดอร์ (ออก QR ใหม่ใช้เส้นตายแบบ reopen)
+ * ก่อน R2a ปุ่ม "ยกเลิก" ของแอดมินคือขั้นแรกของ "เปลี่ยนร้าน/เมนู" — cancelReason ว่าง + ยกเลิกโดยแอดมิน
+ */
+export function isEditCancel(order) {
+  const r = String(order?.cancelReason || "");
+  if (r === "admin_cancel_for_edit") return true;
+  return r === "" && !!order?.cancelledBy && order.cancelledBy !== "learner";
+}
+
+// ตัวเลือกปัจจุบัน (ของคลาส/วันของแถว) ต้องเป็นคูปอง — ข้อความเดียวกับ couponChoiceProblem
+function choiceProblemOf(currentChoice, strict) {
+  if (!currentChoice) {
+    return { message: strict ? FOOD_CHOICE_MISMATCH_MESSAGE : FOOD_CHOICE_NOT_COUPON_MESSAGE };
+  }
+  if (currentChoice.choiceType !== "coupon") return { message: FOOD_CHOICE_NOT_COUPON_MESSAGE };
+  return null;
+}
+
+/**
+ * ปุ่มของแถว (ใบล่าสุดของผู้เรียนคนนั้นในวันนั้น)
+ *   คืน { viewQr, regenerate, cancelCoupon, cancelForEdit, issue, handout, return }
+ *   แต่ละตัว = { allowed, reason } · ไม่เกี่ยวกับสถานะนั้น = ไม่มี key
+ * เงื่อนไขเดียวกับฟังก์ชันจริงด้านบน (server ตรวจซ้ำอีกครั้งตอนกด)
+ *   status        : computeStatus ของใบ (pending / forfeited / ordered / at_shop / cancelled)
+ *   stockStatus   : สถานะรหัส stock ของใบ ("" = ไม่มี)
+ *   currentChoice : { choiceType, restaurantName } ของคลาส/วันของแถว — ไม่ตรงวัน = null
+ */
+export function rowActions({ order, status, stockStatus = "", currentChoice = null, now }) {
+  const a = {};
+  const live = order?.status !== "cancelled" && !!order?.activeKey && !!order?.token;
+  const win = actionWindowProblem(order, now);
+
+  if (["pending", "forfeited", "ordered", "at_shop"].includes(status)) {
+    a.viewQr = live ? ALLOW : deny("ไม่มี QR ที่ใช้งานได้");
+  }
+
+  if (status === "pending") {
+    a.regenerate = fromProblem(
+      win || (order.submittedAt ? { message: "ออเดอร์นี้สั่งไปแล้ว" } : null),
+    );
+    a.cancelCoupon = fromProblem(win || choiceProblemOf(currentChoice, true));
+  }
+
+  if (status === "ordered" || status === "at_shop") {
+    a.cancelForEdit = fromProblem(win);
+    a.cancelCoupon = fromProblem(win || choiceProblemOf(currentChoice, true));
+    // กติกาเดิม: ร้าน stock + รหัสยัง assigned
+    if (stockStatus === "assigned") a.handout = ALLOW;
+  }
+
+  if (status === "cancelled") {
+    // แสดงเฉพาะเมื่อตัวเลือกปัจจุบันของคลาส/วันนั้นเป็นคูปอง
+    // (ยกเลิกเพื่อแก้ไข / เปลี่ยนกลับมาเป็นคูปอง) — เปลี่ยนเป็น Set / ไม่รับอาหาร = ไม่เสนอเลย
+    if (currentChoice?.choiceType === "coupon") a.issue = fromProblem(win);
+    // กติกาเดิม: รหัส stock รอรับคืน
+    if (stockStatus === "awaiting_return") a.return = ALLOW;
+  }
+
+  return a;
 }
