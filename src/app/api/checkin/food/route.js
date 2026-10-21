@@ -25,6 +25,7 @@ import { toBkkYMD, isCouponClosedFor } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday } from "@/lib/classDates";
 import { cancelPendingLunchOrderOnChoiceChange } from "@/lib/lunchAdmin.server";
+import { stripAutoNote } from "@/lib/foodNotes";
 
 export const dynamic = "force-dynamic";
 
@@ -391,7 +392,10 @@ export async function POST(req) {
     }
   }
 
-  const safeNote = clean(note);
+  // R1: โน้ตอัตโนมัติ ("COUPON" / "ไม่รับอาหาร") จาก client ไหนก็ตามถูกตัดทิ้ง
+  //     แล้วค่อยเติมค่า default ตามตัวเลือกที่บันทึกจริงด้านล่าง
+  //     (กัน noFood / food ที่ติดโน้ต "COUPON" ค้างมาจากตัวเลือกเดิม)
+  const safeNote = stripAutoNote(note);
 
   // legacy strings fallback
   const safeAddonsLegacy = Array.isArray(addons)
@@ -413,23 +417,35 @@ export async function POST(req) {
   // ✅ P3b: เคยเลือกคูปองไว้ แล้วกลับมาเปลี่ยนเป็นอย่างอื่น
   //    pending           -> ยกเลิก LunchOrder ให้อัตโนมัติ
   //    ordered / at_shop -> ห้ามเปลี่ยนเอง ต้องไปที่ Counter
+  //    R1: ยกเลิกไม่สำเร็จ -> ไม่บันทึกตัวเลือกใหม่ (กันออเดอร์ค้าง live ทั้งที่ไม่ได้เลือกคูปองแล้ว)
+  //        นาฬิกาเดียวกับระบบอาหารกลางวัน (lunchNow) เพื่อให้เวลาทดสอบตรงกัน
   if (prevFood?.choiceType === "coupon" && finalChoiceType !== "coupon") {
+    let res;
     try {
-      const res = await cancelPendingLunchOrderOnChoiceChange({
+      const lunchAt = lunchNow();
+      res = await cancelPendingLunchOrderOnChoiceChange({
         studentId: String(student._id),
         classId: safeClassId,
-        dayYMD: toBkkYMD(new Date()),
+        dayYMD: toBkkYMD(lunchAt),
+        now: lunchAt,
         req,
       });
-      if (!res.ok) {
-        return NextResponse.json(
-          { ok: false, error: res.message, reason: res.reason },
-          { status: 409 },
-        );
-      }
     } catch (e) {
-      // ไม่ให้เรื่องคูปองไปล้มการเช็คอินทั้งอัน
       console.warn("[food] cancel lunch order failed:", e?.message || e);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ยกเลิกออเดอร์คูปองเดิมไม่สำเร็จ ยังไม่ได้บันทึกการเปลี่ยนแปลง กรุณาลองใหม่",
+          reason: "lunch_cancel_failed",
+        },
+        { status: 500 },
+      );
+    }
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, error: res.message, reason: res.reason },
+        { status: 409 },
+      );
     }
   }
 

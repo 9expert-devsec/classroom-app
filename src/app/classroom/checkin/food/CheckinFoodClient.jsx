@@ -13,6 +13,7 @@ import RestaurantCard from "./RestaurantCard";
 import MenuCard from "./MenuCard";
 import { Ban } from "lucide-react";
 import { kioskFetch } from "@/lib/kioskFetch";
+import { isAutoNote } from "@/lib/foodNotes";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -387,9 +388,12 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     if (!currentFood) return;
 
     const cf = currentFood || {};
-    const cfChoice = String(cf.choiceType || "");
-    const cfNote = String(cf.note || "");
-    const cfNoFood = !!cf.noFood;
+    // R1: choiceType ชนะเสมอ — coupon ถูกเก็บพร้อม noFood: true จึงห้ามดู flag ก่อน
+    //     flag noFood เดิมใช้เฉพาะข้อมูลเก่าที่ไม่มี choiceType
+    const rawChoice = String(cf.choiceType || "");
+    const cfChoice = rawChoice || (cf.noFood ? "noFood" : "");
+    // R1: โน้ตอัตโนมัติ ("COUPON" / "ไม่รับอาหาร") ไม่ใช่สิ่งที่ user พิมพ์ — ไม่ prefill
+    const cfNote = isAutoNote(cf.note) ? "" : String(cf.note || "");
 
     // ✅ prefill ถือว่าเป็น "auto" (user ยังไม่ได้พิมพ์)
     setNoteMode("auto");
@@ -403,7 +407,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     }
 
     // noFood/coupon
-    if (cfChoice === "noFood" || cfNoFood) {
+    if (cfChoice === "noFood") {
       setChoiceType("noFood");
       resetFoodSelection();
       setNote(cfNote.trim() || "ไม่รับอาหาร");
@@ -650,7 +654,16 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
       if (!res.ok) {
         const t = await res.text().catch(() => "");
-        throw new Error(t || "save failed");
+        // R1: ข้อความไทยจาก server (เช่น ยกเลิกออเดอร์คูปองไม่สำเร็จ / order_locked) ให้ user เห็น
+        let msg = "";
+        try {
+          msg = String(JSON.parse(t)?.error || "");
+        } catch {
+          msg = "";
+        }
+        const err = new Error(t || "save failed");
+        err.userMessage = msg;
+        throw err;
       }
 
       // ✅ edit mode: กลับหน้า edit-user
@@ -663,7 +676,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       }
     } catch (err) {
       console.error(err);
-      alert("บันทึกเมนูไม่สำเร็จ");
+      alert(err?.userMessage || "บันทึกเมนูไม่สำเร็จ");
     }
 
     setSubmitting(false);
