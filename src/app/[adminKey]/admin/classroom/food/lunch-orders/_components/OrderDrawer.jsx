@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 
 import {
-  ActionButtons,
   CodeCell,
-  StatusPill,
+  RowActionList,
+  StatusWithNote,
   baht,
   hasActions,
   sourceLabel,
@@ -88,7 +88,7 @@ export default function OrderDrawer({ row, error, actionProps, blockEsc, onClose
   }, [blockEsc, onClose]);
 
   const history = historyOf(row);
-  const footer = hasActions(row) ? <ActionButtons row={row} full {...actionProps} /> : null;
+  const footer = hasActions(row) ? <RowActionList row={row} {...actionProps} /> : null;
 
   return (
     <div className="fixed inset-0 z-40" data-testid="order-drawer">
@@ -117,7 +117,7 @@ export default function OrderDrawer({ row, error, actionProps, blockEsc, onClose
               <div className="truncate text-base font-semibold text-admin-text">{row.name || "-"}</div>
               <div className="truncate text-sm text-admin-textMuted">{row.nickname || "-"}</div>
             </div>
-            <StatusPill status={row.status} />
+            <StatusWithNote row={row} />
           </div>
 
           <Section Icon={Receipt} title="ข้อมูลคำสั่งซื้อ">

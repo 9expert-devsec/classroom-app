@@ -1,20 +1,22 @@
 "use client";
 
 // หน้า "ติดตามการสั่งอาหาร" — ออเดอร์อาหารกลางวันของวันหนึ่ง แยกตามคลาส
-// ยกเลิก / ออก QR ใหม่ (token ใหม่) ผ่าน /api/admin/lunch/*
-// C1: ไม่มี "เปิดพิเศษ" แล้ว — ยกเลิก + ออก QR ใหม่ ได้เฉพาะคนที่เคยสั่งแล้ว และก่อน 15:00
-// R3b: หน้าตาใหม่ (การ์ดสถานะ / การ์ดคลาสพับได้ / drawer รายละเอียด) — endpoint + payload เดิม
+// C1: ไม่มี "เปิดพิเศษ" แล้ว
+// R3b: หน้าตาใหม่ (การ์ดสถานะ / การ์ดคลาสพับได้ / drawer รายละเอียด)
+// R2a-2: ปุ่มของแต่ละแถวมาจาก server (row.actions) — ดู QR / Regenerate QR / ยกเลิกคูปอง /
+//        ยกเลิกเพื่อแก้ไขออเดอร์ / ออก QR ใหม่ / ส่งมอบ / รับคืน ผ่าน /api/admin/lunch/*
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarDays, RefreshCw, Search } from "lucide-react";
 
 import { LUNCH_STATUS_LABELS } from "@/components/shared/LunchStatusBadge";
 import CouponCode from "@/app/lunch/[token]/_components/CouponCode";
-import { Modal, QrModal, ConfirmModal } from "@/components/admin/lunch/LunchModals";
+import { ConfirmModal } from "@/components/admin/lunch/LunchModals";
 import { safeJson, postLunchAdmin } from "@/components/admin/lunch/lunchApi";
 
 import { STATUS_KEYS, STATUS_META } from "./_components/lunchOrdersUi";
 import ClassSection from "./_components/ClassSection";
 import OrderDrawer from "./_components/OrderDrawer";
+import QrLinkModal from "./_components/QrLinkModal";
 
 const POLL_MS = 30_000;
 const STATUS_FILTERS = ["all", ...STATUS_KEYS];
@@ -31,64 +33,69 @@ function todayBkk() {
   }).format(new Date());
 }
 
-/** ผลของการยกเลิกต่อคูปอง (ข้อความในโมดัล) */
-function couponEffectText(row) {
-  if (row.stockStatus === "assigned") return "รหัสคูปองจะคืนเข้าคลัง";
+/** ผลของการยกเลิกต่อคูปอง (บรรทัดเพิ่มในโมดัลยืนยัน) — "" = ไม่มีคูปองให้จัดการ */
+function couponEffectLine(row) {
   if (row.stockStatus === "handed_out") {
-    return "คูปองกระดาษถูกส่งมอบแล้ว ต้องรับคืนจากผู้เรียน";
+    return "คูปองกระดาษถูกส่งมอบแล้ว ต้องรับคืนจากผู้เรียน (รอรับคืน)";
   }
+  if (row.stockStatus === "assigned") return "รหัสคูปองกระดาษจะคืนเข้าคลัง";
   if (row.couponSource === "ecoupon" && row.couponCode) {
-    return "e-coupon นี้จะถูกยกเลิก ห้ามร้านรับ";
+    return "e-coupon นี้จะถูกยกเลิก (void) ร้านรับไม่ได้";
   }
-  return "ยังไม่มีการออกรหัสคูปองให้ออเดอร์นี้";
+  return "";
 }
 
-/* ---------------- modals ---------------- */
+/* ---------------- confirm dialogs ---------------- */
 
-function CancelModal({ row, busy, error, onClose, onConfirm }) {
-  const [reason, setReason] = useState("");
-  return (
-    <Modal onClose={onClose} testId="cancel-modal">
-      <h3 className="pr-8 text-base font-semibold text-admin-text">
-        ยกเลิกออเดอร์ของ {row.name}?
-      </h3>
-      <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-        {couponEffectText(row)}
-      </p>
-      <label className="mt-4 block text-xs text-admin-textMuted" htmlFor="cancel-reason">
-        เหตุผล (ไม่บังคับ)
-      </label>
-      <textarea
-        id="cancel-reason"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        maxLength={300}
-        rows={2}
-        className="mt-1 w-full resize-none rounded-xl border border-admin-border px-3 py-2 text-sm outline-none focus:border-brand-primary"
-      />
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
-      <div className="mt-4 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          className="rounded-xl border border-admin-border px-4 py-2 text-sm text-admin-text hover:bg-admin-surfaceMuted disabled:opacity-50"
-        >
-          ปิด
-        </button>
-        <button
-          type="button"
-          data-testid="cancel-confirm"
-          onClick={() => onConfirm(reason)}
-          disabled={busy}
-          className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-        >
-          {busy ? "กำลังยกเลิก…" : "ยืนยันยกเลิก"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
+// ทุก action ที่เปลี่ยนสถานะต้องยืนยันก่อน และบอกผลที่จะเกิดขึ้น
+const CONFIRM = {
+  cancelCoupon: {
+    title: (r) => `ยกเลิกคูปองของ ${r.name}?`,
+    confirmLabel: "ยืนยันยกเลิกคูปอง",
+    lines: (r) => [
+      "ผู้เรียนจะเปลี่ยนเป็น ไม่รับอาหาร และจะขึ้นใน Food Report เป็นไม่รับอาหาร",
+      couponEffectLine(r),
+    ],
+    path: "/api/admin/lunch/cancel-coupon",
+    body: (r) => ({ orderId: r.orderId }),
+    qrTitle: null,
+  },
+  cancelForEdit: {
+    title: (r) => `ยกเลิกเพื่อแก้ไขออเดอร์ของ ${r.name}?`,
+    confirmLabel: "ยกเลิกและออก QR ใหม่",
+    lines: (r) => [
+      "ออเดอร์เดิมจะถูกยกเลิก และออก QR ใหม่ให้สั่งได้ภายใน 10 นาที (ไม่เกิน 15:00)",
+      couponEffectLine(r),
+    ],
+    path: "/api/admin/lunch/cancel-for-edit",
+    body: (r) => ({ orderId: r.orderId }),
+    qrTitle: "ออก QR ใหม่เพื่อแก้ไขออเดอร์",
+  },
+  regenerate: {
+    title: (r) => `Regenerate QR ของ ${r.name}?`,
+    confirmLabel: "ยืนยัน Regenerate QR",
+    lines: (r) => [
+      "QR เดิมจะใช้ไม่ได้ทันที ถ้าผู้เรียนเปิดหน้าสั่งค้างไว้ รายการที่เลือกไว้จะหายไป เวลาปิดรับเท่าเดิม",
+      r.deadlineHM ? `ส่งก่อน ${r.deadlineHM} น. (เท่าเดิม)` : "",
+    ],
+    path: "/api/admin/lunch/regenerate",
+    body: (r) => ({ orderId: r.orderId }),
+    qrTitle: "Regenerate QR แล้ว",
+  },
+  issue: {
+    title: (r) => `ออก QR ใหม่ให้ ${r.name}?`,
+    confirmLabel: "ออก QR ใหม่",
+    lines: (r) => [
+      r.latestCancelReason === "admin_cancel_for_edit" ||
+      (!r.latestCancelReason && r.cancelledByAdmin)
+        ? "สั่งได้ภายใน 10 นาที (ไม่เกิน 15:00)"
+        : "สั่งได้ถึงเวลาปิดรับปกติของวันนี้",
+    ],
+    path: "/api/admin/lunch/issue",
+    body: (r) => ({ classId: r.classId, studentId: r.studentId }),
+    qrTitle: "ออก QR ใหม่แล้ว",
+  },
+};
 
 /* ---------------- header bits ---------------- */
 
@@ -143,8 +150,8 @@ export default function LunchOrdersPage() {
   const [loadError, setLoadError] = useState("");
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  const [cancelRow, setCancelRow] = useState(null);
-  const [cancelError, setCancelError] = useState("");
+  const [confirm, setConfirm] = useState(null); // { kind: keyof CONFIRM, row }
+  const [confirmError, setConfirmError] = useState("");
   const [qr, setQr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -153,6 +160,8 @@ export default function LunchOrdersPage() {
 
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [selectedId, setSelectedId] = useState("");
+  // R2a-2: เพิ่มทุกครั้งหลังทำรายการ -> drawer โหลดประวัติใหม่
+  const [timelineKey, setTimelineKey] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
@@ -224,6 +233,7 @@ export default function LunchOrdersPage() {
         await post("/api/admin/lunch/return", { codeId: row.stockCodeId });
       }
       setStockAction(null);
+      setTimelineKey((k) => k + 1);
       await load();
     } catch (e) {
       setStockError(e.message);
@@ -232,31 +242,32 @@ export default function LunchOrdersPage() {
     }
   }
 
-  async function confirmCancel(reason) {
-    setBusy(true);
-    setCancelError("");
-    try {
-      await post("/api/admin/lunch/cancel", { orderId: cancelRow.orderId, reason });
-      setCancelRow(null);
-      await load();
-    } catch (e) {
-      setCancelError(e.message);
-    } finally {
-      setBusy(false);
-    }
+  // R2a-2: QR modal — คลาส/ห้องจากรายชื่อคลาสของวันนั้น
+  const classById = useMemo(
+    () => new Map((data?.classes || []).map((c) => [c.id, c])),
+    [data],
+  );
+  function openQr(title, row, res) {
+    const c = classById.get(row.classId);
+    setQr({
+      title,
+      url: res.qrUrl,
+      name: row.name,
+      nickname: row.nickname,
+      className: c?.name || "",
+      room: c?.room || "",
+      status: res.status || "pending",
+      deadlineAt: res.deadlineAt || null,
+    });
   }
 
-  async function reissue(row) {
+  // ดู QR: ไม่เปลี่ยนสถานะ จึงไม่ต้องยืนยัน (server ลง audit ทุกครั้ง)
+  async function viewQr(row) {
     setBusy(true);
     setActionError("");
     try {
-      const r = await post("/api/admin/lunch/reopen", {
-        classId: row.classId,
-        studentId: row.studentId,
-        dayYMD: row.dayYMD,
-      });
-      setQr({ title: "ออก QR ใหม่แล้ว", name: row.name, path: r.path, deadlineAt: r.deadlineAt });
-      await load();
+      const r = await post("/api/admin/lunch/qr", { orderId: row.orderId });
+      openQr("QR สั่งอาหาร", row, r);
     } catch (e) {
       setActionError(`${row.name}: ${e.message}`);
     } finally {
@@ -264,23 +275,41 @@ export default function LunchOrdersPage() {
     }
   }
 
-  // ปุ่มในตารางและใน drawer ใช้ handler ชุดเดียวกัน
-  const actionProps = {
-    busy,
-    onCancel: (row) => {
-      setCancelError("");
-      setCancelRow(row);
-    },
-    onReissue: reissue,
-    onHandout: (row) => {
+  async function runConfirm() {
+    const { kind, row } = confirm;
+    const def = CONFIRM[kind];
+    setBusy(true);
+    setConfirmError("");
+    try {
+      const r = await post(def.path, def.body(row));
+      setConfirm(null);
+      // Regenerate / ยกเลิกเพื่อแก้ไข / ออก QR ใหม่ -> เปิด QR ของใบใหม่ทันที
+      if (def.qrTitle && r?.qrUrl) openQr(def.qrTitle, row, { ...r, status: "pending" });
+      setTimelineKey((k) => k + 1);
+      await load();
+    } catch (e) {
+      // ข้อความไทยจาก server แสดงในโมดัลยืนยัน
+      setConfirmError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ปุ่มในตารางและใน drawer ใช้ dispatcher ตัวเดียวกัน
+  function onAction(key, row) {
+    if (key === "viewQr") return viewQr(row);
+    if (key === "handout" || key === "return") {
       setStockError("");
-      setStockAction({ kind: "handout", row });
-    },
-    onReturn: (row) => {
-      setStockError("");
-      setStockAction({ kind: "return", row });
-    },
-  };
+      return setStockAction({ kind: key, row });
+    }
+    if (CONFIRM[key]) {
+      setConfirmError("");
+      return setConfirm({ kind: key, row });
+    }
+    return undefined;
+  }
+
+  const actionProps = { busy, onAction };
 
   function toggleClass(id) {
     setCollapsed((prev) => {
@@ -292,7 +321,7 @@ export default function LunchOrdersPage() {
   }
 
   const counts = data?.counts || {};
-  const modalOpen = !!(cancelRow || qr || stockAction);
+  const modalOpen = !!(confirm || qr || stockAction);
 
   return (
     // layout แม่ (<main>) เป็น overflow-hidden — หน้านี้ scroll เอง
@@ -434,16 +463,33 @@ export default function LunchOrdersPage() {
         />
       ) : null}
 
-      {cancelRow ? (
-        <CancelModal
-          row={cancelRow}
+      {confirm ? (
+        <ConfirmModal
+          testId={`confirm-${confirm.kind}`}
+          title={CONFIRM[confirm.kind].title(confirm.row)}
+          confirmLabel={CONFIRM[confirm.kind].confirmLabel}
+          busyLabel="กำลังทำรายการ…"
           busy={busy}
-          error={cancelError}
-          onClose={() => setCancelRow(null)}
-          onConfirm={confirmCancel}
-        />
+          error={confirmError}
+          onClose={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        >
+          <ul className="flex flex-col gap-2">
+            {CONFIRM[confirm.kind]
+              .lines(confirm.row)
+              .filter(Boolean)
+              .map((line) => (
+                <li
+                  key={line}
+                  className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                >
+                  {line}
+                </li>
+              ))}
+          </ul>
+        </ConfirmModal>
       ) : null}
-      {qr ? <QrModal qr={qr} onClose={() => setQr(null)} /> : null}
+      {qr ? <QrLinkModal qr={qr} onClose={() => setQr(null)} /> : null}
       {stockAction ? (
         <ConfirmModal
           title={

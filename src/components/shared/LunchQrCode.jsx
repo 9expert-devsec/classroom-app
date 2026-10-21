@@ -11,8 +11,11 @@ import QRCode from "react-qr-code";
 import CouponStamp, { stampFadeClass } from "./CouponStamp";
 
 // fgColor: สีจุด QR (ค่าเริ่มต้นดำ) — หน้า e-coupon ของผู้เรียนใช้ navy
+// R2a-2: url = ลิงก์เต็มจาก server (base URL ที่ตั้งไว้) ใช้ตามนั้นเลย — ไม่เอา origin ของ browser มาต่อ
+//        path เดิม (แท็บเล็ต) ยังต่อกับ window.location.origin เหมือนเดิม
 export default function LunchQrCode({
   path,
+  url,
   value,
   size = 280,
   status = "unused",
@@ -20,7 +23,7 @@ export default function LunchQrCode({
   className = "",
 }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const encoded = value ?? (path ? `${origin}${path}` : "");
+  const encoded = value ?? url ?? (path ? `${origin}${path}` : "");
   if (!encoded) return null;
 
   return (

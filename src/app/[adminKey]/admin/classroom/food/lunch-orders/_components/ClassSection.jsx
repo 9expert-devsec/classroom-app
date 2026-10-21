@@ -3,7 +3,7 @@
 // การ์ดต่อคลาส (พับได้) + ตารางผู้เรียนของคลาสนั้น
 import { ChevronDown, Clock, GraduationCap, Hand, Layers, Store, Tag, Users } from "lucide-react";
 
-import { ActionButtons, CodeCell, StatusPill, baht, sourceLabel } from "./lunchOrdersUi";
+import { CodeCell, RowActionsCell, StatusWithNote, baht, sourceLabel } from "./lunchOrdersUi";
 
 function IconLine({ Icon, children }) {
   return (
@@ -89,7 +89,7 @@ export default function ClassSection({
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      <StatusPill status={r.status} />
+                      <StatusWithNote row={r} />
                     </td>
                     <td className="max-w-[220px] px-3 py-3 text-xs text-admin-text">
                       <div className="flex flex-col gap-1">
@@ -140,7 +140,7 @@ export default function ClassSection({
                     </td>
                     <td className="py-3 pl-3 pr-4">
                       <div className="flex justify-end">
-                        <ActionButtons row={r} {...actionProps} />
+                        <RowActionsCell row={r} {...actionProps} />
                       </div>
                     </td>
                   </tr>
