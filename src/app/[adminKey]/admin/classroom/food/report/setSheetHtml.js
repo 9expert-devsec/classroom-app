@@ -4,7 +4,7 @@
 //   - แถว = Food Report rows type "set" ของร้านนั้นในวันนั้น (ไม่รับอาหาร / คูปอง ไม่อยู่ใน sheet)
 //   - สรุปครัว: ตารางเลข 1–3 นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
 import { CSS, compactHeaderHtml, esc, headerHtml, summaryTableHtml } from "./orderSheetHtml";
-import { rowNote, staleNoticeHtml } from "./_components/reportUi";
+import { rowNote } from "./_components/reportUi";
 
 function addonList(r) {
   // addons อาจอยู่ทั้ง r.addons และ r.food.addons (array หรือ string คั่นด้วย "/")
@@ -48,8 +48,7 @@ function countBy(rows, labelsOf) {
  *   rows — Food Report rows of that set shop on dateYMD (type "set" only)
  * @returns {string} html
  */
-// R4L-5: notice = บรรทัดแจ้งเตือนบนสุด (วันที่ผ่านมาแล้ว) — ว่าง = ไม่มี
-export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Date(), origin = "", classTitle, notice = "" }) {
+export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Date(), origin = "", classTitle }) {
   const list = (rows || []).filter((r) => r?.type === "set");
   const shop = { name: shopName };
 
@@ -142,7 +141,6 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
     <style>${CSS}</style>
   </head>
   <body>
-    ${staleNoticeHtml(notice)}
     ${body}
   </body>
 </html>`;

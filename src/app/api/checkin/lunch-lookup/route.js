@@ -18,7 +18,7 @@ import { bangkokYMD, bangkokHM, computeDayIndexToday } from "@/lib/classDates";
 import { computeStatus, activeKeyOf } from "@/lib/lunchOrders.server";
 import { orderWindow, finalCloseLabel } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { todayFoodOf } from "@/lib/lunchChoice";
+import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
 
 export const dynamic = "force-dynamic";
 
@@ -91,12 +91,20 @@ export async function GET(req) {
       : [];
     const orderByKey = new Map(orders.map((o) => [o.activeKey, o]));
 
+    // R4-2: ตัวเลือกของวันนี้จาก FoodChoice — query เดียวสำหรับทุกคลาสของวันนี้
+    const todayChoices = await getFoodChoicesForRange({
+      classIds: [...todayClasses.keys()],
+      fromYMD: todayYMD,
+      toYMD: todayYMD,
+    });
+
     const items = students.map((s) => {
       const cid = String(s.classId);
-      const { c } = todayClasses.get(cid);
+      const { c, day } = todayClasses.get(cid);
       // เลือกคูปอง "ของวันนี้" ของคลาสนี้จริง (กติกาเดียวกับ lunch-token)
-      // R4L-4: todayFoodOf — classId / day ว่างไม่นับว่าตรง
-      const couponToday = todayFoodOf(s, c, now)?.choiceType === "coupon";
+      // R4-2: แถว FoodChoice ของ (ผู้เรียน, คลาส, วันเรียนของวันนี้)
+      const couponToday =
+        todayChoices.get(foodChoiceKey(s._id, cid, day))?.choiceType === "coupon";
 
       const o = orderByKey.get(activeKeyOf(cid, String(s._id), todayYMD));
       return {

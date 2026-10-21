@@ -200,12 +200,12 @@ export async function POST(req) {
   //         ไม่ใช้ student.food.classId (ค่าที่ค้างจากตัวเลือกเดิม)
   const safeClassId = clean(classId) || clean(student.classId);
   // P3g: ไม่ส่ง day มา -> ใช้วันเรียนของวันนี้จาก helper กลาง
-  // ส่งมา -> เก็บตามนั้น (หน้าแก้ไขของเจ้าหน้าที่แก้ย้อนวันได้) แต่คูปองต้องเป็นวันนี้เท่านั้น
   // R4L-2: ไม่มี fallback ไปที่ student.food.day แล้ว — หาวันของวันนี้ไม่ได้ = ไม่บันทึก
-  //        (ห้ามเขียนตัวเลือกที่ประทับวันก่อนหน้า)
+  // R4-1A: แก้ได้เฉพาะ "วันนี้" ทั้ง kiosk และแอดมิน — ส่ง day อื่นมา = 409 (วันที่ผ่านมาแก้ไม่ได้)
   const hasDay =
     day !== undefined && day !== null && day !== "" && Number.isFinite(Number(day));
-  const safeDay = hasDay ? Number(day) : await todayDayOfClass(safeClassId);
+  const todayDay = await todayDayOfClass(safeClassId);
+  const safeDay = hasDay ? Number(day) : todayDay;
 
   // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
   // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
@@ -216,12 +216,24 @@ export async function POST(req) {
     );
   }
 
-  if (!safeDay) {
+  if (!todayDay) {
     return NextResponse.json(
       {
         ok: false,
         error: "วันนี้ไม่ใช่วันเรียนของคลาสนี้ จึงบันทึกตัวเลือกอาหารไม่ได้",
         reason: "not_class_day",
+      },
+      { status: 409 },
+    );
+  }
+  if (safeDay !== todayDay) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "แก้ไขได้เฉพาะตัวเลือกอาหารของวันนี้",
+        reason: "not_today",
+        day: safeDay,
+        todayDay,
       },
       { status: 409 },
     );

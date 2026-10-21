@@ -38,7 +38,7 @@ import {
   setMenuLabel,
   setReportCloseTimes,
   shopOf,
-  STALE_CHOICE_NOTICE,
+  isUnchosen,
   statusKeyOf,
   typeKeyOf,
   useReportParams,
@@ -153,7 +153,10 @@ export default function FoodReportClient({ todayYMD }) {
   }, [data.rows]);
 
   // the date range is the only page-level filter: KPIs, summaries, every tab, export and print use allRows
+  // R4-2: countRows ไม่นับแถวที่ยังไม่มีผล (counts.unchosen นับแยก)
   const counts = useMemo(() => countRows(allRows), [allRows]);
+  // R4-2: แถวที่มีผลแล้ว — สรุปตามร้าน / ตามประเภท ไม่รวม "ยังไม่เลือก / ไม่มีข้อมูล"
+  const outcomeRows = useMemo(() => allRows.filter((o) => !isUnchosen(o)), [allRows]);
 
   // stock extras: missing code from the per-day server summary;
   // R2b: awaiting return = "รอคืนอยู่ตอนนี้" (server: every awaiting_return code), not per range
@@ -177,7 +180,7 @@ export default function FoodReportClient({ todayYMD }) {
   }, [data.days, data.awaitingReturnNow]);
 
   const shopGroups = useMemo(() => {
-    const groups = [...groupBy(allRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
+    const groups = [...groupBy(outcomeRows, (o) => shopOf(o)?.key || NO_SHOP_KEY).entries()].map(
       ([key, rows]) => {
         const x = stockExtras.get(key);
         const counts = countRows(rows);
@@ -206,7 +209,7 @@ export default function FoodReportClient({ todayYMD }) {
       (a, b) =>
         (a.key === NO_SHOP_KEY) - (b.key === NO_SHOP_KEY) || a.name.localeCompare(b.name, "th"),
     );
-  }, [allRows, stockExtras]);
+  }, [outcomeRows, stockExtras]);
 
   // R2b: สรุปตามร้านค้า = ร้านที่มีแถวในช่วง ∪ ร้านที่มีคูปองรอคืนอยู่ตอนนี้ (แม้ไม่มีแถวในช่วง)
   const shopSummaryGroups = useMemo(() => {
@@ -229,7 +232,7 @@ export default function FoodReportClient({ todayYMD }) {
   }, [shopGroups, data.awaitingReturnNow]);
 
   const typeGroups = useMemo(() => {
-    const map = groupBy(allRows, typeKeyOf);
+    const map = groupBy(outcomeRows, typeKeyOf);
     return TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({
       key: t,
       title: TYPE_META[t].hint ? `${TYPE_META[t].label} — ${TYPE_META[t].hint}` : TYPE_META[t].label,
@@ -237,7 +240,7 @@ export default function FoodReportClient({ todayYMD }) {
       counts: countRows(map.get(t)),
       rows: map.get(t),
     }));
-  }, [allRows]);
+  }, [outcomeRows]);
 
   const topMenus = useMemo(() => {
     const counter = new Map();
@@ -291,9 +294,6 @@ export default function FoodReportClient({ todayYMD }) {
     [allRows, selectedIds],
   );
 
-  const pastDayNote = data.days.some((d) => d.pastDayNote);
-  // R4L-5: หลายวัน หรือวันเดียวที่ผ่านมาแล้ว (pastDayNote จาก server) -> แจ้งว่าตัวเลือกอาหารอาจไม่ตรง
-  const staleNotice = from !== to || pastDayNote ? STALE_CHOICE_NOTICE : "";
   const rowsByDay = useMemo(() => groupBy(allRows, (o) => o.dayYMD), [allRows]);
   const sheetDays = useMemo(
     () => data.days.filter((d) => (d.shops || []).length > 0),
@@ -321,14 +321,9 @@ export default function FoodReportClient({ todayYMD }) {
   /* ---------------- export / print ---------------- */
   const fileStem = from === to ? from : `${from}_${to}`;
 
-  // R4L-5: export มีบรรทัดแจ้งเตือนบนสุดเมื่อเงื่อนไขเป็นจริง (ตามด้วยบรรทัดว่าง)
-  function withNoticeRow(aoa) {
-    return staleNotice ? [[staleNotice], [], ...aoa] : aoa;
-  }
-
   function exportCsv(rows, selected) {
     if (!rows.length) return alert(selected ? "ยังไม่ได้เลือกรายชื่อ" : "ยังไม่มีข้อมูลสำหรับ Export");
-    const csv = aoaToCsv(withNoticeRow(buildExportAoa(rows)));
+    const csv = aoaToCsv(buildExportAoa(rows));
     downloadBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8;" }),
       `food-report_${selected ? "selected_" : ""}${fileStem}.csv`,
@@ -340,7 +335,7 @@ export default function FoodReportClient({ todayYMD }) {
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(withNoticeRow(buildExportAoa(rows))), "Food Report");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildExportAoa(rows)), "Food Report");
       XLSX.writeFile(wb, `food-report_${fileStem}.xlsx`);
     } catch (err) {
       console.error(err);
@@ -350,7 +345,7 @@ export default function FoodReportClient({ todayYMD }) {
 
   function printRows(rows) {
     if (!rows.length) return;
-    openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to), { notice: staleNotice }));
+    openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to)));
   }
 
   // ใบสั่งร้าน Set: rows of that shop section (set only), one day per sheet
@@ -374,8 +369,6 @@ export default function FoodReportClient({ todayYMD }) {
       printedAt: new Date(),
       origin: window.location.origin,
       classTitle: (o) => cleanClassTitle(o.className || o.classTitle || "-", o.courseCode),
-      // ใบสั่งร้านเป็นวันเดียว: แจ้งเตือนเมื่อวันนั้นผ่านมาแล้ว
-      notice: data.days.find((d) => d.dayYMD === dayYMD)?.pastDayNote ? STALE_CHOICE_NOTICE : "",
     });
     if (!openAndPrint(html)) return alert("เปิดหน้าต่างพิมพ์ไม่ได้ (ตรวจสอบ pop-up blocker)");
     setSetSheet(null);
@@ -409,6 +402,8 @@ export default function FoodReportClient({ todayYMD }) {
     onToggle: toggleRow,
     onToggleMany: toggleMany,
     onEdit: setEditingRow,
+    // R4-1A: แก้อาหารได้เฉพาะแถวของวันนี้
+    todayYMD,
   };
 
   const filtersActive = params.cls || params.type || params.status || params.q;
@@ -511,22 +506,20 @@ export default function FoodReportClient({ todayYMD }) {
           <span>
             รวม <b className="text-admin-text">{counts.total}</b> รายการ · ไม่รับอาหาร{" "}
             <b className="text-admin-text">{counts.byType.none}</b>
+            {/* R4-2: ยังไม่มีผล — ไม่อยู่ในยอดรวม */}
+            {counts.unchosen.not_chosen > 0 && (
+              <span className="ml-2 text-admin-textMuted" data-testid="count-not-chosen">
+                · ยังไม่เลือก {counts.unchosen.not_chosen}
+              </span>
+            )}
+            {counts.unchosen.no_data > 0 && (
+              <span className="ml-2 text-admin-textMuted" data-testid="count-no-data">
+                · ไม่มีข้อมูล {counts.unchosen.no_data}
+              </span>
+            )}
           </span>
         )}
       </DateRangeBar>
-
-      {/* R4L-5: หลายวัน / วันที่ผ่านมา — ตัวเลือกอาหารอาจไม่ตรง (ดูวันนี้วันเดียว = ไม่แสดง) */}
-      {staleNotice && (
-        <div
-          data-testid="stale-choice-notice"
-          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
-        >
-          {staleNotice}
-          <div className="mt-0.5 text-[11px] font-normal text-amber-800">
-            ส่วนคูปองมาจากออเดอร์ของวันนั้นจริง
-          </div>
-        </div>
-      )}
 
       <SelectionBar
         count={selectedRows.length}

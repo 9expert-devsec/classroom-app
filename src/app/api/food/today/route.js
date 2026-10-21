@@ -125,7 +125,8 @@ export async function GET(req) {
     // ---------------------------
     if (studentId && classDoc) {
       const stu = await Student.findById(studentId).select("food").lean();
-      const todayFood = stu ? todayFoodOf(stu, classDoc) : null;
+      // R4-2: แถว FoodChoice ของวันนี้
+      const todayFood = stu ? await todayFoodOf(stu, classDoc) : null;
       if (todayFood) currentFood = buildCurrentFood({ food: todayFood });
     }
 

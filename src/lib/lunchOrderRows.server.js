@@ -11,7 +11,6 @@ import mongoose from "mongoose";
 
 import Class from "@/models/Class";
 import CouponStockCode from "@/models/CouponStockCode";
-import Student from "@/models/Student";
 import Restaurant from "@/models/Restaurant";
 
 import { computeStatus } from "@/lib/lunchOrders.server";
@@ -21,7 +20,8 @@ import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
 import { couponStageOf, couponStageLabel } from "@/lib/lunchStage";
 import { bangkokHM } from "@/lib/classDates";
 import { rowActions } from "@/lib/lunchActions.server";
-import { currentChoiceFor } from "@/lib/lunchChoice";
+import { classDayIndexOf } from "@/lib/lunchChoice";
+import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
 import { couponCodeStateOf } from "@/lib/lunchCodeState";
 
 export const ORDER_ROW_FIELDS =
@@ -74,16 +74,25 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
     classes = new Map(docs.map((c) => [String(c._id), c]));
   }
 
-  // R2a-2: ตัวเลือกอาหารปัจจุบันของผู้เรียน (เฉพาะเมื่อเป็นของคลาส/วันของแถว)
-  const studentIds = [...new Set(rows.map((o) => String(o.studentId)))];
-  const studentDocs = studentIds.length
-    ? await Student.find({ _id: { $in: studentIds } }).select("food").lean()
-    : [];
-  const foodByStudent = new Map(studentDocs.map((s) => [String(s._id), s.food || null]));
+  // R2a-2: ตัวเลือกอาหารของผู้เรียน ของคลาส/วันของแถว
+  // R4-2: จาก FoodChoice — query เดียวครอบช่วงวันของทุกแถว (ผลค้นหารหัสคูปองอาจข้ามวัน)
+  const rowYMDs = rows.map((o) => String(o.dayYMD || "")).filter(Boolean).sort();
+  const choices = rowYMDs.length
+    ? await getFoodChoicesForRange({
+        classIds: [...new Set(rows.map((o) => String(o.classId)))],
+        fromYMD: rowYMDs[0],
+        toYMD: rowYMDs[rowYMDs.length - 1],
+      })
+    : new Map();
+  const choiceOf = (o) => {
+    const day = classDayIndexOf(classes.get(String(o.classId)), o.dayYMD);
+    return day ? choices.get(foodChoiceKey(o.studentId, o.classId, day)) || null : null;
+  };
   const setRestaurantIds = [
     ...new Set(
-      studentDocs
-        .map((s) => String(s.food?.restaurantId || ""))
+      [...choices.values()]
+        .filter((c) => c.choiceType === "food")
+        .map((c) => String(c.restaurantId || ""))
         .filter((id) => mongoose.Types.ObjectId.isValid(id)),
     ),
   ];
@@ -105,19 +114,12 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
     const rowStockStatus = stockStatusOf(o);
     const codeDoc = stockById.get(String(o.stockCodeId || "")) || null;
     const codeState = couponCodeStateOf(o, codeDoc);
-    const cur = currentChoiceFor(
-      foodByStudent.get(String(o.studentId)),
-      classes.get(String(o.classId)),
-      o.classId,
-      o.dayYMD,
-    );
+    const cur = choiceOf(o);
     const currentChoice = cur
       ? {
-          choiceType: String(cur.food.choiceType || ""),
+          choiceType: String(cur.choiceType || ""),
           restaurantName:
-            cur.food.choiceType === "food"
-              ? restaurantName.get(String(cur.food.restaurantId || "")) || ""
-              : "",
+            cur.choiceType === "food" ? restaurantName.get(String(cur.restaurantId || "")) || "" : "",
         }
       : null;
     // R2b: ขั้นของคูปอง — ฟังก์ชันเดียวกับ Food Report (src/lib/lunchStage.js)

@@ -54,6 +54,7 @@ import {
 } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { classDayIndexToday, isCheckinToday, isYMD } from "@/lib/classDates";
+import { saveTodayFoodChoice } from "@/lib/foodChoice.server";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import { getBaseUrl } from "@/lib/baseUrl.server";
 import {
@@ -280,15 +281,18 @@ export async function changeFoodChoice({
   const studentId = String(student?._id || "");
   if (!studentId) fail(400, "bad_request", "ข้อมูลไม่ครบ");
 
-  // R4L-4: "ย้ายออกจากคูปอง" นับเฉพาะเมื่อตัวเลือกเดิมเป็นคูปองของ "วันนี้" ของคลาสนี้ (todayFoodOf)
+  // R4-1C: คลาสต้องมีจริง — ใช้ทั้งตัดสิน "คูปองของวันนี้" และบันทึก FoodChoice รายวัน
+  const klass = isObjectId(classId)
+    ? await Class.findById(classId).select("date days dayCount duration.dayCount").lean()
+    : null;
+  if (!klass) fail(404, "class_not_found", "ไม่พบคลาส");
+
+  // R4L-4: "ย้ายออกจากคูปอง" นับเฉพาะเมื่อตัวเลือกเดิมเป็นคูปองของ "วันนี้" ของคลาสนี้
   //         คูปองของวันก่อนไม่ใช่คูปองวันนี้ -> ไม่แตะออเดอร์ใด ๆ · คูปองวันนี้จริงยกเลิกเหมือนเดิม
-  let movingAway = false;
-  if (prevFood?.choiceType === "coupon" && nextFood?.choiceType !== "coupon" && isObjectId(classId)) {
-    const klass = await Class.findById(classId)
-      .select("date days dayCount duration.dayCount")
-      .lean();
-    movingAway = todayFoodOf({ food: prevFood }, klass, at)?.choiceType === "coupon";
-  }
+  // R4-2: ตัวเลือกเดิม = แถว FoodChoice ของวันนี้ (prevFood จาก Student.food ใช้แค่ทำ diff ลง log)
+  const movingAway =
+    nextFood?.choiceType !== "coupon" &&
+    (await todayFoodOf(student, klass, at))?.choiceType === "coupon";
   const dayYMD = toBkkYMD(at);
   let cancel = null;
 
@@ -326,7 +330,14 @@ export async function changeFoodChoice({
       }
     }
 
-    await Student.updateOne({ _id: student._id }, { $set: { food: nextFood } }, { session });
+    // R4-1C: FoodChoice ของวันนี้ + Student.food (mirror) ผ่านทางเดียว ใน transaction เดียวกัน
+    await saveTodayFoodChoice(session, {
+      student,
+      classDoc: klass,
+      food: nextFood,
+      actor: ctx,
+      now: at,
+    });
   });
 
   if (cancel) await cancel.afterCommit();
@@ -362,11 +373,18 @@ export async function cancelCoupon({ orderId, adminId = null, ctx = null, req = 
       .select("date days dayCount duration.dayCount")
       .session(session)
       .lean();
-    const f = student.food || {};
-
-    // ตัวเลือกอาหารที่เก็บไว้ต้องเป็นคูปองของคลาสนี้ / วันนี้ — ไม่ใช่ = ไม่เดา
-    const problem = couponChoiceProblem(f, klass, order.classId, order.dayYMD, { strict: true });
+    // ตัวเลือกอาหารของวันนี้ต้องเป็นคูปองของคลาสนี้ — ไม่ใช่ = ไม่เดา
+    // R4-2: แถว FoodChoice ของวันนั้น (Student.food ใช้แค่เป็นค่า "ก่อน" ของ log)
+    const problem = await couponChoiceProblem({
+      studentId: order.studentId,
+      klass,
+      classId: order.classId,
+      dayYMD: order.dayYMD,
+      strict: true,
+      session,
+    });
     if (problem) fail(409, problem.reason, problem.message);
+    const f = student.food || {};
     const dayIndex = classDayIndexToday(klass, at);
 
     prevFood = f;
@@ -382,7 +400,15 @@ export async function cancelCoupon({ orderId, adminId = null, ctx = null, req = 
       now: at,
       session,
     });
-    await Student.updateOne({ _id: student._id }, { $set: { food: nextFood } }, { session });
+    // R4-1C: FoodChoice ของวันนี้ (ไม่รับอาหาร) + Student.food (mirror) ผ่านทางเดียว
+    await saveTodayFoodChoice(session, {
+      student,
+      classDoc: klass,
+      food: nextFood,
+      source: "admin",
+      actor: ctx,
+      now: at,
+    });
   });
 
   await cancel.afterCommit({ foodChoiceAfter: "noFood" });
@@ -582,15 +608,11 @@ export async function assertLunchIssueAllowed({ classId, studentId }) {
   }).lean();
   if (!isCheckinToday(checkin)) return no("not_checked_in", 403);
 
-  // 3) R4L-4: ตัวเลือกต้องเป็นคูปองของ "วันนี้" ของคลาสนี้ (todayFoodOf — classId / day ว่าง = ไม่ตรง)
-  //    3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
-  //    3b) เลือกคูปองไว้ แต่ไม่ใช่ของคลาสนี้ / ของวันนี้ = coupon_not_today
-  const food = student.food || {};
-  const todayFood = todayFoodOf(student, klass);
-  if (!todayFood) {
-    return no(String(food.choiceType || "") === "coupon" ? "coupon_not_today" : "not_coupon_choice", 409);
-  }
-  if (String(todayFood.choiceType || "") !== "coupon") return no("not_coupon_choice", 409);
+  // 3) R4L-4: ตัวเลือกต้องเป็นคูปองของ "วันนี้" ของคลาสนี้
+  //    R4-2: จากแถว FoodChoice ของวันนี้ — ไม่มีแถว (ยังไม่ได้เลือกวันนี้) / ไม่ใช่คูปอง = not_coupon_choice
+  //          (ไม่อ่าน Student.food แล้ว จึงไม่มีกรณี "คูปองของวันอื่น" ให้แยกบอก)
+  const todayFood = await todayFoodOf(student, klass);
+  if (String(todayFood?.choiceType || "") !== "coupon") return no("not_coupon_choice", 409);
 
   // C2: ถึง 15:00 แล้ว ไม่ออก QR
   const now = lunchNow();
@@ -856,7 +878,7 @@ async function evaluateReassignLearner({ learner, dayYMD, at, targetId, session 
   const no = (reason, message) => ({ ...out, reason, message });
 
   const student = await Student.findById(studentId)
-    .select("name thaiName engName food")
+    .select("name thaiName engName")
     .session(session)
     .lean();
   if (!student) return no("student_not_found", "ไม่พบผู้เรียน");
@@ -883,7 +905,8 @@ async function evaluateReassignLearner({ learner, dayYMD, at, targetId, session 
   }
 
   // ตัวเลือกปัจจุบันของคลาส/วันนี้ต้องเป็นคูปอง (Set / ไม่รับอาหาร = ไม่เกี่ยว)
-  if (couponChoiceProblem(student.food, klass, classId, dayYMD)) {
+  // R4-2: แถว FoodChoice ของวันนั้น
+  if (await couponChoiceProblem({ studentId, klass, classId, dayYMD, session })) {
     return no("food_choice_not_coupon", "ตัวเลือกอาหารไม่ใช่คูปอง (Set / ไม่รับอาหาร)");
   }
   if (!live) {

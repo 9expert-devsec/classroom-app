@@ -18,6 +18,9 @@ export const STATUS_FILTER_ORDER = [
   "forfeited",
   "no_order",
   "none",
+  // R4-2
+  "not_chosen",
+  "no_data",
 ];
 
 /** detail-table filters: class / type / status / search — URL params; the date range is the page's own filter */

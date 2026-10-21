@@ -6,6 +6,8 @@ import Student from "@/models/Student";
 import Class from "@/models/Class";
 import Checkin from "@/models/Checkin";
 import { addDaysYMD_BKK, classDayIndexToday } from "@/lib/classDates";
+import { todayFoodOf } from "@/lib/lunchChoice";
+import { pickFoodChoiceFields } from "@/lib/foodChoice.server";
 
 export const dynamic = "force-dynamic";
 
@@ -149,7 +151,11 @@ export async function POST(req) {
   // R4L-3: อ่านค่า "ปัจจุบัน" ตอนนี้ (ไม่ใช้ student ที่อ่านไว้ตั้งแต่ต้น request) เพื่อทำ snapshot ลง Checkin
   //        เส้นทางนี้ไม่เขียน Student.food อีกแล้ว — ตัวเลือกที่บันทึกระหว่างนี้ (เช่นแอดมิน) จึงไม่หาย
   const current = await Student.findById(studentId).select("food signatureUrl").lean();
-  const food = current?.food || {};
+  // R4-1A: snapshot เฉพาะตัวเลือกของ "วันนี้" (todayFoodOf) — ยังไม่ได้เลือกวันนี้ = snapshot ว่าง
+  //        (ห้ามเก็บของเมื่อวานลง Checkin ของวันนี้)
+  // R4-2: มาจากแถว FoodChoice ของวันนี้ (field อาหารรูปเดิม)
+  const todayRow = current ? await todayFoodOf(current, klass) : null;
+  const food = todayRow ? pickFoodChoiceFields(todayRow) : {};
   const signatureUrl = current?.signatureUrl || "";
 
   // upsert Checkin record ของวันนั้น (รายวัน)

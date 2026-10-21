@@ -22,6 +22,8 @@ import {
 
 function initialChoice(row) {
   const t = rowType(row);
+  // R4-2: วันนี้ยังไม่เลือก -> เปิดโมดัลแบบยังไม่มีตัวเลือก
+  if (t === "not_chosen" || t === "no_data") return "";
   return t === "coupon" ? "coupon" : t === "none" ? "noFood" : "food";
 }
 
@@ -32,6 +34,9 @@ export default function EditFoodModal({ row, todayYMD = "", onClose, onSaved }) 
   const startIsFood = startChoice === "food";
   // the report day of this row (range rows carry dayYMD)
   const reportYMD = row.dayYMD;
+  // R4-1A: หัวโมดัลบอกวันที่ของแถว (dd/MM/yyyy)
+  const [ry, rm, rd] = String(reportYMD || "").split("-");
+  const modalTitle = `แก้ไขอาหาร: ${row?.studentName || ""}${ry && rm && rd ? ` · ${rd}/${rm}/${ry}` : ""}`;
 
   const [editChoiceType, setEditChoiceType] = useState(startChoice); // food | noFood | coupon
   const [editRestaurantId, setEditRestaurantId] = useState(
@@ -330,7 +335,7 @@ export default function EditFoodModal({ row, todayYMD = "", onClose, onSaved }) 
 
   if (savedCoupon) {
     return (
-      <Modal open title={`แก้ไขอาหาร: ${row?.studentName || ""}`} onClose={() => onSaved()}>
+      <Modal open title={modalTitle} onClose={() => onSaved()}>
         <div className="space-y-4" data-testid="edit-food-saved">
           <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800">
             บันทึกแล้ว — ตัวเลือกเป็น COUPON
@@ -370,7 +375,7 @@ export default function EditFoodModal({ row, todayYMD = "", onClose, onSaved }) 
   }
 
   return (
-    <Modal open title={`แก้ไขอาหาร: ${row?.studentName || ""}`} onClose={onClose}>
+    <Modal open title={modalTitle} onClose={onClose}>
       <div className="space-y-4">
         {/* C5c: ข้อมูลคูปองของวันนี้ (อ่านอย่างเดียว) — ออเดอร์คูปองจัดการใน lunch flow */}
         {rowType(row) === "coupon" && (
@@ -534,7 +539,12 @@ export default function EditFoodModal({ row, todayYMD = "", onClose, onSaved }) 
           <button
             type="button"
             onClick={saveEdit}
-            disabled={savingEdit || (editChoiceType === "food" && (!editRestaurantId || !editMenuId))}
+            disabled={
+              savingEdit ||
+              // R4-2: ยังไม่เลือก -> ต้องเลือกก่อนบันทึก
+              !editChoiceType ||
+              (editChoiceType === "food" && (!editRestaurantId || !editMenuId))
+            }
             className={cx(
               "rounded-xl px-4 py-2 text-sm font-semibold",
               savingEdit

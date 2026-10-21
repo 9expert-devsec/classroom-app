@@ -13,12 +13,16 @@ import ItemsCell from "./ItemsCell";
 import {
   FLAG_INFO,
   formatDateDMY,
+  isUnchosen,
   rowId,
+  rowType,
+  TYPE_LABEL,
   shopText,
   stageNoteOf,
   statusKeyOf,
   statusTimeOf,
   typeKeyOf,
+  PAST_DAY_EDIT_MESSAGE,
 } from "./reportUi";
 
 const TH = "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-medium text-admin-textMuted";
@@ -38,10 +42,15 @@ export default function ReportTable({
   onToggle,
   onToggleMany,
   onEdit,
+  // R4-1A: แก้อาหารได้เฉพาะแถวของวันนี้ (วันอื่นปิดปุ่ม + บอกเหตุผล)
+  todayYMD = "",
   empty,
   numberOf,
   selectAllLabel = "เลือกทั้งหมดในหน้านี้",
+  // R4-2: ตารางที่อยู่ใต้หัวกลุ่มวัน (รายละเอียดรายการ) ไม่ต้องมีคอลัมน์วันที่
+  showDate = true,
 }) {
+  const cols = showDate ? 11 : 10;
   const ids = rows.map(rowId);
   const allChecked = ids.length > 0 && ids.every((id) => selectedIds.has(id));
   const someChecked = !allChecked && ids.some((id) => selectedIds.has(id));
@@ -65,7 +74,7 @@ export default function ReportTable({
               />
             </th>
             <th className={`${TH} w-10`}>#</th>
-            <th className={TH}>วันที่</th>
+            {showDate ? <th className={TH}>วันที่</th> : null}
             <th className={TH}>ผู้เรียน</th>
             <th className={TH}>ร้าน</th>
             <th className={TH}>ประเภท</th>
@@ -79,7 +88,7 @@ export default function ReportTable({
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={11} className="px-3 py-10 text-center text-sm text-admin-textMuted">
+              <td colSpan={cols} className="px-3 py-10 text-center text-sm text-admin-textMuted">
                 {empty || "ไม่มีรายการ"}
               </td>
             </tr>
@@ -102,7 +111,7 @@ export default function ReportTable({
                 <td className={`${TD} text-admin-textMuted`}>
                   {numberOf ? numberOf(o) : startIndex + idx + 1}
                 </td>
-                <td className={`${TD} whitespace-nowrap`}>{formatDateDMY(o.dayYMD)}</td>
+                {showDate ? <td className={`${TD} whitespace-nowrap`}>{formatDateDMY(o.dayYMD)}</td> : null}
                 <td className={`${TD} max-w-[200px]`}>
                   <div className="truncate font-medium text-admin-text" title={o.studentName}>
                     {o.studentName || "-"}
@@ -119,7 +128,7 @@ export default function ReportTable({
                   </div>
                 </td>
                 <td className={TD}>
-                  <TypeBadge type={typeKeyOf(o)} />
+                  <TypeBadge type={typeKeyOf(o)} label={isUnchosen(o) ? TYPE_LABEL[rowType(o)] : ""} />
                 </td>
                 <td className={`${TD} whitespace-nowrap font-mono`}>{o.code || "-"}</td>
                 <td className={TD}>
@@ -163,12 +172,23 @@ export default function ReportTable({
                       sideOffset={6}
                       className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                     >
-                      <DropdownMenuItem
-                        onSelect={() => onEdit(o)}
-                        className="cursor-pointer px-3 py-2 text-xs focus:bg-admin-surfaceMuted"
-                      >
-                        แก้ไขอาหาร
-                      </DropdownMenuItem>
+                      {o.dayYMD === todayYMD ? (
+                        <DropdownMenuItem
+                          onSelect={() => onEdit(o)}
+                          className="cursor-pointer px-3 py-2 text-xs focus:bg-admin-surfaceMuted"
+                        >
+                          แก้ไขอาหาร
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          disabled
+                          title={PAST_DAY_EDIT_MESSAGE}
+                          className="flex flex-col items-start gap-0.5 px-3 py-2 text-xs opacity-60"
+                        >
+                          <span>แก้ไขอาหาร</span>
+                          <span className="text-[11px] text-admin-textMuted">{PAST_DAY_EDIT_MESSAGE}</span>
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>

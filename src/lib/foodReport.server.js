@@ -1,17 +1,18 @@
 // src/lib/foodReport.server.js
 // C5b: Food Report — สถานะอาหาร 1 แถวต่อผู้เรียนต่อวัน (server only)
 //
+// R4-2: แถวของวัน = (คลาสที่วันนั้นเป็นวันเรียน — ไม่รวม Masterclass) × ผู้เรียนของคลาส (ไม่รวมยกเลิก/เลื่อน)
+//       + ออเดอร์คูปองที่ไม่อยู่ในชุดนั้น (เหมือนเดิม) · ตัวเลือกอาหารของวันนั้น = แถว FoodChoice ของวันนั้น
+//
 // ลำดับการตัดสิน (rulings C5):
 //   (a) มี LunchOrder ที่ยังไม่ยกเลิก (class + learner + day) → coupon, couponState = status / forfeited
-//       ถ้า Student.food บอกอย่างอื่น → flag "mismatch"
-//   (b) Student.food บอก coupon แต่ไม่มีออเดอร์ → coupon, couponState "no_order"
-//   (c) Student.food บอก food → set (ร้าน/เมนู/add-on/เครื่องดื่ม/หมายเหตุ เหมือนเดิม)
-//   (d) นอกนั้น → none
-// ออเดอร์ที่ไม่มี Checkin วันนั้น → ยังเป็นแถว + flag "no_checkin"
-//
-// แหล่งข้อมูล set/none = Student.food (ค่าปัจจุบัน) — Checkin.food ไม่ได้เก็บ choice/เมนูจริง
-// (สถานะ choice/restaurantId/menuId ถูก strict schema ตัดทิ้งตอน /api/checkin/complete
-//  และ /api/checkin/food ไม่ได้เขียน Checkin) จึงส่ง pastDayNote เมื่อดูวันที่ผ่านมาแล้ว
+//       ถ้า FoodChoice ของวันนั้นไม่ใช่คูปอง (หรือไม่มี) → flag "mismatch"
+//   (b) FoodChoice บอก coupon แต่ไม่มีออเดอร์ → coupon, ขั้นตาม couponStageOf
+//   (c) FoodChoice บอก food → set (ร้าน/เมนู/add-on/เครื่องดื่ม/หมายเหตุ)
+//   (d) FoodChoice บอก noFood → none
+//   (e) ไม่มีแถว FoodChoice → ยังไม่มีผล: วันนี้/อนาคต = "not_chosen" (ยังไม่เลือก), วันที่ผ่านมา = "no_data"
+//       ไม่นับในยอดใด ๆ (ร้าน / ประเภท / ไม่รับอาหาร / KPI) — นับแยกใน totals.notChosen / totals.noData
+// ออเดอร์ที่ไม่มี Checkin วันนั้น → flag "no_checkin" (เฉพาะแถวที่มีออเดอร์ เหมือนเดิม)
 // ไม่มีราคา/ยอดเงินใน output ใด ๆ
 import mongoose from "mongoose";
 
@@ -28,6 +29,11 @@ import { lunchNow } from "@/lib/lunchClock.server";
 import { toBkkYMD, finalCloseAt } from "@/lib/lunchConfig";
 import { couponStageOf, couponStageLabel } from "@/lib/lunchStage";
 import { couponCodeStateOf } from "@/lib/lunchCodeState";
+import { computeDayIndexToday } from "@/lib/classDates";
+import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
+
+const CLASS_FIELDS = "title courseCode room roomName date startDate days dayCount duration.dayCount classKind";
+const STUDENT_FIELDS = "name thaiName engName company classId studentStatus";
 
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
@@ -72,17 +78,12 @@ function studentFields(stu) {
   };
 }
 
-// อ่าน Student.food — R1: choiceType ตัดสินก่อนเสมอ
-// note มีคำว่า coupon นับเป็น coupon เฉพาะข้อมูลเก่าที่ไม่มี choiceType (legacy)
-function readFoodSource(stuFood, menuMap, restaurantMap) {
-  const f = stuFood || {};
+// R4-2: อ่านแถว FoodChoice ของวันนั้น — choiceType ตัดสินอย่างเดียว · ไม่มีแถว / ไม่มี choiceType = kind null
+function readFoodSource(choice, menuMap, restaurantMap) {
+  const f = choice || {};
   const choiceType = cleanLower(f.choiceType);
-  const isCoupon = choiceType
-    ? choiceType === "coupon"
-    : cleanLower(f.note).includes("coupon");
-  const hasSelection =
-    !!f.menuId || !!f.restaurantId || !!f.drink || (Array.isArray(f.addons) && f.addons.length > 0);
-  const isNoFood = !isCoupon && (choiceType === "nofood" || f.noFood === true || !hasSelection);
+  const kind =
+    choiceType === "coupon" ? "coupon" : choiceType === "nofood" ? "none" : choiceType === "food" ? "set" : null;
 
   const menuInfo = f.menuId ? menuMap.get(String(f.menuId)) : null;
   const restaurantName =
@@ -91,7 +92,7 @@ function readFoodSource(stuFood, menuMap, restaurantMap) {
     "";
 
   return {
-    kind: isCoupon ? "coupon" : isNoFood ? "none" : "set",
+    kind,
     restaurantId: f.restaurantId ? String(f.restaurantId) : "",
     menuId: f.menuId ? String(f.menuId) : "",
     restaurantName,
@@ -133,18 +134,45 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
 
   const start = startOfDayBKK(dateYMD);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  const ciMatch = { time: { $gte: start, $lt: end } };
-  if (classFilter) ciMatch.classId = classFilter;
+  const todayYMD = toBkkYMD(now);
+
+  // R4-2: คลาสที่วันนั้นเป็นวันเรียน (days[] หรือ date + dayCount) — Masterclass ไม่มีขั้นตอนอาหาร
+  const classQuery = {
+    classKind: { $ne: "masterclass" },
+    $or: [
+      { days: dateYMD },
+      { date: { $gte: new Date(start.getTime() - 60 * 24 * 60 * 60 * 1000), $lt: end } },
+    ],
+  };
+  if (classFilter) classQuery._id = classFilter;
+  const dayClasses = (await Class.find(classQuery).select(CLASS_FIELDS).lean())
+    .map((c) => ({ c, day: computeDayIndexToday(c, dateYMD) }))
+    .filter((x) => x.day);
+  const dayByClass = new Map(dayClasses.map((x) => [idStr(x.c._id), x.day]));
+  const dayClassIds = dayClasses.map((x) => x.c._id);
 
   const orderMatch = { dayYMD: dateYMD };
   if (classFilter) orderMatch.classId = classFilter;
 
-  const [checkins, allOrders] = await Promise.all([
-    Checkin.find(ciMatch)
-      .populate({ path: "classId", model: Class })
-      .populate({ path: "studentId", model: Student })
-      .lean(),
+  const ciMatch = { time: { $gte: start, $lt: end } };
+  if (classFilter) ciMatch.classId = classFilter;
+
+  const [classStudents, checkins, allOrders, choices] = await Promise.all([
+    dayClassIds.length
+      ? Student.find({
+          classId: { $in: dayClassIds },
+          studentStatus: { $nin: ["cancelled", "postponed"] },
+        })
+          .select(STUDENT_FIELDS)
+          .lean()
+      : [],
+    Checkin.find(ciMatch).select("classId studentId time").lean(),
     LunchOrder.find(orderMatch).select(ORDER_FIELDS).lean(),
+    getFoodChoicesForRange({
+      classIds: classFilter ? [classFilter] : null,
+      fromYMD: dateYMD,
+      toYMD: dateYMD,
+    }),
   ]);
 
   const liveOrders = allOrders.filter((o) => o.status !== "cancelled");
@@ -163,31 +191,48 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   const finalCloseTs = finalCloseAt(dateYMD);
   const dayClosed = !!finalCloseTs && now.getTime() >= finalCloseTs.getTime();
 
-  // ออเดอร์ที่ไม่มี Checkin วันนั้น — ต้องดึง Student/Class เพิ่ม
-  const ciKeys = new Set(checkins.map((ch) => keyOf(ch.classId, ch.studentId)));
-  const orphanOrders = liveOrders.filter((o) => !ciKeys.has(keyOf(o.classId, o.studentId)));
+  // เช็คอินของวันนั้น (เวลาแรกของแต่ละคน)
+  const checkinAt = new Map();
+  for (const ch of checkins) {
+    const k = keyOf(ch.classId, ch.studentId);
+    if (!checkinAt.has(k)) checkinAt.set(k, ch.time || null);
+  }
+  // ผู้เรียนของวันนั้น (คลาส × ผู้เรียน) — ออเดอร์ที่ไม่อยู่ในชุดนี้ยังเป็นแถวเหมือนเดิม (ดึง Student/Class เพิ่ม)
+  const rosterKeys = new Set(classStudents.map((s) => keyOf(s.classId, s._id)));
+  const orphanOrders = liveOrders.filter((o) => !rosterKeys.has(keyOf(o.classId, o.studentId)));
 
   const stockIds = [...new Set(allOrders.map((o) => idStr(o.stockCodeId)).filter(Boolean))];
   const [orphanStudents, orphanClasses, stockDocs] = await Promise.all([
     orphanOrders.length
-      ? Student.find({ _id: { $in: orphanOrders.map((o) => o.studentId) } }).lean()
+      ? Student.find({ _id: { $in: orphanOrders.map((o) => o.studentId) } }).select(STUDENT_FIELDS).lean()
       : [],
     orphanOrders.length
-      ? Class.find({ _id: { $in: orphanOrders.map((o) => o.classId) } }).lean()
+      ? Class.find({ _id: { $in: orphanOrders.map((o) => o.classId) } }).select(CLASS_FIELDS).lean()
       : [],
     stockIds.length
       ? CouponStockCode.find({ _id: { $in: stockIds } }).select("code status handedOutAt orderId").lean()
       : [],
   ]);
   const studentById = new Map(orphanStudents.map((s) => [idStr(s._id), s]));
-  const classById = new Map(orphanClasses.map((c) => [idStr(c._id), c]));
+  const classById = new Map([
+    ...orphanClasses.map((c) => [idStr(c._id), c]),
+    ...dayClasses.map((x) => [idStr(x.c._id), x.c]),
+  ]);
+  for (const c of orphanClasses) {
+    if (!dayByClass.has(idStr(c._id))) {
+      const d = computeDayIndexToday(c, dateYMD);
+      if (d) dayByClass.set(idStr(c._id), d);
+    }
+  }
+  // แถว FoodChoice ของ (ผู้เรียน, คลาส) ในวันนั้น
+  const choiceOf = (cId, sId) => {
+    const d = dayByClass.get(idStr(cId));
+    return d ? choices.get(foodChoiceKey(idStr(sId), idStr(cId), d)) || null : null;
+  };
   const stockById = new Map(stockDocs.map((s) => [idStr(s._id), s]));
 
-  // ชื่อร้าน/เมนูของ set (จาก Student.food)
-  const allStudentFoods = [
-    ...checkins.map((ch) => ch.studentId?.food),
-    ...orphanStudents.map((s) => s.food),
-  ].filter(Boolean);
+  // ชื่อร้าน/เมนูของ set (จาก FoodChoice ของวันนั้น)
+  const allStudentFoods = [...choices.values()];
   const restaurantIds = new Set();
   const menuIds = new Set();
   for (const f of allStudentFoods) {
@@ -207,7 +252,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   );
 
   function buildRow({ id, date, cls, stu, order, latest = null, hasCheckin }) {
-    const src = readFoodSource(stu?.food, menuMap, restaurantMap);
+    const choice = choiceOf(cls?._id, stu?._id);
+    const src = readFoodSource(choice, menuMap, restaurantMap);
     const flags = [];
     let type;
     let coupon = null;
@@ -273,20 +319,26 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         nickname: "",
         orderRoomName: "",
       };
-    } else {
+    } else if (src.kind) {
       type = src.kind; // set | none
+    } else {
+      // R4-2: ไม่มีแถว FoodChoice — วันนี้/อนาคต = ยังไม่เลือก, วันที่ผ่านมา = ไม่มีข้อมูล
+      type = dateYMD >= todayYMD ? "not_chosen" : "no_data";
     }
-    if (!hasCheckin) flags.push("no_checkin");
+    // เช็คอินไม่พบ: แจ้งเฉพาะแถวที่มีออเดอร์คูปอง (เหมือนเดิม)
+    if (!hasCheckin && order) flags.push("no_checkin");
 
     const isCoupon = type === "coupon";
     const isNoFood = type === "none";
-    const legacyChoice = isCoupon ? "coupon" : isNoFood ? "noFood" : "food";
     const isSet = type === "set";
+    const legacyChoice = isCoupon ? "coupon" : isNoFood ? "noFood" : isSet ? "food" : "";
 
     return {
       id,
       _id: id,
       date,
+      // R4-2: วันเรียนที่เท่าไรของคลาส (หัวกลุ่มวันในรายงาน)
+      day: dayByClass.get(idStr(cls?._id)) || null,
       ...classFields(cls),
       ...studentFields(stu),
 
@@ -336,29 +388,31 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
     };
   }
 
+  // R4-2: id ของแถว = คลาส:ผู้เรียน:วัน (ไม่ซ้ำข้ามวันในช่วง)
   let rows = [
-    ...checkins.map((ch) =>
-      buildRow({
-        id: idStr(ch._id),
-        date: ch.time,
-        cls: ch.classId,
-        stu: ch.studentId,
-        order: liveByKey.get(keyOf(ch.classId, ch.studentId)) || null,
-        latest: latestByKey.get(keyOf(ch.classId, ch.studentId)) || null,
-        hasCheckin: true,
-      }),
-    ),
+    ...classStudents.map((stu) => {
+      const k = keyOf(stu.classId, stu._id);
+      return buildRow({
+        id: `${idStr(stu.classId)}:${idStr(stu._id)}:${dateYMD}`,
+        date: checkinAt.get(k) || null,
+        cls: classById.get(idStr(stu.classId)) || { _id: stu.classId },
+        stu,
+        order: liveByKey.get(k) || null,
+        latest: latestByKey.get(k) || null,
+        hasCheckin: checkinAt.has(k),
+      });
+    }),
     ...orphanOrders.map((o) =>
       buildRow({
         id: `lo:${idStr(o._id)}`,
-        date: null,
+        date: checkinAt.get(keyOf(o.classId, o.studentId)) || null,
         cls: classById.get(idStr(o.classId)) || { _id: o.classId },
         stu: studentById.get(idStr(o.studentId)) || {
           _id: o.studentId,
           name: o.holderName || o.nickname || "",
         },
         order: o,
-        hasCheckin: false,
+        hasCheckin: checkinAt.has(keyOf(o.classId, o.studentId)),
       }),
     ),
   ];
@@ -383,6 +437,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         r.code,
         r.isNoFood ? "ไม่รับอาหาร" : "",
         r.isCoupon ? "coupon" : "",
+        r.type === "not_chosen" ? "ยังไม่เลือก" : "",
+        r.type === "no_data" ? "ไม่มีข้อมูล" : "",
       ]
         .join(" ")
         .toLowerCase()
@@ -405,16 +461,35 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   return {
     rows,
     summary,
-    pastDayNote: dateYMD < toBkkYMD(now),
+    pastDayNote: dateYMD < todayYMD,
     finalClosed: !!finalClose && now.getTime() >= finalClose.getTime(),
   };
 }
 
 function emptyTotals() {
-  return { set: 0, none: 0, couponActive: 0, couponPending: 0, forfeited: 0, couponNoOrder: 0, total: 0 };
+  return {
+    set: 0,
+    none: 0,
+    couponActive: 0,
+    couponPending: 0,
+    forfeited: 0,
+    couponNoOrder: 0,
+    total: 0,
+    // R4-2: ยังไม่มีผล — นับแยก ไม่อยู่ใน total
+    notChosen: 0,
+    noData: 0,
+  };
 }
 
 function addToTotals(t, r) {
+  if (r.type === "not_chosen") {
+    t.notChosen += 1;
+    return;
+  }
+  if (r.type === "no_data") {
+    t.noData += 1;
+    return;
+  }
   t.total += 1;
   if (r.type === "set") t.set += 1;
   else if (r.type === "none") t.none += 1;

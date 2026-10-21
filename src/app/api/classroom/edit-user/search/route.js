@@ -119,7 +119,6 @@ export async function POST(req) {
       company: s.company || "",
       paymentRef: s.paymentRef || "",
       classId: s.classId,
-      food: s.food || {},
       // today's training day of THIS learner's class (server-resolved)
       day,
       classInfo: {

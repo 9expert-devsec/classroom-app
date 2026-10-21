@@ -5,7 +5,8 @@ import { ChevronDown, LayoutGrid, ListChecks, PieChart, Store } from "lucide-rea
 
 import { STATUS_META, TYPE_META, cx } from "./reportUi";
 
-export function TypeBadge({ type }) {
+// R4-2: label = ป้ายเฉพาะแถว (เช่น "ยังไม่เลือก" / "ไม่มีข้อมูล" ของกลุ่ม unchosen) — ไม่ส่ง = ป้ายของประเภท
+export function TypeBadge({ type, label }) {
   const m = TYPE_META[type];
   if (!m) return null;
   return (
@@ -13,7 +14,7 @@ export function TypeBadge({ type }) {
       title={m.hint}
       className={cx("inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold", m.cls)}
     >
-      {m.label}
+      {label || m.label}
     </span>
   );
 }

@@ -16,7 +16,6 @@ import mongoose from "mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import Class from "@/models/Class";
 import CouponStockCode from "@/models/CouponStockCode";
-import Student from "@/models/Student";
 
 import { issueLunchOrder, activeKeyOf } from "@/lib/lunchOrders.server";
 import {
@@ -34,15 +33,9 @@ import { couponChoiceProblem } from "@/lib/lunchChoice";
 
 /* ---------------- errors ---------------- */
 
-export class LunchAdminError extends Error {
-  constructor(status, reason, message, extra = null) {
-    super(message);
-    this.name = "LunchAdminError";
-    this.status = status;
-    this.reason = reason;
-    this.extra = extra;
-  }
-}
+// R4-2: class อยู่ที่ lunchErrors.js (ตัวเดียวกัน) — re-export ไว้ให้ผู้ใช้เดิม import จากที่นี่ได้เหมือนเดิม
+import { LunchAdminError } from "@/lib/lunchErrors";
+export { LunchAdminError };
 
 function fail(status, reason, message, extra = null) {
   throw new LunchAdminError(status, reason, message, extra);
@@ -131,11 +124,12 @@ export function wasPlaced(order) {
  * ไม่ผ่าน -> 409 food_choice_not_coupon
  */
 export async function assertCouponChoiceToday({ classId, studentId, dayYMD, session = null }) {
-  const [student, klass] = await Promise.all([
-    Student.findById(studentId).select("food").session(session).lean(),
-    Class.findById(classId).select("date days dayCount duration.dayCount").session(session).lean(),
-  ]);
-  const problem = couponChoiceProblem(student?.food, klass, classId, dayYMD);
+  // R4-2: ตัวเลือกของวันนั้นจาก FoodChoice (ไม่อ่าน Student.food)
+  const klass = await Class.findById(classId)
+    .select("date days dayCount duration.dayCount")
+    .session(session)
+    .lean();
+  const problem = await couponChoiceProblem({ studentId, klass, classId, dayYMD, session });
   if (problem) fail(409, problem.reason, problem.message);
 }
 

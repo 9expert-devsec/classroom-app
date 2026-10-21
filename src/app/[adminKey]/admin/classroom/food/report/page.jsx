@@ -1,15 +1,15 @@
 // src/app/[adminKey]/admin/classroom/food/report/page.jsx
 
 import FoodReportClient from "./FoodReportClient";
+import { toBkkYMD } from "@/lib/lunchConfig";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const dynamic = "force-dynamic";
 
+// YYYY-MM-DD ตามเวลาไทย — R4-1A: นาฬิกาเดียวกับระบบ lunch (lunchNow) ให้ "วันนี้" ของหน้า
+// ตรงกับที่ server ใช้ตัดสินว่าแก้อาหารได้ไหม (production = เวลาจริง)
 function getBangkokYMD() {
-  // ให้ได้ YYYY-MM-DD ตามเวลาไทย (กัน server เป็น UTC แล้ววันเพี้ยน)
-  const s = new Date().toLocaleDateString("en-CA", {
-    timeZone: "Asia/Bangkok",
-  }); // en-CA -> YYYY-MM-DD
-  return String(s || "").slice(0, 10);
+  return toBkkYMD(lunchNow());
 }
 
 export default function Page() {

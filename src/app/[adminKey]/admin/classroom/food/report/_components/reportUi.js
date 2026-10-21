@@ -18,17 +18,9 @@ export function reportFinalCloseLabel() {
   return reportFinalClose;
 }
 
-// R4L-5: ตัวเลือกอาหาร Set / ไม่รับอาหาร มาจาก Student.food (ค่าล่าสุดค่าเดียวต่อคน) — วันที่ผ่านมาอาจไม่ตรง
-//        แสดงเมื่อเลือกหลายวัน หรือวันเดียวที่ผ่านมาแล้ว (pastDayNote จาก server) · ดูวันนี้วันเดียว = ไม่แสดง
-export const STALE_CHOICE_NOTICE =
-  "ตัวเลือกอาหารของวันที่ผ่านมาอาจไม่ตรงกับความจริง (ระบบเก็บตัวเลือกล่าสุดของแต่ละคน) — ใช้รายงานวันนี้เป็นหลัก";
-
-/** บรรทัดแจ้งเตือนบนสุดของใบพิมพ์ (HTML) — notice ว่าง = ไม่มีบรรทัด */
-export function staleNoticeHtml(notice) {
-  if (!notice) return "";
-  const esc = String(notice).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `<div style="border:1px solid #f0c36d;background:#fff8e1;color:#8a5a00;padding:6px 10px;margin:0 0 10px;font-size:12px;">${esc}</div>`;
-}
+// R4-1A: แก้อาหารได้เฉพาะวันนี้ (ข้อความเดียวกับที่ server ตอบ 409)
+// R4-2: ข้อมูลเป็นรายวันแล้ว (FoodChoice) — ป้ายเตือน "วันที่ผ่านมาอาจไม่ตรง" ของ R4L ถูกถอดออก
+export const PAST_DAY_EDIT_MESSAGE = "แก้ไขได้เฉพาะตัวเลือกอาหารของวันนี้";
 
 /** R2b: หมายเหตุของแถวสำหรับแสดง / พิมพ์ / export — ตัดโน้ตอัตโนมัติเดิม ("COUPON" / "ไม่รับอาหาร") */
 export function rowNote(o) {
@@ -222,9 +214,11 @@ export function cleanClassTitle(title, courseCode) {
 }
 
 /* ---------- C5c: resolved food state (from the API) ---------- */
-// API ส่ง type มาเสมอ (set | none | coupon) — fallback ตรรกะเดิมเผื่อข้อมูลเก่า
+// API ส่ง type มาเสมอ (set | none | coupon | not_chosen | no_data) — fallback ตรรกะเดิมเผื่อข้อมูลเก่า
+// R4-2: not_chosen = วันนี้ยังไม่เลือก, no_data = วันที่ผ่านมาไม่มีข้อมูล — ยังไม่มีผล ไม่นับในยอดใด ๆ
+export const UNCHOSEN_TYPES = ["not_chosen", "no_data"];
 export function rowType(o) {
-  if (o?.type === "set" || o?.type === "none" || o?.type === "coupon") return o.type;
+  if (["set", "none", "coupon", ...UNCHOSEN_TYPES].includes(o?.type)) return o.type;
   const choice = String(o?.choiceType || o?.food?.choiceType || "").toLowerCase();
   // R1: มี choiceType แล้วตัดสินจาก choiceType อย่างเดียว — flag / note เป็น fallback ของข้อมูลเก่า
   if (choice === "coupon") return "coupon";
@@ -240,12 +234,23 @@ export function rowType(o) {
   return isCoupon ? "coupon" : isNoFood ? "none" : "set";
 }
 
+/** R4-2: แถวที่ยังไม่มีผล (ยังไม่เลือก / ไม่มีข้อมูล) */
+export function isUnchosen(o) {
+  return UNCHOSEN_TYPES.includes(rowType(o));
+}
+
 export function rowId(o) {
   return String(o.id || o._id);
 }
 
 // print / CSV labels (unchanged from C5c)
-export const TYPE_LABEL = { set: "Set", none: "ไม่รับอาหาร", coupon: "Coupon" };
+export const TYPE_LABEL = {
+  set: "Set",
+  none: "ไม่รับอาหาร",
+  coupon: "Coupon",
+  not_chosen: "ยังไม่เลือก",
+  no_data: "ไม่มีข้อมูล",
+};
 
 // R2b: ป้ายขั้นของคูปองมาจาก src/lib/lunchStage.js ตัวเดียวกับหน้าติดตามการสั่งอาหาร
 //      no_order = ข้อมูลเก่าที่ server ยังไม่ส่งขั้นมา (fallback)
@@ -364,11 +369,14 @@ export const TYPE_META = {
   stock: { label: "Stock", cls: "bg-amber-100 text-amber-800" },
   coupon: { label: "Coupon", cls: "bg-violet-100 text-violet-800", hint: "คูปองที่ยังไม่เลือกร้าน" },
   none: { label: "ไม่รับอาหาร", cls: "bg-slate-100 text-slate-600" },
+  // R4-2: ยังไม่เลือก (วันนี้) / ไม่มีข้อมูล (วันที่ผ่านมา) — ตัวกรองเดียว ป้ายในตารางบอกแยก
+  unchosen: { label: "ยังไม่เลือก / ไม่มีข้อมูล", cls: "bg-white text-slate-500 ring-1 ring-slate-200" },
 };
 
 // coupon rows without a shop yet (pending / forfeited / no_order) have no source → "coupon"
 export function typeKeyOf(o) {
   const t = rowType(o);
+  if (UNCHOSEN_TYPES.includes(t)) return "unchosen";
   if (t !== "coupon") return t;
   if (o.couponSource === "ecoupon" || o.couponSource === "stock") return o.couponSource;
   return "coupon";
@@ -394,6 +402,9 @@ export const STATUS_META = {
   },
   no_order: { label: "ไม่มีออเดอร์", cls: "bg-slate-100 text-slate-600" },
   none: { label: "ไม่รับอาหาร", cls: "bg-slate-100 text-slate-600" },
+  // R4-2: ยังไม่มีผล — ไม่นับใน KPI / สรุปร้าน
+  not_chosen: { label: "ยังไม่เลือก", cls: "bg-white text-slate-500 ring-1 ring-slate-200" },
+  no_data: { label: "ไม่มีข้อมูล", cls: "bg-white text-slate-500 ring-1 ring-slate-200" },
 };
 
 // columns of the shop summary / KPI order
@@ -408,6 +419,7 @@ export function statusKeyOf(o) {
   const t = rowType(o);
   if (t === "set") return "set";
   if (t === "none") return "none";
+  if (UNCHOSEN_TYPES.includes(t)) return t;
   const st = o.couponState || "no_order";
   if (st === "ordered" || st === "at_shop") {
     if (o.couponSource === "stock") {
@@ -454,14 +466,20 @@ export function setMenuLabel(o) {
     : o.restaurantName || "-";
 }
 
+// R4-2: แถวที่ยังไม่มีผลไม่นับใน total / byType / byStatus — นับแยกใน c.unchosen
 export function emptyCounts() {
-  const c = { total: 0, coupon: 0, byStatus: {}, byType: {} };
+  const c = { total: 0, coupon: 0, byStatus: {}, byType: {}, unchosen: { not_chosen: 0, no_data: 0 } };
   for (const k of Object.keys(STATUS_META)) c.byStatus[k] = 0;
   for (const k of Object.keys(TYPE_META)) c.byType[k] = 0;
   return c;
 }
 
 export function addCount(c, o) {
+  const t = rowType(o);
+  if (UNCHOSEN_TYPES.includes(t)) {
+    c.unchosen[t] += 1;
+    return;
+  }
   c.total += 1;
   if (rowType(o) === "coupon") c.coupon += 1;
   c.byStatus[statusKeyOf(o)] += 1;
@@ -488,6 +506,7 @@ export function matchesSearch(o, q) {
     o.roomName,
     t === "none" ? "ไม่รับอาหาร" : "",
     isCoupon ? "COUPON" : "",
+    UNCHOSEN_TYPES.includes(t) ? TYPE_LABEL[t] : "",
     o.restaurantName ?? o.food?.restaurantName,
     o.menuName ?? o.food?.menuName,
     addonsOf(o).join(" "),

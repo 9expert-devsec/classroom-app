@@ -13,7 +13,8 @@ import {
   flagLabels,
   cleanClassTitle,
   rowNote,
-  staleNoticeHtml,
+  isUnchosen,
+  formatDateDMY,
 } from "./reportUi";
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
@@ -29,6 +30,8 @@ function buildSummaryItems(rows) {
 
   rows.forEach((o) => {
     const t = rowType(o);
+    // R4-2: ยังไม่เลือก / ไม่มีข้อมูล ไม่นับในสรุป
+    if (isUnchosen(o)) return;
     if (t === "coupon") add(couponLabelFor(o), 1);
     else if (t === "none") add("ไม่รับอาหาร", 1);
     else add(String(o.menuName || "-").trim() || "-", 1);
@@ -92,16 +95,20 @@ function buildDrinkSummaryItems(rows) {
     .sort((a, b) => b.count - a.count);
 }
 
-// R4L-5: notice = บรรทัดแจ้งเตือนบนสุด (ข้อมูลวันที่ผ่านมา) — ว่าง = ไม่มี
-export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
-    // group by class for print
+// R4-2: หน้าแยกตาม Class แล้วตามวัน (เหมือนหน้าจอ) — ไม่มีป้ายเตือนวันที่ผ่านมาแล้ว
+export function buildClassPrintHtml(rows, printDate) {
+    // group by class + day for print
     const map = new Map();
     rows.forEach((o) => {
-      const key = o.classId || o.className || "unknown";
+      const key = `${o.classId || o.className || "unknown"}|${o.dayYMD || ""}`;
       if (!map.has(key)) {
         const raw = o.className || o.classTitle || "-";
         map.set(key, {
           key,
+          dayYMD: o.dayYMD || "",
+          dayLabel: o.dayYMD
+            ? `${o.day ? `วันที่ ${o.day} · ` : ""}${formatDateDMY(o.dayYMD)}`
+            : "",
           className: cleanClassTitle(raw, o.courseCode),
           courseCode: o.courseCode || "",
           roomName: o.roomName || "",
@@ -111,8 +118,8 @@ export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
       map.get(key).items.push(o);
     });
 
-    const printGroups = Array.from(map.values()).sort((a, b) =>
-      a.className.localeCompare(b.className, "th"),
+    const printGroups = Array.from(map.values()).sort(
+      (a, b) => a.className.localeCompare(b.className, "th") || a.dayYMD.localeCompare(b.dayYMD),
     );
 
     const generatedAt = new Date().toLocaleString("th-TH", {
@@ -297,7 +304,7 @@ export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
               ? couponLinesText(o)
               : isSet
                 ? (o.menuName ?? o.food?.menuName ?? "")
-                : "ไม่รับอาหาร";
+                : TYPE_LABEL[t] || "";
 
             const addons = isSet ? addonsOf(o).join(" / ") : "";
             const drink = isSet ? (o.drink ?? o.food?.drink ?? "") : "";
@@ -345,7 +352,7 @@ export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
                   <th colspan="10" class="class-head">
                     <div class="class-title">${g.className}</div>
                     <div class="class-sub">
-                      ${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${printDate}
+                      ${g.dayLabel ? `${esc(g.dayLabel)} • ` : ""}${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${printDate}
                     </div>
                   </th>
                 </tr>
@@ -433,7 +440,6 @@ export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
           </style>
         </head>
         <body>
-          ${staleNoticeHtml(notice)}
           ${summaryPageHtml}
           ${classPagesHtml}
         </body>

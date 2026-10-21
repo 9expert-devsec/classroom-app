@@ -5,8 +5,13 @@
 // "รายละเอียดรายการ" แบบแยกการ์ดตาม Class (r2d) — หน้าตาตามรายงานอาหารเดิม (ก่อน 933739f):
 // หัวการ์ด = ชื่อ Class ตัวหนา + "ห้อง <room> • <n> รายการ", ข้างในเป็น ReportTable คอลัมน์เดิม
 // จัดกลุ่มหลังกรองแล้ว: แถวที่แสดงในหน้านี้ถูกตัดเป็นการ์ดต่อเนื่องตามลำดับ Class
+// R4-2: ในแต่ละ Class แยกเป็นหัวข้อย่อยตามวัน (เรียงวันที่จากเก่าไปใหม่ พับได้ เปิดไว้ก่อน)
+//       หัวข้อวันบอกวันที่ — ตารางข้างในไม่มีคอลัมน์วันที่ · เลข # นับใหม่ทุกวัน
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
+
 import ReportTable from "./ReportTable";
-import { cleanClassTitle, rowId } from "./reportUi";
+import { cleanClassTitle, cx, formatDateDMY, rowId, rowType } from "./reportUi";
 
 export const NO_CLASS_TITLE = "ไม่ระบุ Class";
 
@@ -33,11 +38,19 @@ export function groupRowsByClass(rows) {
         named,
         title: named ? cleanClassTitle(raw, o.courseCode) : NO_CLASS_TITLE,
         room: o.roomName || "",
+        courseCode: o.courseCode || "",
         rows: [],
       };
       map.set(key, g);
     }
     g.rows.push(o);
+  }
+  // R4-2: แถวในการ์ดเรียงตามวัน (คงลำดับเดิมภายในวันเดียวกัน) — การแบ่งหน้าตัดตามลำดับนี้
+  for (const g of map.values()) {
+    g.rows = g.rows
+      .map((o, i) => ({ o, i }))
+      .sort((a, b) => String(a.o.dayYMD || "").localeCompare(String(b.o.dayYMD || "")) || a.i - b.i)
+      .map((x) => x.o);
   }
   const named = [...map.values()].filter((g) => g.named);
   const unnamed = [...map.values()].filter((g) => !g.named);
@@ -55,6 +68,71 @@ export function groupRowsByClass(rows) {
   return named;
 }
 
+/** แถวของ Class -> กลุ่มตามวัน (เรียงวันที่จากเก่าไปใหม่) [{ dayYMD, day, rows }] */
+function groupRowsByDay(rows) {
+  const map = new Map();
+  for (const o of rows) {
+    const k = String(o.dayYMD || "");
+    if (!map.has(k)) map.set(k, { dayYMD: k, day: o.day || null, rows: [] });
+    map.get(k).rows.push(o);
+  }
+  return [...map.values()].sort((a, b) => a.dayYMD.localeCompare(b.dayYMD));
+}
+
+/** "Set a · Coupon b · ไม่รับอาหาร c · ยังไม่เลือก/ไม่มีข้อมูล d" ของวันนั้น */
+function dayCountsLine(rows) {
+  const n = { set: 0, coupon: 0, none: 0, unchosen: 0 };
+  for (const o of rows) {
+    const t = rowType(o);
+    if (t === "set" || t === "coupon" || t === "none") n[t] += 1;
+    else n.unchosen += 1;
+  }
+  const unchosenLabel = rows.some((o) => rowType(o) === "not_chosen") ? "ยังไม่เลือก" : "ไม่มีข้อมูล";
+  return [
+    `Set ${n.set}`,
+    `Coupon ${n.coupon}`,
+    `ไม่รับอาหาร ${n.none}`,
+    n.unchosen ? `${unchosenLabel} ${n.unchosen}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** หัวข้อย่อยของวัน (พับได้ เปิดไว้ก่อน) + ตารางของวันนั้น */
+function DaySection({ dayGroup, shownRows, tableProps, classTitle }) {
+  const [open, setOpen] = useState(true);
+  // "#" นับใหม่ทุกวัน (นับจากทั้งวัน — ต่อเนื่องถ้าวันเดียวยาวข้ามหน้า)
+  const numbers = new Map(dayGroup.rows.map((o, i) => [rowId(o), i + 1]));
+  return (
+    <div data-testid="day-section" className="rounded-xl border border-admin-border/70">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-admin-surfaceMuted/50"
+      >
+        <ChevronDown className={cx("h-4 w-4 shrink-0 text-admin-textMuted transition-transform", !open && "-rotate-90")} />
+        <span className="text-xs font-semibold text-admin-text">
+          {dayGroup.day ? `วันที่ ${dayGroup.day} · ` : ""}
+          {formatDateDMY(dayGroup.dayYMD)} · {dayGroup.rows.length} รายการ
+        </span>
+        <span className="text-[11px] text-admin-textMuted">{dayCountsLine(dayGroup.rows)}</span>
+      </button>
+      {open && (
+        <div className="px-2 pb-2">
+          <ReportTable
+            rows={shownRows}
+            numberOf={(o) => numbers.get(rowId(o))}
+            selectAllLabel={`เลือกทั้งหมดใน ${classTitle} วันที่ ${formatDateDMY(dayGroup.dayYMD)}`}
+            showDate={false}
+            {...tableProps}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * @param groups   groupRowsByClass(listRows) — ทั้งชุดที่กรองแล้ว (นับ n รายการ / ลำดับในการ์ด)
  * @param shownIds rowId ของแถวที่อยู่ในหน้านี้ (หลังแบ่งหน้า) — การ์ดที่ไม่มีแถวในหน้านี้ไม่แสดง
@@ -65,8 +143,7 @@ export default function ClassGroupedTable({ groups, shownIds, tableProps }) {
       {groups.map((g) => {
         const rows = g.rows.filter((o) => shownIds.has(rowId(o)));
         if (!rows.length) return null;
-        // "#" นับใหม่ในแต่ละ Class (ต่อเนื่องถ้า Class เดียวยาวข้ามหน้า)
-        const numbers = new Map(g.rows.map((o, i) => [rowId(o), i + 1]));
+        const dayGroups = groupRowsByDay(g.rows);
         return (
           <div
             key={g.key}
@@ -74,18 +151,30 @@ export default function ClassGroupedTable({ groups, shownIds, tableProps }) {
             className="rounded-2xl border border-admin-border bg-white p-4 shadow-sm"
           >
             <div className="mb-2">
-              <div className="text-xs font-semibold text-admin-text">{g.title}</div>
+              <div className="text-xs font-semibold text-admin-text">
+                {g.courseCode ? <span className="text-admin-textMuted">{g.courseCode} · </span> : null}
+                {g.title}
+              </div>
               <div className="text-[11px] text-admin-textMuted">
-                {g.room ? <>ห้อง {g.room} • </> : null}
+                {g.room ? <>ห้อง {g.room} · </> : null}
                 {g.rows.length} รายการ
               </div>
             </div>
-            <ReportTable
-              rows={rows}
-              numberOf={(o) => numbers.get(rowId(o))}
-              selectAllLabel={`เลือกทั้งหมดใน ${g.title}`}
-              {...tableProps}
-            />
+            <div className="space-y-2">
+              {dayGroups.map((dg) => {
+                const shownRows = dg.rows.filter((o) => shownIds.has(rowId(o)));
+                if (!shownRows.length) return null;
+                return (
+                  <DaySection
+                    key={dg.dayYMD}
+                    dayGroup={dg}
+                    shownRows={shownRows}
+                    tableProps={tableProps}
+                    classTitle={g.title}
+                  />
+                );
+              })}
+            </div>
           </div>
         );
       })}
