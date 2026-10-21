@@ -20,7 +20,7 @@ import {
 } from "@/lib/couponAvailability.server";
 import { toBkkYMD, isCouponClosedFor } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { classDayIndexToday } from "@/lib/classDates";
+import { todayClassDayOf } from "@/lib/lunchChoice";
 import { LunchAdminError } from "@/lib/lunchAdmin.server";
 // R2a: ตัวเลือกอาหาร + ออเดอร์ (log / audit อยู่ในนี้ด้วย)
 import { changeFoodChoice } from "@/lib/lunchActions.server";
@@ -87,7 +87,9 @@ async function checkCouponAvailability(classId, recordDay) {
       .lean();
     if (!cls) return { available: true, reason: null };
 
-    const todayDay = classDayIndexToday(cls);
+    // R4L-2: นาฬิกาเดียวกับระบบ lunch (lunchNow) — production เหมือนเดิม
+    const now = lunchNow();
+    const todayDay = todayClassDayOf(cls, now);
     if (!todayDay) {
       return { available: false, reason: "not_class_day" };
     }
@@ -95,7 +97,7 @@ async function checkCouponAvailability(classId, recordDay) {
       return { available: false, reason: "not_today", todayDay };
     }
 
-    const todayYMD = toBkkYMD(new Date());
+    const todayYMD = toBkkYMD(now);
     return await getCouponAvailability({ classDoc: cls, dayYMD: todayYMD });
   } catch (e) {
     console.warn("[food] check coupon availability failed:", e?.message || e);
@@ -104,13 +106,14 @@ async function checkCouponAvailability(classId, recordDay) {
 }
 
 // วันเรียนของวันนี้ของคลาส (null = ไม่ใช่วันเรียน / หาไม่ได้)
+// R4L-2: todayClassDayOf = นาฬิกา lunchNow เดียวกับ todayFoodOf
 async function todayDayOfClass(classId) {
   try {
     if (!isObjectId(classId)) return null;
     const cls = await Class.findById(classId)
       .select("date days dayCount duration.dayCount")
       .lean();
-    return cls ? classDayIndexToday(cls) : null;
+    return cls ? todayClassDayOf(cls) : null;
   } catch {
     return null;
   }
@@ -193,14 +196,16 @@ export async function POST(req) {
     );
   }
 
-  const safeClassId = clean(classId) || clean(student.food?.classId);
-  // P3g: ไม่ส่ง day มา -> ใช้วันเรียนของวันนี้จาก helper กลาง (เดิมใช้ค่าเก่าใน student.food)
+  // R4L-2: ไม่ส่ง classId มา -> คลาสของผู้เรียนคนนี้ (Student 1 เอกสารต่อ 1 คลาส)
+  //         ไม่ใช้ student.food.classId (ค่าที่ค้างจากตัวเลือกเดิม)
+  const safeClassId = clean(classId) || clean(student.classId);
+  // P3g: ไม่ส่ง day มา -> ใช้วันเรียนของวันนี้จาก helper กลาง
   // ส่งมา -> เก็บตามนั้น (หน้าแก้ไขของเจ้าหน้าที่แก้ย้อนวันได้) แต่คูปองต้องเป็นวันนี้เท่านั้น
+  // R4L-2: ไม่มี fallback ไปที่ student.food.day แล้ว — หาวันของวันนี้ไม่ได้ = ไม่บันทึก
+  //        (ห้ามเขียนตัวเลือกที่ประทับวันก่อนหน้า)
   const hasDay =
     day !== undefined && day !== null && day !== "" && Number.isFinite(Number(day));
-  const safeDay = hasDay
-    ? Number(day)
-    : ((await todayDayOfClass(safeClassId)) ?? student.food?.day);
+  const safeDay = hasDay ? Number(day) : await todayDayOfClass(safeClassId);
 
   // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
   // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
@@ -208,6 +213,17 @@ export async function POST(req) {
     return NextResponse.json(
       { ok: false, error: "food_not_available_for_masterclass" },
       { status: 400 },
+    );
+  }
+
+  if (!safeDay) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "วันนี้ไม่ใช่วันเรียนของคลาสนี้ จึงบันทึกตัวเลือกอาหารไม่ได้",
+        reason: "not_class_day",
+      },
+      { status: 409 },
     );
   }
 

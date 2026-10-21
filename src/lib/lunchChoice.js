@@ -2,7 +2,10 @@
 // R2a-2: "ตัวเลือกอาหารปัจจุบันของผู้เรียน ของคลาส/วันนั้น" — pure (ไม่แตะ DB)
 // ใช้ร่วมกันระหว่าง lunchActions.server.js / lunchAdmin.server.js (reopen) / orders API
 // Student.food เก็บค่าเดียวต่อผู้เรียน (ประทับ classId + day) จึงต้องเช็คว่าเป็นของวันนั้นจริงก่อนใช้
-import { computeDayIndexToday } from "@/lib/classDates";
+// R4L-1: + todayFoodOf / todayClassDayOf — "ตัวเลือกของวันนี้" ตามนาฬิกาเดียวกับระบบ lunch (lunchNow)
+//         ใช้ได้เฉพาะฝั่ง server (lunchNow อ่าน LUNCH_FAKE_NOW ได้นอก production)
+import { computeDayIndexToday, classDayIndexToday } from "@/lib/classDates";
+import { lunchNow } from "@/lib/lunchClock.server";
 
 export const FOOD_CHOICE_MISMATCH_MESSAGE =
   "ข้อมูลอาหารของผู้เรียนไม่ใช่ของคลาส/วันนี้ กรุณาตรวจสอบใน Food Report";
@@ -39,4 +42,36 @@ export function couponChoiceProblem(food, klass, classId, dayYMD, { strict = fal
     return { reason: "food_choice_not_coupon", message: FOOD_CHOICE_NOT_COUPON_MESSAGE };
   }
   return null;
+}
+
+/* ---------------- R4L-1: ตัวเลือกอาหารของ "วันนี้" ---------------- */
+
+// กติกา: นับตัวเลือกอาหารเป็นรายวัน — ทุกวันเรียนเริ่มว่างที่ kiosk ไม่ยกของเมื่อวานมา
+// Student.food เก็บค่าเดียว (ถูกเขียนทับทุกวัน) จึงใช้ได้เฉพาะเมื่อประทับ classId + day ของวันนี้ตรงทั้งคู่
+
+/** วันเรียนที่เท่าไรของคลาสนี้ ณ วันนี้ (เวลาไทย, นาฬิกา lunchNow) — ไม่ใช่วันเรียน = null */
+export function todayClassDayOf(classDoc, now = lunchNow()) {
+  if (!classDoc) return null;
+  return classDayIndexToday(classDoc, now) || null;
+}
+
+/**
+ * student.food เฉพาะเมื่อเป็นตัวเลือกของ "วันนี้" ของคลาสนี้ — ไม่ใช่ = null (ยังไม่ได้เลือกวันนี้)
+ *   - food.classId ต้องเท่ากับ classDoc._id (ว่าง / ไม่มี = ไม่ตรง)
+ *   - food.day ต้องเท่ากับวันเรียนของวันนี้ (ว่าง / ไม่มี = ไม่ตรง)
+ *   - วันนี้ไม่ใช่วันเรียน = null
+ * classDoc ต้องมี _id, date, days, dayCount / duration.dayCount
+ */
+export function todayFoodOf(student, classDoc, now = lunchNow()) {
+  const food = student?.food;
+  if (!food || !classDoc?._id) return null;
+
+  const foodClassId = String(food.classId ?? "").trim();
+  if (!foodClassId || foodClassId !== String(classDoc._id)) return null;
+
+  if (food.day === null || food.day === undefined || food.day === "") return null;
+  const day = todayClassDayOf(classDoc, now);
+  if (!day || Number(food.day) !== day) return null;
+
+  return food;
 }

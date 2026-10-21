@@ -58,6 +58,7 @@ import { writeAuditLog } from "@/lib/auditLog.server";
 import { getBaseUrl } from "@/lib/baseUrl.server";
 import {
   couponChoiceProblem,
+  todayFoodOf,
   FOOD_CHOICE_MISMATCH_MESSAGE,
   FOOD_CHOICE_NOT_COUPON_MESSAGE,
 } from "@/lib/lunchChoice";
@@ -279,7 +280,15 @@ export async function changeFoodChoice({
   const studentId = String(student?._id || "");
   if (!studentId) fail(400, "bad_request", "ข้อมูลไม่ครบ");
 
-  const movingAway = prevFood?.choiceType === "coupon" && nextFood?.choiceType !== "coupon";
+  // R4L-4: "ย้ายออกจากคูปอง" นับเฉพาะเมื่อตัวเลือกเดิมเป็นคูปองของ "วันนี้" ของคลาสนี้ (todayFoodOf)
+  //         คูปองของวันก่อนไม่ใช่คูปองวันนี้ -> ไม่แตะออเดอร์ใด ๆ · คูปองวันนี้จริงยกเลิกเหมือนเดิม
+  let movingAway = false;
+  if (prevFood?.choiceType === "coupon" && nextFood?.choiceType !== "coupon" && isObjectId(classId)) {
+    const klass = await Class.findById(classId)
+      .select("date days dayCount duration.dayCount")
+      .lean();
+    movingAway = todayFoodOf({ food: prevFood }, klass, at)?.choiceType === "coupon";
+  }
   const dayYMD = toBkkYMD(at);
   let cancel = null;
 
@@ -573,15 +582,15 @@ export async function assertLunchIssueAllowed({ classId, studentId }) {
   }).lean();
   if (!isCheckinToday(checkin)) return no("not_checked_in", 403);
 
-  // 3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
+  // 3) R4L-4: ตัวเลือกต้องเป็นคูปองของ "วันนี้" ของคลาสนี้ (todayFoodOf — classId / day ว่าง = ไม่ตรง)
+  //    3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
+  //    3b) เลือกคูปองไว้ แต่ไม่ใช่ของคลาสนี้ / ของวันนี้ = coupon_not_today
   const food = student.food || {};
-  if (String(food.choiceType || "") !== "coupon") return no("not_coupon_choice", 409);
-
-  // 3b) คูปองที่เลือกไว้ต้องเป็นของคลาสนี้ และของ "วันนี้"
-  const foodClassMatches = !food.classId || String(food.classId) === String(classId);
-  const foodDayMatches =
-    food.day === null || food.day === undefined ? false : Number(food.day) === dayIndex;
-  if (!foodClassMatches || !foodDayMatches) return no("coupon_not_today", 409);
+  const todayFood = todayFoodOf(student, klass);
+  if (!todayFood) {
+    return no(String(food.choiceType || "") === "coupon" ? "coupon_not_today" : "not_coupon_choice", 409);
+  }
+  if (String(todayFood.choiceType || "") !== "coupon") return no("not_coupon_choice", 409);
 
   // C2: ถึง 15:00 แล้ว ไม่ออก QR
   const now = lunchNow();

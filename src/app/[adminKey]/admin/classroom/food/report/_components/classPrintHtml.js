@@ -13,6 +13,7 @@ import {
   flagLabels,
   cleanClassTitle,
   rowNote,
+  staleNoticeHtml,
 } from "./reportUi";
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
@@ -91,7 +92,8 @@ function buildDrinkSummaryItems(rows) {
     .sort((a, b) => b.count - a.count);
 }
 
-export function buildClassPrintHtml(rows, printDate) {
+// R4L-5: notice = บรรทัดแจ้งเตือนบนสุด (ข้อมูลวันที่ผ่านมา) — ว่าง = ไม่มี
+export function buildClassPrintHtml(rows, printDate, { notice = "" } = {}) {
     // group by class for print
     const map = new Map();
     rows.forEach((o) => {
@@ -431,6 +433,7 @@ export function buildClassPrintHtml(rows, printDate) {
           </style>
         </head>
         <body>
+          ${staleNoticeHtml(notice)}
           ${summaryPageHtml}
           ${classPagesHtml}
         </body>

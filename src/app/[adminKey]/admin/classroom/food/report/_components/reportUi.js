@@ -18,6 +18,18 @@ export function reportFinalCloseLabel() {
   return reportFinalClose;
 }
 
+// R4L-5: ตัวเลือกอาหาร Set / ไม่รับอาหาร มาจาก Student.food (ค่าล่าสุดค่าเดียวต่อคน) — วันที่ผ่านมาอาจไม่ตรง
+//        แสดงเมื่อเลือกหลายวัน หรือวันเดียวที่ผ่านมาแล้ว (pastDayNote จาก server) · ดูวันนี้วันเดียว = ไม่แสดง
+export const STALE_CHOICE_NOTICE =
+  "ตัวเลือกอาหารของวันที่ผ่านมาอาจไม่ตรงกับความจริง (ระบบเก็บตัวเลือกล่าสุดของแต่ละคน) — ใช้รายงานวันนี้เป็นหลัก";
+
+/** บรรทัดแจ้งเตือนบนสุดของใบพิมพ์ (HTML) — notice ว่าง = ไม่มีบรรทัด */
+export function staleNoticeHtml(notice) {
+  if (!notice) return "";
+  const esc = String(notice).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<div style="border:1px solid #f0c36d;background:#fff8e1;color:#8a5a00;padding:6px 10px;margin:0 0 10px;font-size:12px;">${esc}</div>`;
+}
+
 /** R2b: หมายเหตุของแถวสำหรับแสดง / พิมพ์ / export — ตัดโน้ตอัตโนมัติเดิม ("COUPON" / "ไม่รับอาหาร") */
 export function rowNote(o) {
   return stripAutoFoodNote(o?.note ?? o?.food?.note ?? "");

@@ -38,6 +38,7 @@ import {
   setMenuLabel,
   setReportCloseTimes,
   shopOf,
+  STALE_CHOICE_NOTICE,
   statusKeyOf,
   typeKeyOf,
   useReportParams,
@@ -291,6 +292,8 @@ export default function FoodReportClient({ todayYMD }) {
   );
 
   const pastDayNote = data.days.some((d) => d.pastDayNote);
+  // R4L-5: หลายวัน หรือวันเดียวที่ผ่านมาแล้ว (pastDayNote จาก server) -> แจ้งว่าตัวเลือกอาหารอาจไม่ตรง
+  const staleNotice = from !== to || pastDayNote ? STALE_CHOICE_NOTICE : "";
   const rowsByDay = useMemo(() => groupBy(allRows, (o) => o.dayYMD), [allRows]);
   const sheetDays = useMemo(
     () => data.days.filter((d) => (d.shops || []).length > 0),
@@ -318,9 +321,14 @@ export default function FoodReportClient({ todayYMD }) {
   /* ---------------- export / print ---------------- */
   const fileStem = from === to ? from : `${from}_${to}`;
 
+  // R4L-5: export มีบรรทัดแจ้งเตือนบนสุดเมื่อเงื่อนไขเป็นจริง (ตามด้วยบรรทัดว่าง)
+  function withNoticeRow(aoa) {
+    return staleNotice ? [[staleNotice], [], ...aoa] : aoa;
+  }
+
   function exportCsv(rows, selected) {
     if (!rows.length) return alert(selected ? "ยังไม่ได้เลือกรายชื่อ" : "ยังไม่มีข้อมูลสำหรับ Export");
-    const csv = aoaToCsv(buildExportAoa(rows));
+    const csv = aoaToCsv(withNoticeRow(buildExportAoa(rows)));
     downloadBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8;" }),
       `food-report_${selected ? "selected_" : ""}${fileStem}.csv`,
@@ -332,7 +340,7 @@ export default function FoodReportClient({ todayYMD }) {
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildExportAoa(rows)), "Food Report");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(withNoticeRow(buildExportAoa(rows))), "Food Report");
       XLSX.writeFile(wb, `food-report_${fileStem}.xlsx`);
     } catch (err) {
       console.error(err);
@@ -342,7 +350,7 @@ export default function FoodReportClient({ todayYMD }) {
 
   function printRows(rows) {
     if (!rows.length) return;
-    openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to)));
+    openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to), { notice: staleNotice }));
   }
 
   // ใบสั่งร้าน Set: rows of that shop section (set only), one day per sheet
@@ -366,6 +374,8 @@ export default function FoodReportClient({ todayYMD }) {
       printedAt: new Date(),
       origin: window.location.origin,
       classTitle: (o) => cleanClassTitle(o.className || o.classTitle || "-", o.courseCode),
+      // ใบสั่งร้านเป็นวันเดียว: แจ้งเตือนเมื่อวันนั้นผ่านมาแล้ว
+      notice: data.days.find((d) => d.dayYMD === dayYMD)?.pastDayNote ? STALE_CHOICE_NOTICE : "",
     });
     if (!openAndPrint(html)) return alert("เปิดหน้าต่างพิมพ์ไม่ได้ (ตรวจสอบ pop-up blocker)");
     setSetSheet(null);
@@ -505,10 +515,16 @@ export default function FoodReportClient({ todayYMD }) {
         )}
       </DateRangeBar>
 
-      {pastDayNote && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-          วันที่ผ่านมาแล้ว: ข้อมูลอาหาร Set / ไม่รับอาหาร แสดงตามที่เลือกไว้ล่าสุดของผู้เรียน
-          (ระบบไม่ได้เก็บแยกรายวัน) — ส่วนคูปองมาจากออเดอร์ของวันนั้นจริง
+      {/* R4L-5: หลายวัน / วันที่ผ่านมา — ตัวเลือกอาหารอาจไม่ตรง (ดูวันนี้วันเดียว = ไม่แสดง) */}
+      {staleNotice && (
+        <div
+          data-testid="stale-choice-notice"
+          className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
+        >
+          {staleNotice}
+          <div className="mt-0.5 text-[11px] font-normal text-amber-800">
+            ส่วนคูปองมาจากออเดอร์ของวันนั้นจริง
+          </div>
         </div>
       )}
 

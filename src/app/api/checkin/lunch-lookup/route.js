@@ -18,6 +18,7 @@ import { bangkokYMD, bangkokHM, computeDayIndexToday } from "@/lib/classDates";
 import { computeStatus, activeKeyOf } from "@/lib/lunchOrders.server";
 import { orderWindow, finalCloseLabel } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
+import { todayFoodOf } from "@/lib/lunchChoice";
 
 export const dynamic = "force-dynamic";
 
@@ -92,13 +93,10 @@ export async function GET(req) {
 
     const items = students.map((s) => {
       const cid = String(s.classId);
-      const { c, day } = todayClasses.get(cid);
-      const food = s.food || {};
+      const { c } = todayClasses.get(cid);
       // เลือกคูปอง "ของวันนี้" ของคลาสนี้จริง (กติกาเดียวกับ lunch-token)
-      const couponToday =
-        String(food.choiceType || "") === "coupon" &&
-        (!food.classId || String(food.classId) === cid) &&
-        Number(food.day) === day;
+      // R4L-4: todayFoodOf — classId / day ว่างไม่นับว่าตรง
+      const couponToday = todayFoodOf(s, c, now)?.choiceType === "coupon";
 
       const o = orderByKey.get(activeKeyOf(cid, String(s._id), todayYMD));
       return {

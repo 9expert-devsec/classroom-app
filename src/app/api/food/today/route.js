@@ -19,6 +19,7 @@ import {
 } from "@/lib/couponAvailability.server";
 import { toBkkYMD, isCouponClosed } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
+import { todayFoodOf } from "@/lib/lunchChoice";
 
 export const dynamic = "force-dynamic";
 
@@ -65,14 +66,8 @@ export async function GET(req) {
     const day = Number(dayParam);
     const hasDay = Number.isFinite(day) && day > 0;
 
-    // ---------------------------
-    // ✅ NEW: currentFood (prefill)
-    // ---------------------------
+    // R4L-2: currentFood (prefill) คำนวณหลังรู้คลาสแล้ว — ดูด้านล่าง
     let currentFood = null;
-    if (studentId) {
-      const stu = await Student.findById(studentId).select("food").lean();
-      if (stu) currentFood = buildCurrentFood(stu);
-    }
 
     let classDoc = null;
     let classInfo = {
@@ -95,7 +90,7 @@ export async function GET(req) {
     if (classId) {
       const klass = await Class.findById(classId)
         .select(
-          "date days courseName customCourseName classImageUrl disableCoupon classKind",
+          "date days dayCount duration.dayCount courseName customCourseName classImageUrl disableCoupon classKind",
         )
         .lean();
       if (klass) {
@@ -113,7 +108,7 @@ export async function GET(req) {
       if (cId) {
         const klass = await Class.findById(cId)
           .select(
-            "date days courseName customCourseName classImageUrl disableCoupon classKind",
+            "date days dayCount duration.dayCount courseName customCourseName classImageUrl disableCoupon classKind",
           )
           .lean();
         if (klass) {
@@ -121,6 +116,17 @@ export async function GET(req) {
           classInfo = buildClassInfo(klass);
         }
       }
+    }
+
+    // ---------------------------
+    // ✅ currentFood (prefill)
+    // R4L-2: เฉพาะตัวเลือกของ "วันนี้" ของคลาสนี้ (todayFoodOf) — วันใหม่ / ยังไม่ได้เลือกวันนี้ = null
+    //        (kiosk ไม่ prefill ของเมื่อวาน) · แก้ซ้ำวันเดียวกัน (edit-user) ยังได้ค่าที่บันทึกไว้วันนี้
+    // ---------------------------
+    if (studentId && classDoc) {
+      const stu = await Student.findById(studentId).select("food").lean();
+      const todayFood = stu ? todayFoodOf(stu, classDoc) : null;
+      if (todayFood) currentFood = buildCurrentFood({ food: todayFood });
     }
 
     // ✅ P1c: หาวันด้วย Bangkok day key แล้วค้น FoodDaySet ด้วย dayYMD

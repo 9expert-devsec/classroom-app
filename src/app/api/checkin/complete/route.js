@@ -146,8 +146,11 @@ export async function POST(req) {
   // ---------------------------------------------------
   // ดึงข้อมูลอาหารและ signature จาก Student ไปเก็บใน Checkin
   // ---------------------------------------------------
-  const food = student.food || {};
-  const signatureUrl = student.signatureUrl || "";
+  // R4L-3: อ่านค่า "ปัจจุบัน" ตอนนี้ (ไม่ใช้ student ที่อ่านไว้ตั้งแต่ต้น request) เพื่อทำ snapshot ลง Checkin
+  //        เส้นทางนี้ไม่เขียน Student.food อีกแล้ว — ตัวเลือกที่บันทึกระหว่างนี้ (เช่นแอดมิน) จึงไม่หาย
+  const current = await Student.findById(studentId).select("food signatureUrl").lean();
+  const food = current?.food || {};
+  const signatureUrl = current?.signatureUrl || "";
 
   // upsert Checkin record ของวันนั้น (รายวัน)
   const checkinDoc = await Checkin.findOneAndUpdate(
@@ -168,17 +171,17 @@ export async function POST(req) {
   // ---------------------------------------------------
   // อัปเดตสถานะใน Student (รายวันผ่าน checkinStatus)
   // ---------------------------------------------------
-  const checkinStatus = student.checkinStatus || {};
-  checkinStatus[`day${effectiveDay}`] = true;
-
-  await Student.findByIdAndUpdate(studentId, {
-    $set: {
-      checkinStatus,
-      lastCheckinAt: now,
-      signatureUrl,
-      food,
+  // R4L-3: $set เฉพาะ field ที่เส้นทางนี้เป็นเจ้าของ — ไม่เขียน food / signatureUrl ทับ
+  //        และไม่เขียน checkinStatus ทั้งก้อน (เดิมเขียนค่าที่อ่านไว้ตั้งแต่ต้นกลับไป)
+  await Student.updateOne(
+    { _id: student._id },
+    {
+      $set: {
+        [`checkinStatus.day${effectiveDay}`]: true,
+        lastCheckinAt: now,
+      },
     },
-  });
+  );
 
   return NextResponse.json({
     ok: true,

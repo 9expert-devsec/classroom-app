@@ -15,6 +15,7 @@ import {
   classDayYMD,
   bangkokDayStartUTC,
 } from "@/lib/classDates";
+import { todayFoodOf } from "@/lib/lunchChoice";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,8 @@ export async function GET(req) {
   };
 
   // ----- ข้อมูลอาหาร (อ่านจาก student.food) -----
+  // R4L-2: เฉพาะตัวเลือกของ "วันนี้" ของคลาสนี้ (todayFoodOf) — ยังไม่ได้เลือกวันนี้ = ไม่มีสรุปอาหาร
+  //        (ไม่แสดงของเมื่อวานบนหน้าเซ็นชื่อ)
   let foodPreview = null;
 
   // ✅ Masterclass ไม่มีขั้นตอนอาหารเลย
@@ -97,7 +100,7 @@ export async function GET(req) {
   // (ตัดที่ sf = null → ข้าม lookup Restaurant/FoodMenu/FoodAddon/FoodDrink ทั้งหมด)
   const isMasterclass = klass?.classKind === "masterclass";
 
-  const sf = isMasterclass ? null : student.food || null;
+  const sf = isMasterclass || !klass ? null : todayFoodOf(student, klass);
   if (sf) {
     const choiceType = String(sf.choiceType || "");
     const noFood = !!sf.noFood;
