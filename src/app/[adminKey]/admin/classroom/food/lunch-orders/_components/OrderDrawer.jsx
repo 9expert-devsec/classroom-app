@@ -28,6 +28,7 @@ import {
   baht,
   hasActions,
   sourceLabel,
+  statusNote,
 } from "./lunchOrdersUi";
 
 function Section({ Icon, title, children }) {
@@ -229,9 +230,10 @@ export default function OrderDrawer({
             <Field Icon={Layers} label="ที่มา">
               {sourceLabel(row) || "-"}
             </Field>
-            {row.cancelReason ? (
+            {/* R2a-3: ข้อความไทยชุดเดียวกับป้ายในตาราง — ไม่แสดงรหัสเหตุผลดิบ */}
+            {row.status === "cancelled" && statusNote(row) ? (
               <Field Icon={X} label="เหตุผลยกเลิก">
-                {row.cancelReason}
+                {statusNote(row)}
               </Field>
             ) : null}
           </Section>

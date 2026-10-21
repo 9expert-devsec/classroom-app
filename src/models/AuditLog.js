@@ -77,5 +77,11 @@ const AuditLogSchema = new mongoose.Schema(
 
 AuditLogSchema.index({ createdAt: -1 });
 
-export default mongoose.models.AuditLog ||
-  mongoose.model("AuditLog", AuditLogSchema);
+// R2a-3: ลงทะเบียน model ใหม่ทุกครั้งที่ไฟล์นี้ถูกโหลด
+// `mongoose.models.AuditLog || ...` ทำให้ dev server (hot reload) ใช้ model ที่ compile ไว้ก่อน
+// ที่ enum ของ action จะเพิ่ม — action ใหม่ (lunch.issue / lunch.submit / lunch.cancel_coupon …)
+// จึงไม่ผ่าน validation และ audit แบบ best-effort ทิ้งไปเงียบ ๆ
+// production โหลดไฟล์นี้ครั้งเดียวต่อ process จึงเหมือนเดิม
+if (mongoose.models.AuditLog) mongoose.deleteModel("AuditLog");
+
+export default mongoose.model("AuditLog", AuditLogSchema);

@@ -11,6 +11,7 @@ import mongoose from "mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import AuditLog from "@/models/AuditLog";
 import CouponStockCode from "@/models/CouponStockCode";
+import AdminUser from "@/models/AdminUser";
 
 import { bangkokHM } from "@/lib/classDates";
 import { cancelReasonLabel } from "@/lib/lunchCancelReasons";
@@ -73,7 +74,7 @@ function placedMode(order) {
 }
 
 /** เหตุการณ์จาก field ของออเดอร์ (ยังไม่มีชื่อผู้ทำ ยกเว้นที่ออเดอร์เก็บไว้เอง) */
-function orderEvents(order, stockById) {
+function orderEvents(order, stockById, adminNameById = new Map()) {
   const id = String(order._id);
   const ev = [];
   const push = (e) => ev.push({ orderId: id, actorName: null, ...e });
@@ -126,7 +127,13 @@ function orderEvents(order, stockById) {
       at: order.cancelledAt || order.updatedAt,
       kind: "cancelled",
       label: `ยกเลิก: ${cancelReasonLabel(order.cancelReason, { byAdmin })}`,
-      actorName: order.cancelledBy === "learner" ? "ผู้เรียน" : byAdmin ? "ผู้ดูแล" : null,
+      // ไม่มี audit (หรือ audit เขียนไม่สำเร็จ) -> ชื่อแอดมินจาก cancelledBy (admin id)
+      actorName:
+        order.cancelledBy === "learner"
+          ? "ผู้เรียน"
+          : byAdmin
+            ? adminNameById.get(String(order.cancelledBy)) || "ผู้ดูแล"
+            : null,
       detail: joinDetail([order.restaurantName, order.couponCode]),
       // R2a-3: รหัสของใบที่ยกเลิกไปแล้วอยู่สถานะไหน (คืนแล้ว / รอคืน / void ...)
       couponCodeState: couponCodeStateOf(order, code),
@@ -229,11 +236,26 @@ export async function buildLunchTimeline({ classId, studentId, dayYMD }) {
   ]);
   const stockById = new Map(stockDocs.map((d) => [String(d._id), d]));
 
+  // R2a-3: ชื่อแอดมินของ cancelledBy (admin id) — ใช้เมื่อไม่มี audit ให้รวม
+  const adminIds = [
+    ...new Set(
+      orders
+        .map((o) => String(o.cancelledBy || ""))
+        .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+    ),
+  ];
+  const adminDocs = adminIds.length
+    ? await AdminUser.find({ _id: { $in: adminIds } }).select("name username").lean()
+    : [];
+  const adminNameById = new Map(
+    adminDocs.map((u) => [String(u._id), String(u.name || u.username || "").trim()]),
+  );
+
   // ตั้งต้นจาก field ของออเดอร์ แล้วเอาชื่อผู้ทำจาก audit ที่เป็นเหตุการณ์เดียวกันมาทับ
   const byKey = new Map();
   const events = [];
   for (const o of orders) {
-    for (const e of orderEvents(o, stockById)) {
+    for (const e of orderEvents(o, stockById, adminNameById)) {
       byKey.set(`${e.orderId}:${e.kind}`, e);
       events.push(e);
     }
