@@ -127,7 +127,10 @@ function orderEvents(order, stockById) {
       label: `ยกเลิก: ${cancelReasonLabel(order.cancelReason, { byAdmin })}`,
       actorName: order.cancelledBy === "learner" ? "ผู้เรียน" : byAdmin ? "ผู้ดูแล" : null,
       detail: joinDetail([order.restaurantName, order.couponCode]),
-      ...(awaitingReturn ? { awaitingReturn: true, stockCodeId: String(code._id) } : {}),
+      // drawer แนบปุ่ม "รับคืน" ให้ใบนี้ได้ (โมดัลยืนยันแสดงรหัส)
+      ...(awaitingReturn
+        ? { awaitingReturn: true, stockCodeId: String(code._id), couponCode: order.couponCode || "" }
+        : {}),
     });
   }
 

@@ -458,6 +458,7 @@ export default function LunchOrdersPage() {
           row={selected}
           error={actionError}
           actionProps={actionProps}
+          timelineKey={timelineKey}
           blockEsc={modalOpen}
           onClose={closeDrawer}
         />
