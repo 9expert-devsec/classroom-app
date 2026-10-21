@@ -26,6 +26,7 @@ import { lunchNow } from "@/lib/lunchClock.server";
 import { getDaySet, getCouponAvailability } from "@/lib/couponAvailability.server";
 import { assignCode } from "@/lib/couponStock.server";
 import { notifyAfterSubmit } from "@/lib/lunchNotify.server";
+import { writeLunchAudit } from "@/lib/lunchAdmin.server";
 
 /* ---------------- limits ---------------- */
 
@@ -432,6 +433,22 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   // P4b: แจ้งเตือนแอดมิน (หลัง commit แล้วเท่านั้น) — notifyAfterSubmit catch เองทั้งหมด
   // จึงไม่มีทางทำให้ submit ที่สำเร็จแล้วกลายเป็น error
   await notifyAfterSubmit(updated);
+
+  // R2a: audit หลัง commit (best-effort) — replay ไม่ถึงตรงนี้ จึงไม่ซ้ำ
+  await writeLunchAudit({
+    ctx: { user: { username: "learner", name: updated?.nickname || "" } },
+    action: "lunch.submit",
+    order: updated,
+    before: { status: "pending" },
+    after: { status: updated?.status },
+    meta: {
+      statusBefore: "pending",
+      statusAfter: updated?.status || "",
+      couponSource: updated?.couponSource || "",
+      couponCode: updated?.couponCode || "",
+      restaurantId: String(updated?.restaurantId || ""),
+    },
+  });
 
   return { order: updated };
 }

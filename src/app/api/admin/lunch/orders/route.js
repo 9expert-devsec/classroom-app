@@ -63,6 +63,11 @@ export async function GET(req) {
     for (const o of all) latestByKey.set(`${o.classId}:${o.studentId}`, o);
     const latestIds = new Set([...latestByKey.values()].map((o) => String(o._id)));
 
+    // R-c: "เคยสั่งแล้ว" = ใบใดก็ได้ของคนนั้นในวันนั้นมี submittedAt (ไม่ใช่แค่ใบล่าสุด)
+    const placedKeys = new Set(
+      all.filter((o) => !!o.submittedAt).map((o) => `${o.classId}:${o.studentId}`),
+    );
+
     const nameRe = q ? new RegExp(escapeRegExp(q), "i") : null;
     const matchName = (o) =>
       !nameRe || nameRe.test(o.holderName || "") || nameRe.test(o.nickname || "");
@@ -109,8 +114,10 @@ export async function GET(req) {
       const status = computeStatus(o, now);
       const isLatest = latestIds.has(String(o._id));
       // C1: ยกเลิก / ออก QR ใหม่ ได้เฉพาะใบที่เคยสั่งแล้ว และก่อน 15:00
+      // R-c: เคยสั่ง = ใบใดก็ได้ของวันนั้น
+      const placedToday = placedKeys.has(`${o.classId}:${o.studentId}`);
       const reissueable = status === "cancelled" && isLatest && dayYMD === today;
-      const reissueBlocked = reissueable ? reopenBlockedReason(o, now) : "";
+      const reissueBlocked = reissueable ? reopenBlockedReason(o, now, placedToday) : "";
       const cancelBlocked = cancelBlockedReason(o, now);
       return {
         orderId: String(o._id),

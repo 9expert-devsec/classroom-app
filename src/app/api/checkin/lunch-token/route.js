@@ -7,19 +7,17 @@
 //   - นักเรียนคนนี้อยู่คลาสนี้จริง
 //   - วันนี้เช็คอินแล้วจริง
 //   - ตัวเลือกอาหารที่บันทึกไว้ของวันนี้คือ "coupon" จริง
+// R2a: กติกาทั้งหมดอยู่ที่ assertLunchIssueAllowed (lunchActions.server.js)
+//      ใช้ตัวเดียวกับแอดมิน "ออก QR" — ออกใบใหม่ได้แล้วเขียน audit lunch.issue
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
-import { kioskGuard } from "@/lib/kioskAuth.server";
-
-import Student from "@/models/Student";
-import Class from "@/models/Class";
-import Checkin from "@/models/Checkin";
+import { requireKiosk, authErrorResponse, kioskAuditCtx } from "@/lib/kioskAuth.server";
 
 import { issueLunchOrder, computeStatus } from "@/lib/lunchOrders.server";
-import { couponUnavailableMessage } from "@/lib/couponAvailability.server";
-import { toBkkYMD, orderWindow, isCouponClosed, finalCloseLabel } from "@/lib/lunchConfig";
+import { assertLunchIssueAllowed, issueReasonMessage } from "@/lib/lunchActions.server";
+import { writeLunchAudit } from "@/lib/lunchAdmin.server";
+import { orderWindow, finalCloseLabel } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
-import { classDayIndexToday, isCheckinToday } from "@/lib/classDates";
 
 export const dynamic = "force-dynamic";
 
@@ -36,30 +34,15 @@ function isObjectId(x) {
   return /^[0-9a-fA-F]{24}$/.test(String(x || "").trim());
 }
 
-// ข้อความไทยของเหตุผลที่ออก QR ไม่ได้
-function reasonMessage(reason) {
-  if (
-    reason === "class_disabled" ||
-    reason === "no_coupon_restaurant" ||
-    reason === "coupon_closed"
-  ) {
-    return couponUnavailableMessage(reason);
-  }
-  if (reason === "not_checked_in") return "ยังไม่พบการเช็คอินของวันนี้";
-  if (reason === "not_coupon_choice") return "วันนี้ไม่ได้เลือกรับคูปอง";
-  if (reason === "coupon_not_today") return "ตัวเลือกคูปองที่บันทึกไว้ไม่ใช่ของวันนี้";
-  if (reason === "not_class_day") return "วันนี้ไม่ใช่วันเรียนของคลาสนี้";
-  if (reason === "student_not_in_class") return "ผู้เรียนไม่ได้อยู่ในคลาสนี้";
-  if (reason === "student_not_found") return "ไม่พบผู้เรียน";
-  if (reason === "class_not_found") return "ไม่พบคลาส";
-  return "ออก QR ไม่สำเร็จ";
-}
-
 // POST { classId, studentId } -> { path: "/lunch/<token>" }
 export async function POST(req) {
   // L2a: kiosk session required, before any DB work or body parsing
-  const denied = await kioskGuard(req);
-  if (denied) return denied;
+  let auth;
+  try {
+    auth = await requireKiosk(req);
+  } catch (e) {
+    return authErrorResponse(e);
+  }
 
   try {
     await dbConnect();
@@ -72,80 +55,40 @@ export async function POST(req) {
       return bad("ข้อมูลไม่ครบ", 400, { reason: "bad_request" });
     }
 
-    const [student, klass] = await Promise.all([
-      Student.findById(studentId).select("classId food").lean(),
-      Class.findById(classId).select("date days dayCount duration.dayCount").lean(),
-    ]);
-
     // ทุกคำตอบที่ไม่สำเร็จแนบ reason ไปด้วย — แท็บเล็ตใช้แยกว่า "ไม่ได้เลือกคูปอง"
     // (ไม่ต้องแสดงอะไร) ออกจากความผิดพลาดที่ต้องแจ้งเจ้าหน้าที่
-    const fail = (reason, status) => bad(reasonMessage(reason), status, { reason });
-
-    if (!student) return fail("student_not_found", 404);
-    if (!klass) return fail("class_not_found", 404);
-
-    // 1) ผู้เรียนต้องอยู่คลาสนี้จริง
-    if (String(student.classId || "") !== classId) {
-      return fail("student_not_in_class", 403);
-    }
-
-    const todayYMD = toBkkYMD(new Date());
-
-    // 2) ต้องเช็คอินแล้ววันนี้ — ดูจาก Checkin ของวันเรียนที่ตรงกับวันนี้
-    //    P3g: วันเรียนของวันนี้มาจาก helper กลาง (เวลาไทย, days[] ก่อน)
-    const dayIndex = classDayIndexToday(klass) || 0;
-
-    if (dayIndex < 1) return fail("not_class_day", 409);
-
-    // L2b: "เช็คอินแล้ววันนี้" = มี Checkin ของ (ผู้เรียน, คลาส, day ของวันนี้)
-    //      และ isCheckinToday (เวลาเช็คอินตกวันนี้ตามเวลาไทย) — กฎเดียวกับ edit-user
-    //      ตรวจก่อนเรื่องคูปอง: ยังไม่เช็คอิน = ไม่ออก token ไม่ว่ากรณีใด
-    const checkin = await Checkin.findOne({
-      studentId: student._id,
-      classId: klass._id,
-      day: dayIndex,
-    }).lean();
-
-    if (!isCheckinToday(checkin)) {
-      return fail("not_checked_in", 403);
-    }
-
-    // 3a) ไม่ได้เลือกคูปองเลย = ไม่มี Step 3 (ไม่ใช่ความผิดพลาด)
-    const food = student.food || {};
-    if (String(food.choiceType || "") !== "coupon") {
-      return fail("not_coupon_choice", 409);
-    }
-
-    // 3b) คูปองที่เลือกไว้ต้องเป็นของคลาสนี้ และของ "วันนี้"
-    //    P3c: Student.food เก็บค่าเดียวทับกันไปเรื่อย ๆ ถ้าไม่เช็ค day ด้วย
-    //    คนที่เลือกคูปองไว้เมื่อวานจะยังขอ QR ของวันนี้ได้
-    const foodClassMatches =
-      !food.classId || String(food.classId) === classId;
-    const foodDayMatches =
-      food.day === null || food.day === undefined
-        ? false
-        : Number(food.day) === dayIndex;
-
-    if (!foodClassMatches || !foodDayMatches) {
-      return fail("coupon_not_today", 409);
-    }
-
-    // C2: ถึง 15:00 แล้ว ไม่ออก QR (ใบที่ออกตอนนี้ก็หมดอายุทันทีอยู่ดี)
-    //     เช็คก่อน issueLunchOrder จึงไม่มีการเขียนออเดอร์ใหม่
-    {
-      const now = lunchNow();
-      if (isCouponClosed(toBkkYMD(now), now)) return fail("coupon_closed", 403);
+    const guard = await assertLunchIssueAllowed({ classId, studentId });
+    if (!guard.ok) {
+      return bad(issueReasonMessage(guard.reason), guard.status, { reason: guard.reason });
     }
 
     // 4) ออกออเดอร์ (idempotent — กด Step 3 ซ้ำได้ token เดิม)
     const res = await issueLunchOrder({
       studentId,
       classId,
-      dayYMD: todayYMD,
+      dayYMD: guard.todayYMD,
     });
 
     if (!res.ok) {
-      return bad(reasonMessage(res.reason), 409, { reason: res.reason });
+      return bad(issueReasonMessage(res.reason), 409, { reason: res.reason });
+    }
+
+    // R2a: audit เฉพาะตอนออกใบใหม่จริง (กดซ้ำได้ token เดิม ไม่ลงซ้ำ)
+    if (res.created) {
+      await writeLunchAudit({
+        ctx: kioskAuditCtx(auth.session),
+        req,
+        action: "lunch.issue",
+        order: res.order,
+        before: { status: "none" },
+        after: { status: "pending", deadlineAt: res.order.deadlineAt },
+        meta: {
+          statusBefore: "none",
+          statusAfter: "pending",
+          source: "kiosk",
+          reopenCount: res.order.reopenCount || 0,
+        },
+      });
     }
 
     // P4b-0: ส่งเส้นตายจริงของใบนี้ + phase กลับไปด้วย (ใบที่ออก QR ใหม่ไม่ใช่ 11:15)

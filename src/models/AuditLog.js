@@ -50,6 +50,13 @@ const AuditLogSchema = new mongoose.Schema(
         "kiosk.revoke",
         // ✅ C3: Merchant กดใช้ e-coupon
         "lunch.redeem",
+        // ✅ R2a: ออก QR / ผู้เรียนยืนยัน / action ใหม่ของแอดมิน
+        "lunch.issue",
+        "lunch.submit",
+        "lunch.regenerate",
+        "lunch.cancel_coupon",
+        "lunch.cancel_for_edit",
+        "lunch.view_qr",
       ],
       default: "custom",
       index: true,

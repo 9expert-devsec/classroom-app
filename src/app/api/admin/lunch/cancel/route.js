@@ -23,6 +23,8 @@ export async function POST(req) {
       reason: body?.reason,
       ctx,
       req,
+      // R2a: ordered / at_shop หลัง 15:00 ยกเลิกไม่ได้ (กันที่ server ด้วย ไม่ใช่แค่ UI)
+      enforceFinalClose: true,
     });
     return NextResponse.json({ ok: true, ...res }, { headers: NO_STORE });
   } catch (err) {

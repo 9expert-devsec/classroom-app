@@ -119,6 +119,32 @@ export async function requireKioskStaff(req) {
 }
 
 /**
+ * R2a: audit ctx (same shape writeAuditLog reads) for a request made by a kiosk.
+ * The actor is the kiosk itself - never an admin cookie that happens to be in
+ * the same browser. `kiosk` rides along for audit meta (sid / staff step-up).
+ */
+export function kioskAuditCtx(session, now = new Date()) {
+  const label = String(session?.label || "").trim() || "kiosk";
+  const staff = isStaffUnlocked(session, now);
+  const staffBy = staff ? String(session?.staffUnlockByName || "").trim() : "";
+  return {
+    user: {
+      id: "",
+      username: `kiosk:${label}`,
+      name: staffBy ? `Kiosk ${label} (staff: ${staffBy})` : `Kiosk ${label}`,
+      avatarUrl: "",
+    },
+    roleCode: "KIOSK",
+    kiosk: {
+      sid: String(session?.sid || ""),
+      label,
+      staffUnlocked: staff,
+      staffUnlockByName: staffBy,
+    },
+  };
+}
+
+/**
  * Kiosk session first; otherwise an admin session holding `perm`.
  * Neither -> the same 401 kiosk_required.
  */

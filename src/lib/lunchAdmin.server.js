@@ -87,6 +87,8 @@ async function audit({ ctx, req, action, order, before, after, meta }) {
         studentId: String(order?.studentId || ""),
         classId: String(order?.classId || ""),
         dayYMD: order?.dayYMD || "",
+        // R2a: บันทึกจากแท็บเล็ต -> เก็บว่าเครื่องไหน / staff step-up อยู่ไหม
+        ...(ctx?.kiosk ? { kiosk: ctx.kiosk } : {}),
         ...meta,
       },
     });
@@ -94,6 +96,9 @@ async function audit({ ctx, req, action, order, before, after, meta }) {
     console.warn("[lunchAdmin] writeAuditLog failed:", e?.message || e);
   }
 }
+
+// R2a: ให้ lunchActions.server.js เขียน audit รูปแบบเดียวกัน (best-effort)
+export { audit as writeLunchAudit };
 
 /* ---------------- today guard ---------------- */
 
@@ -118,6 +123,20 @@ export function wasPlaced(order) {
   return !!order?.submittedAt;
 }
 
+/**
+ * R-c: "เคยสั่งแล้ว" = มีออเดอร์ใบใดก็ได้ของ (คลาส, ผู้เรียน, วัน) ที่มี submittedAt
+ * ไม่ใช่ดูแค่ใบล่าสุด (ใบล่าสุดอาจเป็นใบที่ออกใหม่แล้วถูกยกเลิกก่อนสั่ง)
+ */
+export async function wasPlacedToday({ classId, studentId, dayYMD, session = null }) {
+  const hit = await LunchOrder.exists({
+    classId,
+    studentId,
+    dayYMD: String(dayYMD || ""),
+    submittedAt: { $ne: null },
+  }).session(session);
+  return !!hit;
+}
+
 function isAfterFinalClose(order, now) {
   const fc = finalCloseAt(order?.dayYMD);
   return !!fc && new Date(now).getTime() >= fc.getTime();
@@ -133,10 +152,11 @@ export const ALREADY_USED_MESSAGE = "ร้านใช้คูปองนี�
 /**
  * เหตุผลที่ออก QR ใหม่ไม่ได้ ("" = ได้) — ใช้ทั้ง reopenLunchOrder และหน้าแอดมิน
  * ได้เฉพาะก่อน 15:00 ของวันนั้น และใบก่อนหน้าต้องเคย ordered / at_shop
+ * R-c: placed = เคยสั่งแล้วในวันนั้น (ใบใดก็ได้) — ไม่ส่งมา = ดูจากใบนี้ใบเดียวแบบเดิม
  */
-export function reopenBlockedReason(prevOrder, now = lunchNow()) {
+export function reopenBlockedReason(prevOrder, now = lunchNow(), placed = wasPlaced(prevOrder)) {
   if (isAfterFinalClose(prevOrder, now)) return afterFinalCloseMessage();
-  if (!wasPlaced(prevOrder)) return NEVER_PLACED_MESSAGE;
+  if (!placed) return NEVER_PLACED_MESSAGE;
   return "";
 }
 
@@ -173,6 +193,8 @@ export async function cancelLunchOrder({
   // R2a: ส่ง session มา = ทำงานใน transaction ของผู้เรียก (ไม่เปิดเอง)
   //      แล้วคืน afterCommit() ให้ผู้เรียกเขียน audit หลัง commit เอง
   session: callerSession = null,
+  // R2a: true = ordered / at_shop ยกเลิกไม่ได้หลัง 15:00 (เดิมกันไว้แค่ที่ UI)
+  enforceFinalClose = false,
 }) {
   if (!mongoose.Types.ObjectId.isValid(String(orderId || ""))) {
     fail(400, "bad_request", "ข้อมูลไม่ครบ");
@@ -189,6 +211,13 @@ export async function cancelLunchOrder({
     }
     if (order.redeemedAt) {
       fail(409, "already_used", ALREADY_USED_MESSAGE);
+    }
+    if (
+      enforceFinalClose &&
+      (order.status === "ordered" || order.status === "at_shop") &&
+      isAfterFinalClose(order, at)
+    ) {
+      fail(409, "after_final_close", afterFinalCloseMessage());
     }
 
     const set = {
@@ -376,10 +405,11 @@ export async function reopenLunchOrder({
     .lean();
 
   // C1: ก่อน 15:00 และต้องเป็นคนที่เคยสั่งแล้วเท่านั้น
+  // R-c: "เคยสั่ง" ดูทุกใบของวันนั้น ไม่ใช่แค่ใบล่าสุด
   if (isAfterFinalClose({ dayYMD }, at)) {
     fail(409, "after_final_close", afterFinalCloseMessage());
   }
-  if (!wasPlaced(prev)) {
+  if (!(await wasPlacedToday({ classId, studentId, dayYMD }))) {
     fail(409, "never_placed", NEVER_PLACED_MESSAGE);
   }
 
