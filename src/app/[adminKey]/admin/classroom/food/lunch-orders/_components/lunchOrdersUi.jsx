@@ -99,16 +99,31 @@ export function sourceLabel(row) {
   return "";
 }
 
+// R2a-3: รหัสของใบที่ยกเลิกแล้ว (row.couponCodeState จาก server) — ใบเก็บรหัสไว้เป็นประวัติ
+//        แต่ต้องไม่ดูเหมือนยังถืออยู่ · strike = ขีดฆ่า + จาง, chip = ป้ายสถานะ
+const CODE_STATE = {
+  awaiting_return: { strike: false, chip: "รอคืน", tone: "bg-amber-100 text-amber-800" },
+  returned: { strike: true, chip: "คืนแล้ว", tone: "bg-slate-100 text-slate-600" },
+  released: { strike: true, chip: "คืนเข้า stock", tone: "bg-slate-100 text-slate-600" },
+  voided: { strike: true, chip: "ยกเลิกแล้ว", tone: "bg-red-100 text-red-700" },
+};
+
 export function CodeCell({ row }) {
   if (!row.couponCode) return <span className="text-admin-textMuted">-</span>;
-  if (row.couponVoided) {
+  // ข้อมูลเก่าที่ไม่มี couponCodeState แต่ void แล้ว -> แสดงแบบ voided
+  const state = CODE_STATE[row.couponCodeState] || (row.couponVoided ? CODE_STATE.voided : null);
+  if (state) {
     return (
-      <span className="inline-flex items-center gap-1.5">
-        <span className="line-through decoration-red-500 decoration-2 opacity-60">
+      <span className="inline-flex flex-wrap items-center gap-1.5" data-code-state={row.couponCodeState || "voided"}>
+        <span
+          className={
+            state.strike ? "line-through decoration-slate-400 decoration-2 opacity-50" : ""
+          }
+        >
           <CouponCode code={row.couponCode} size="table" />
         </span>
-        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-700">
-          void
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${state.tone}`}>
+          {state.chip}
         </span>
       </span>
     );

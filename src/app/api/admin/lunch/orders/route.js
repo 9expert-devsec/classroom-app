@@ -29,6 +29,7 @@ import { toBkkYMD, lunchTestTimesLabel } from "@/lib/lunchConfig";
 import { bangkokHM, isYMD } from "@/lib/classDates";
 import { rowActions } from "@/lib/lunchActions.server";
 import { currentChoiceFor } from "@/lib/lunchChoice";
+import { couponCodeStateOf } from "@/lib/lunchCodeState";
 
 export const dynamic = "force-dynamic";
 
@@ -101,9 +102,15 @@ export async function GET(req) {
     // สถานะคูปอง stock (ไว้บอกผลของการยกเลิกในหน้าจอ)
     const stockIds = rows.map((o) => o.stockCodeId).filter(Boolean);
     const stockDocs = stockIds.length
-      ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status").lean()
+      ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status orderId").lean()
       : [];
-    const stockStatus = new Map(stockDocs.map((d) => [String(d._id), d.status]));
+    const stockById = new Map(stockDocs.map((d) => [String(d._id), d]));
+    // R2a-3: สถานะรหัสนับเฉพาะเมื่อรหัสยังผูกกับใบนี้ — รหัสที่คืนแล้วถูกจองให้ใบอื่น
+    //        ต้องไม่ทำให้ใบที่ยกเลิกไปแล้วดูเหมือนยังถือรหัสนั้นอยู่
+    const stockStatusOf = (o) => {
+      const code = o.stockCodeId ? stockById.get(String(o.stockCodeId)) : null;
+      return code && String(code.orderId || "") === String(o._id) ? code.status || "" : "";
+    };
 
     // รายชื่อคลาสของวันนั้น (ไว้ทำตัวกรอง + หัวกลุ่ม)
     const classIds = [...new Set(all.map((o) => String(o.classId)))];
@@ -149,7 +156,7 @@ export async function GET(req) {
       const reissueable = status === "cancelled" && isLatest && dayYMD === today;
       const reissueBlocked = reissueable ? reopenBlockedReason(o, now, placedToday) : "";
       const cancelBlocked = cancelBlockedReason(o, now);
-      const rowStockStatus = o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "";
+      const rowStockStatus = stockStatusOf(o);
       const cur = currentChoiceFor(
         foodByStudent.get(String(o.studentId)),
         classById.get(String(o.classId)),
@@ -177,7 +184,9 @@ export async function GET(req) {
         couponCode: o.couponCode || "",
         couponSource: o.couponCode ? getOrderCouponSource(o) : "",
         usesCouponStock: !!o.usesCouponStock,
-        stockStatus: o.stockCodeId ? stockStatus.get(String(o.stockCodeId)) || "" : "",
+        stockStatus: rowStockStatus,
+        // R2a-3: held / awaiting_return / returned / released / voided (null = ไม่มีรหัส)
+        couponCodeState: couponCodeStateOf(o, stockById.get(String(o.stockCodeId || "")) || null),
         // P4b: ส่งมอบ / รับคืน
         stockCodeId: o.stockCodeId ? String(o.stockCodeId) : "",
         handedOutHM: o.handedOutAt ? bangkokHM(o.handedOutAt) : "",

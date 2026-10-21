@@ -14,6 +14,7 @@ import CouponStockCode from "@/models/CouponStockCode";
 
 import { bangkokHM } from "@/lib/classDates";
 import { cancelReasonLabel } from "@/lib/lunchCancelReasons";
+import { couponCodeStateOf } from "@/lib/lunchCodeState";
 
 const CHOICE_LABELS = { food: "Set", noFood: "ไม่รับอาหาร", coupon: "Cash Coupon" };
 
@@ -127,6 +128,8 @@ function orderEvents(order, stockById) {
       label: `ยกเลิก: ${cancelReasonLabel(order.cancelReason, { byAdmin })}`,
       actorName: order.cancelledBy === "learner" ? "ผู้เรียน" : byAdmin ? "ผู้ดูแล" : null,
       detail: joinDetail([order.restaurantName, order.couponCode]),
+      // R2a-3: รหัสของใบที่ยกเลิกไปแล้วอยู่สถานะไหน (คืนแล้ว / รอคืน / void ...)
+      couponCodeState: couponCodeStateOf(order, code),
       // drawer แนบปุ่ม "รับคืน" ให้ใบนี้ได้ (โมดัลยืนยันแสดงรหัส)
       ...(awaitingReturn
         ? { awaitingReturn: true, stockCodeId: String(code._id), couponCode: order.couponCode || "" }
