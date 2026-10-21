@@ -170,98 +170,115 @@ export async function cancelLunchOrder({
   auditAction = "lunch.cancel",
   cancelledBy,
   now,
+  // R2a: ส่ง session มา = ทำงานใน transaction ของผู้เรียก (ไม่เปิดเอง)
+  //      แล้วคืน afterCommit() ให้ผู้เรียกเขียน audit หลัง commit เอง
+  session: callerSession = null,
 }) {
   if (!mongoose.Types.ObjectId.isValid(String(orderId || ""))) {
     fail(400, "bad_request", "ข้อมูลไม่ครบ");
   }
 
   const at = now ? new Date(now) : lunchNow();
-  const session = await mongoose.startSession();
   let result = null;
 
-  try {
-    await session.withTransaction(async () => {
-      const order = await LunchOrder.findById(orderId).session(session).lean();
-      if (!order) fail(404, "not_found", "ไม่พบออเดอร์");
-      if (!CANCELLABLE.includes(order.status)) {
-        fail(409, "not_cancellable", "ออเดอร์นี้ถูกยกเลิกไปแล้ว");
+  const run = async (session) => {
+    const order = await LunchOrder.findById(orderId).session(session).lean();
+    if (!order) fail(404, "not_found", "ไม่พบออเดอร์");
+    if (!CANCELLABLE.includes(order.status)) {
+      fail(409, "not_cancellable", "ออเดอร์นี้ถูกยกเลิกไปแล้ว");
+    }
+    if (order.redeemedAt) {
+      fail(409, "already_used", ALREADY_USED_MESSAGE);
+    }
+
+    const set = {
+      status: "cancelled",
+      cancelledAt: at,
+      cancelledBy: cancelledBy ?? (adminId ? String(adminId) : ""),
+      cancelReason: String(reason || "").trim().slice(0, 300),
+    };
+
+    let couponEffect = "none";
+    let stockStatusAfter = null;
+
+    // ตัดสินจากออเดอร์ — ร้าน stock ที่ออก e-coupon แทนต้องถูก void แบบร้าน e-coupon
+    const couponSource = getOrderCouponSource(order);
+    if (couponSource === "stock" && order.stockCodeId) {
+      try {
+        const code = await releaseCode(order.stockCodeId, { session });
+        stockStatusAfter = code.status;
+        couponEffect = code.status === "available" ? "released" : "awaiting_return";
+      } catch (e) {
+        // รหัสอยู่ในสถานะอื่นไปแล้ว (เช่น คืนมือไปแล้ว) — ยกเลิกออเดอร์ต่อได้
+        if (!(e instanceof CouponStockError)) throw e;
+        couponEffect = "none";
       }
-      if (order.redeemedAt) {
-        fail(409, "already_used", ALREADY_USED_MESSAGE);
-      }
+    } else if (order.couponCode && couponSource === "ecoupon") {
+      set.couponVoidedAt = at;
+      couponEffect = "voided";
+    }
 
-      const set = {
-        status: "cancelled",
-        cancelledAt: at,
-        cancelledBy: cancelledBy ?? (adminId ? String(adminId) : ""),
-        cancelReason: String(reason || "").trim().slice(0, 300),
-      };
+    // conditional: สถานะต้องยังเหมือนตอนอ่าน และร้านต้องยังไม่ได้ใช้คูปอง (C2)
+    // redeemedAt: null อยู่ใน filter เอง — ร้านกดใช้พร้อมกันก็ยกเลิกไม่ผ่าน
+    const upd = await LunchOrder.updateOne(
+      { _id: order._id, status: order.status, redeemedAt: null },
+      { $set: set, $unset: { activeKey: "" } },
+      { session },
+    );
+    if (upd.modifiedCount !== 1) {
+      const fresh = await LunchOrder.findById(order._id)
+        .select("redeemedAt")
+        .session(session)
+        .lean();
+      if (fresh?.redeemedAt) fail(409, "already_used", ALREADY_USED_MESSAGE);
+      fail(409, "conflict", "ออเดอร์เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
+    }
 
-      let couponEffect = "none";
-      let stockStatusAfter = null;
+    result = { order, statusBefore: order.status, couponEffect, stockStatusAfter };
+  };
 
-      // ตัดสินจากออเดอร์ — ร้าน stock ที่ออก e-coupon แทนต้องถูก void แบบร้าน e-coupon
-      const couponSource = getOrderCouponSource(order);
-      if (couponSource === "stock" && order.stockCodeId) {
-        try {
-          const code = await releaseCode(order.stockCodeId, { session });
-          stockStatusAfter = code.status;
-          couponEffect = code.status === "available" ? "released" : "awaiting_return";
-        } catch (e) {
-          // รหัสอยู่ในสถานะอื่นไปแล้ว (เช่น คืนมือไปแล้ว) — ยกเลิกออเดอร์ต่อได้
-          if (!(e instanceof CouponStockError)) throw e;
-          couponEffect = "none";
-        }
-      } else if (order.couponCode && couponSource === "ecoupon") {
-        set.couponVoidedAt = at;
-        couponEffect = "voided";
-      }
-
-      // conditional: สถานะต้องยังเหมือนตอนอ่าน และร้านต้องยังไม่ได้ใช้คูปอง (C2)
-      // redeemedAt: null อยู่ใน filter เอง — ร้านกดใช้พร้อมกันก็ยกเลิกไม่ผ่าน
-      const upd = await LunchOrder.updateOne(
-        { _id: order._id, status: order.status, redeemedAt: null },
-        { $set: set, $unset: { activeKey: "" } },
-        { session },
-      );
-      if (upd.modifiedCount !== 1) {
-        const fresh = await LunchOrder.findById(order._id)
-          .select("redeemedAt")
-          .session(session)
-          .lean();
-        if (fresh?.redeemedAt) fail(409, "already_used", ALREADY_USED_MESSAGE);
-        fail(409, "conflict", "ออเดอร์เพิ่งถูกเปลี่ยนสถานะ กรุณาลองใหม่");
-      }
-
-      result = { order, statusBefore: order.status, couponEffect, stockStatusAfter };
+  const writeAudit = (extraMeta = null) =>
+    audit({
+      ctx,
+      req,
+      action: auditAction,
+      order: result.order,
+      before: { status: result.statusBefore },
+      after: { status: "cancelled" },
+      meta: {
+        statusBefore: result.statusBefore,
+        statusAfter: "cancelled",
+        couponEffect: result.couponEffect,
+        couponCode: result.order.couponCode || "",
+        stockStatusAfter: result.stockStatusAfter,
+        reason: String(reason || ""),
+        adminId: adminId ? String(adminId) : null,
+        ...(extraMeta || {}),
+      },
     });
+
+  const out = () => ({
+    orderId: String(result.order._id),
+    statusBefore: result.statusBefore,
+    couponEffect: result.couponEffect,
+  });
+
+  if (callerSession) {
+    await run(callerSession);
+    // order = ใบก่อนยกเลิก (ไว้ให้ผู้เรียกอ่าน deadlineAt / reopenCount ต่อ)
+    return { ...out(), order: result.order, afterCommit: writeAudit };
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(() => run(session));
   } finally {
     await session.endSession();
   }
 
-  await audit({
-    ctx,
-    req,
-    action: auditAction,
-    order: result.order,
-    before: { status: result.statusBefore },
-    after: { status: "cancelled" },
-    meta: {
-      statusBefore: result.statusBefore,
-      statusAfter: "cancelled",
-      couponEffect: result.couponEffect,
-      couponCode: result.order.couponCode || "",
-      stockStatusAfter: result.stockStatusAfter,
-      reason: String(reason || ""),
-      adminId: adminId ? String(adminId) : null,
-    },
-  });
+  await writeAudit();
 
-  return {
-    orderId: String(result.order._id),
-    statusBefore: result.statusBefore,
-    couponEffect: result.couponEffect,
-  };
+  return out();
 }
 
 /* ---------------- choice_changed (P3b path) ---------------- */

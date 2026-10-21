@@ -96,6 +96,9 @@ export async function showBarcodeFor(order) {
  * - race-safe: พึ่ง unique index ของ activeKey แล้วจับ E11000 อ่านใหม่
  * - P4a: deadlineAt / reopenCount (optional) ใช้ตอนแอดมินออก QR ใหม่หลังยกเลิก
  *   ไม่ส่ง = เส้นตายปกติของวันนั้น, reopenCount 0 เหมือนเดิม
+ * - R2a: session (optional) = อ่าน/เขียน LunchOrder ใน transaction ของผู้เรียก
+ *   E11000 ใน transaction ทำให้ transaction ทั้งก้อน abort อ่านใบผู้ชนะต่อไม่ได้
+ *   จึงปล่อย error ออกไปให้ผู้เรียก (แปลงเป็น already_active เอง)
  */
 export async function issueLunchOrder({
   studentId,
@@ -104,6 +107,7 @@ export async function issueLunchOrder({
   now,
   deadlineAt,
   reopenCount,
+  session = null,
 }) {
   const at = now ? new Date(now) : lunchNow();
   const ymd = String(dayYMD || "").slice(0, 10) || toBkkYMD(at);
@@ -141,7 +145,7 @@ export async function issueLunchOrder({
   const key = activeKeyOf(classId, studentId, ymd);
 
   // มีใบที่ยัง live อยู่แล้ว -> คืนใบเดิม
-  const existing = await LunchOrder.findOne({ activeKey: key }).lean();
+  const existing = await LunchOrder.findOne({ activeKey: key }).session(session).lean();
   if (existing) return { ok: true, order: existing, created: false };
 
   const doc = {
@@ -159,6 +163,11 @@ export async function issueLunchOrder({
     roomName: klass.room || "",
     budget: LUNCH_BUDGET_THB,
   };
+
+  if (session) {
+    const [created] = await LunchOrder.create([doc], { session });
+    return { ok: true, order: created.toObject(), created: true };
+  }
 
   try {
     const created = await LunchOrder.create(doc);
