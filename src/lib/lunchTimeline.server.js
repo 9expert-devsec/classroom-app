@@ -45,8 +45,14 @@ function dayRange(dayYMD) {
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+// ส่วนที่ซ้ำ (เช่นรหัสคูปองที่มีทั้งในออเดอร์และใน audit) แสดงครั้งเดียว
 function joinDetail(parts) {
-  return parts.map((s) => String(s || "").trim()).filter(Boolean).join(" · ") || null;
+  const out = [];
+  for (const p of parts.flatMap((s) => String(s || "").split(" · "))) {
+    const t = p.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.join(" · ") || null;
 }
 
 function actorNameOf(audit) {
