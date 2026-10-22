@@ -133,6 +133,22 @@ const LunchOrderSchema = new Schema(
     // ✅ P4b: Counter ส่งมอบคูปองกระดาษ (stock) ให้ผู้เรียนแล้ว — เวลา + ชื่อเจ้าหน้าที่
     handedOutAt: { type: Date, default: null },
     handedOutBy: { type: String, default: "" },
+    // ✅ R5-3d: วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่มารับคูปองกระดาษ — แอดมินรับรหัสคืนเข้าคลัง
+    //    ออเดอร์คงสถานะ/ทางเลือก/stockCodeId/couponCode เดิมไว้เป็นประวัติ (รายงานวันนั้นไม่เปลี่ยน)
+    couponNotCollectedAt: { type: Date, default: null },
+    couponNotCollectedBy: { type: String, default: "" },
+    // สิ่งที่รายงานอาหารอ่านจากรหัส ณ ตอนรับคืน — รหัสอาจถูกจอง/ส่งมอบให้ใบอื่นทีหลัง
+    // รายงานของวันนั้นจึงใช้ค่านี้แทนค่าปัจจุบันของรหัส
+    couponNotCollectedStock: {
+      type: new Schema(
+        {
+          status: { type: String, default: "" },
+          handedOutAt: { type: Date, default: null },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     printedAt: { type: Date, default: null },
     printedCouponCode: { type: String, default: "" },
 

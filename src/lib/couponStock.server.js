@@ -92,7 +92,7 @@ export async function markHandedOut(codeId, { session, at } = {}) {
 
   if (!doc) {
     throw new CouponStockError(
-      "เปลี่ยนสถานะไม่ได้ (คูปองนี้ไม่ได้อยู่ในสถานะ 'ผูกแล้ว')",
+      "เปลี่ยนสถานะไม่ได้ (คูปองนี้ไม่ได้อยู่ในสถานะ 'จองแล้ว')",
     );
   }
   return doc;
@@ -123,7 +123,7 @@ export async function releaseCode(codeId, { session } = {}) {
   if (pending) return pending;
 
   throw new CouponStockError(
-    "คืนคูปองไม่ได้ (สถานะปัจจุบันไม่ใช่ 'ผูกแล้ว' หรือ 'ส่งมอบแล้ว')",
+    "คืนคูปองไม่ได้ (สถานะปัจจุบันไม่ใช่ 'จองแล้ว' หรือ 'ส่งมอบแล้ว')",
   );
 }
 

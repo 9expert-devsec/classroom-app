@@ -26,7 +26,7 @@ import { couponCodeStateOf } from "@/lib/lunchCodeState";
 import { cancelReasonLabel } from "@/lib/lunchCancelReasons";
 
 export const ORDER_ROW_FIELDS =
-  "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason cancelledBy handedOutAt handedOutBy activeKey token";
+  "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason cancelledBy handedOutAt handedOutBy activeKey token couponNotCollectedAt";
 
 export const CLASS_ROW_FIELDS =
   "title courseName customCourseName room date days dayCount duration.dayCount";
@@ -147,7 +147,9 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
     const cancelBlocked = cancelBlockedReason(o, now);
     const rowStockStatus = stockStatusOf(o);
     const codeDoc = stockById.get(String(o.stockCodeId || "")) || null;
-    const codeState = couponCodeStateOf(o, codeDoc);
+    // R5-3e: ผู้เรียนไม่มารับคูปอง แอดมินรับรหัสคืนเข้าคลังแล้ว (R5-3d) — ใบนี้ไม่ได้ถือรหัสอีกต่อไป
+    const notCollected = !!o.couponNotCollectedAt && o.status !== "cancelled";
+    const codeState = notCollected ? "not_collected" : couponCodeStateOf(o, codeDoc);
     const cur = choiceOf(o);
     const currentChoice = cur
       ? {
@@ -184,7 +186,9 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
       usesCouponStock: !!o.usesCouponStock,
       stockStatus: rowStockStatus,
       // R2a-3: held / awaiting_return / returned / released / voided (null = ไม่มีรหัส)
+      // R5-3e: + not_collected (ไม่มารับคูปอง — รับคืนเข้าคลังแล้ว) พร้อมวันที่รับคืน
       couponCodeState: codeState,
+      notCollectedYMD: notCollected ? toBkkYMD(o.couponNotCollectedAt) : "",
       stage,
       stageLabel: couponStageLabel(stage, codeState),
       // P4b: ส่งมอบ / รับคืน

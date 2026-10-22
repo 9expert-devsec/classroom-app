@@ -12,6 +12,7 @@ import ImportDrawer from "./_components/ImportDrawer";
 import LotEditDrawer from "./_components/LotEditDrawer";
 import LotRemoveDialog from "./_components/LotRemoveDialog";
 import LotRestoreDialog from "./_components/LotRestoreDialog";
+import LotStaleDialog from "./_components/LotStaleDialog";
 import { lotKey, safeJson } from "./_components/stockUi";
 import { bangkokTodayYMD } from "@/lib/classDates";
 
@@ -137,6 +138,12 @@ function CouponStockPageInner() {
     refreshAll();
   }
 
+  // R5-3d: รับคืนคูปองค้างจอง (ทั้งล็อตจากการ์ด หรือใบเดียวจากตาราง)
+  function handleStaleReleased() {
+    setLotAction(null);
+    refreshAll();
+  }
+
   function handleLotRestored() {
     setLotAction(null);
     refreshAll();
@@ -203,6 +210,15 @@ function CouponStockPageInner() {
       {lotAction?.kind === "remove" && (
         <LotRemoveDialog lot={lotAction.lot} onClose={closeLotAction} onDone={handleLotRemoved} />
       )}
+      {lotAction?.kind === "stale" && (
+        <LotStaleDialog
+          restaurantId={restaurantId}
+          lot={lotAction.lot}
+          codeId={lotAction.codeId || ""}
+          onClose={closeLotAction}
+          onDone={handleStaleReleased}
+        />
+      )}
       {lotAction?.kind === "restore" && (
         <LotRestoreDialog
           lot={lotAction.lot}
@@ -254,6 +270,13 @@ function CouponStockPageInner() {
             onLotChange={setActiveLot}
             reloadKey={reloadKey}
             onChanged={refreshAll}
+            onReleaseStale={(row) =>
+              setLotAction({
+                kind: "stale",
+                lot: { lotId: String(row.lotId), importBatch: row.importBatch, lotStatus: row.lotStatus },
+                codeId: String(row._id),
+              })
+            }
           />
         </>
       )}

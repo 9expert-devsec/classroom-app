@@ -75,6 +75,7 @@ export default function CouponTable({
   onLotChange,
   reloadKey,
   onChanged,
+  onReleaseStale,
 }) {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
@@ -409,6 +410,15 @@ export default function CouponTable({
                     >
                       {STATUS_LABELS[r.status] || r.status}
                     </span>
+                    {/* R5-3d: จองไว้แต่วันเรียนผ่านไปแล้ว */}
+                    {r.staleAssigned && (
+                      <span
+                        className="ml-1 inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                        title="วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง"
+                      >
+                        ค้างจอง
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs">{r.importBatch || "—"}</td>
                   <td className={`px-3 py-2 text-xs ${urgent ? "font-medium text-red-600" : ""}`}>
@@ -434,6 +444,11 @@ export default function CouponTable({
                         sideOffset={6}
                         className="w-40 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
                       >
+                        {r.staleAssigned && r.lotId && onReleaseStale && (
+                          <DropdownMenuItem onSelect={() => onReleaseStale(r)}>
+                            รับคืนเข้าคลัง
+                          </DropdownMenuItem>
+                        )}
                         {r.status === "awaiting_return" && (
                           <DropdownMenuItem
                             onSelect={() =>

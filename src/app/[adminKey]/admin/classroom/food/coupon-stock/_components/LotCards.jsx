@@ -60,6 +60,11 @@ function lotPill(b, d) {
   return { text: "ปกติ", cls: "bg-green-100 text-green-700" };
 }
 
+// R5-3d: จำนวนใบจองที่วันเรียนผ่านไปแล้ว (summary.buckets.staleAssigned)
+function staleCount(b) {
+  return b?.buckets?.staleAssigned || 0;
+}
+
 // R5-3: เมนู ⋯ ของการ์ดล็อต — ล็อตปกติ: แก้ไข / ลบ-ยกเลิก · ล็อตที่ยกเลิกแล้ว: กู้คืน
 function LotMenu({ b, onAction }) {
   const cancelled = isLotCancelled(b);
@@ -91,6 +96,10 @@ function LotMenu({ b, onAction }) {
               ลบ / ยกเลิกล็อต
             </DropdownMenuItem>
           </>
+        )}
+        {/* R5-3d: ใบจองที่วันเรียนผ่านไปแล้ว — ล็อตยกเลิกแล้วก็รับคืนได้ (รหัสจะถูก void) */}
+        {staleCount(b) > 0 && (
+          <DropdownMenuItem onSelect={() => onAction("stale", b)}>รับคืนคูปองค้างจอง</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -169,6 +178,17 @@ function LotCard({ b, today, active, highlight, onClick, onAction }) {
             <div>
               <div className="text-[11px] text-admin-textMuted">จองแล้ว</div>
               <div className="text-base font-semibold">{b.assigned || 0}</div>
+              {/* R5-3d: ใบจองที่วันเรียนผ่านไปแล้ว — ใช้บรรทัดเดียวกับ "รอคืน" (จองที่ไว้เสมอ) */}
+              <div className="flex h-4 justify-center">
+                {staleCount(b) > 0 && (
+                  <span
+                    className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold leading-4 text-amber-800"
+                    title="วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง"
+                  >
+                    ค้างจอง {staleCount(b)}
+                  </span>
+                )}
+              </div>
             </div>
             <div>
               <div className="text-[11px] text-admin-textMuted">ส่งมอบแล้ว</div>

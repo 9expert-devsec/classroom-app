@@ -38,6 +38,7 @@ const MAX_HITS = 50;
 function noHolderLabel(state) {
   if (state === "voided") return "ไม่มีผู้ถือ (ยกเลิกแล้ว)";
   if (state === "returned" || state === "released") return "ไม่มีผู้ถือ (คืนแล้ว)";
+  if (state === "not_collected") return "ไม่มีผู้ถือ (ไม่มารับ — รับคืนแล้ว)";
   return "ไม่มีผู้ถือ";
 }
 
@@ -65,7 +66,12 @@ export async function GET(req) {
       ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status orderId").lean()
       : [];
     const stockById = new Map(stockDocs.map((d) => [String(d._id), d]));
-    const stateOf = (o) => couponCodeStateOf(o, stockById.get(String(o.stockCodeId || "")) || null);
+    // R5-3e: ใบที่ประทับ "ไม่มารับคูปอง" (รหัสรับคืนเข้าคลังแล้ว) ไม่ใช่ผู้ถือปัจจุบัน — เป็นประวัติ
+    //         รหัสที่ถูกจองให้ใบใหม่จึงไม่โผล่เป็นผู้ถือสองคน
+    const stateOf = (o) =>
+      o.couponNotCollectedAt && o.status !== "cancelled"
+        ? "not_collected"
+        : couponCodeStateOf(o, stockById.get(String(o.stockCodeId || "")) || null);
 
     // ผู้ถือปัจจุบัน: ใบล่าสุดที่รหัสยัง held / awaiting_return — ไม่มี = ใบล่าสุดที่มีรหัสนี้
     const holders = hits.filter((o) => ["held", "awaiting_return"].includes(stateOf(o)));

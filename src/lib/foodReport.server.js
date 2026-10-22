@@ -59,7 +59,7 @@ function learnTypeOnDay(stu, day) {
 
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
-  "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia couponVoidedAt " +
+  "couponSource couponCode eCouponCode stockCodeId handedOutAt redeemedAt redeemedVia couponVoidedAt couponNotCollectedAt couponNotCollectedStock " +
   "lines.name lines.qty lines.options.choiceName lines.options.groupName lines.note nickname holderName roomName " +
   "submittedAt createdAt";
 
@@ -296,7 +296,17 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       type = "coupon";
       if (src.kind !== "coupon") flags.push("mismatch");
       const couponSource = sourceOf(order);
-      const stock = order.stockCodeId ? stockById.get(idStr(order.stockCodeId)) : null;
+      const linkedStock = order.stockCodeId ? stockById.get(idStr(order.stockCodeId)) : null;
+      // R5-3d: ผู้เรียนไม่มารับคูปอง แอดมินรับรหัสคืนเข้าคลังแล้ว — รายงานของวันนั้นต้องเหมือนเดิม
+      //        ใช้ค่าของรหัส ณ ตอนรับคืน (couponNotCollectedStock) ไม่ใช่ค่าปัจจุบันที่อาจเป็นของใบอื่นแล้ว
+      const snap = order.couponNotCollectedAt ? order.couponNotCollectedStock : null;
+      // R5-3e: สถานะของรหัสนับเฉพาะเมื่อรหัสยังผูกกับใบนี้ (รหัสที่ไปอยู่กับใบอื่นแล้วไม่ใช่ของใบนี้)
+      const ownStock =
+        linkedStock && idStr(linkedStock.orderId) === idStr(order._id) ? linkedStock : null;
+      const stock =
+        snap && linkedStock
+          ? { ...linkedStock, status: snap.status || "assigned", handedOutAt: snap.handedOutAt || null, orderId: order._id }
+          : ownStock;
       // R2b: ขั้นเดียวกับหน้าติดตามการสั่งอาหาร (pending / forfeited / ordered / at_shop)
       const state = couponStageOf({ liveOrder: order, latestOrder: order, finalClosed: dayClosed });
       if (
@@ -318,10 +328,14 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         couponSource,
         code:
           couponSource === "stock"
-            ? stock?.code || order.couponCode || ""
+            ? stock?.code || linkedStock?.code || order.couponCode || ""
             : order.eCouponCode || order.couponCode || "",
         stockCodeStatus: stock?.status || "",
-        handedOutAt: order.handedOutAt || stock?.handedOutAt || null,
+        // R5-3e: การส่งมอบเป็นของออเดอร์ (order.handedOutAt) — ไม่อ่านจากรหัส (เคยรั่วจากผู้ถือคนก่อน)
+        //        ใบที่ประทับ "ไม่มารับ" (R5-3d) ยังอ่านจาก snapshot ตามเดิม
+        handedOutAt: snap
+          ? order.handedOutAt || stock?.handedOutAt || null
+          : order.handedOutAt || null,
         redeemedAt: order.redeemedAt || null,
         lines: orderLines(order),
         // C5d: ใบสั่งร้าน
@@ -596,7 +610,8 @@ function summarize(rows, allOrders, stockById) {
       if (r.redeemedAt) shop.ecouponRedeemed += 1;
     } else if (shop.source === "stock") {
       shop.orders += 1;
-      if (r.handedOutAt || r.stockCodeStatus === "handed_out") shop.handedOut += 1;
+      // R5-3e: ส่งมอบแล้ว = ออเดอร์บันทึกการส่งมอบ (แหล่งเดียวกับ handedOutAt ของแถว)
+      if (r.handedOutAt) shop.handedOut += 1;
       else if (r.stockCodeStatus === "assigned") shop.assignedNotHandedOut += 1;
       if (r.flags.includes("missing_code")) shop.missingCode += 1;
     } else {
@@ -611,9 +626,10 @@ function summarize(rows, allOrders, stockById) {
   for (const o of allOrders) {
     const sid = idStr(o.stockCodeId);
     if (!sid || seenCodes.has(sid)) continue;
-    seenCodes.add(sid);
     const stock = stockById.get(sid);
-    if (stock?.status !== "awaiting_return" || !o.restaurantId) continue;
+    // R5-3e: นับให้ใบที่รหัสรอคืนจากใบนั้นจริง (รหัสเดียวอาจเคยผ่านหลายใบในวันเดียว)
+    if (stock?.status !== "awaiting_return" || idStr(stock.orderId) !== idStr(o._id) || !o.restaurantId) continue;
+    seenCodes.add(sid);
     ensureShop(shops, idStr(o.restaurantId), o.restaurantName || "", "stock").awaitingReturn += 1;
   }
 

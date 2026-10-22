@@ -478,7 +478,9 @@ export async function handOutLunchCoupon({
           { handedOutAt: code.handedOutAt || order.handedOutAt || null },
         );
       }
-      if (code.status !== "assigned") {
+      // R5-3d: รหัสที่รับคืนจากใบที่ไม่มารับ (couponNotCollectedAt) อาจถูกจองให้ใบอื่นแล้ว
+      //        — ส่งมอบได้เฉพาะเมื่อรหัสยังผูกกับใบนี้
+      if (code.status !== "assigned" || String(code.orderId || "") !== String(order._id)) {
         fail(409, "code_not_assigned", "รหัสคูปองนี้ไม่ได้อยู่ในสถานะพร้อมส่งมอบ");
       }
 

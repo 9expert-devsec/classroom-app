@@ -107,7 +107,19 @@ export const CODE_STATE = {
   returned: { strike: true, chip: "คืนแล้ว", tone: "bg-slate-100 text-slate-600" },
   released: { strike: true, chip: "คืนเข้า stock", tone: "bg-slate-100 text-slate-600" },
   voided: { strike: true, chip: "ยกเลิกแล้ว", tone: "bg-red-100 text-red-700" },
+  // R5-3e: วันเรียนผ่านไปแล้ว ผู้เรียนไม่มารับ แอดมินรับรหัสคืนเข้าคลังแล้ว (ออเดอร์คงไว้เป็นประวัติ)
+  not_collected: {
+    strike: true,
+    chip: "ไม่มารับคูปอง — รับคืนเข้าคลังแล้ว",
+    historyChip: "เคยจอง — ไม่มารับ (รับคืนแล้ว)",
+    tone: "bg-slate-100 text-slate-600",
+  },
 };
+
+function shortDMY(ymd) {
+  const [y, m, d] = String(ymd || "").split("-");
+  return y && m && d ? `${d}/${m}/${y}` : "";
+}
 
 export function CodeCell({ row }) {
   if (!row.couponCode) return <span className="text-admin-textMuted">-</span>;
@@ -125,6 +137,9 @@ export function CodeCell({ row }) {
         </span>
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${state.tone}`}>
           {state.chip}
+          {row.couponCodeState === "not_collected" && row.notCollectedYMD
+            ? ` (${shortDMY(row.notCollectedYMD)})`
+            : ""}
         </span>
       </span>
     );

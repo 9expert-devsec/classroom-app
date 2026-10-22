@@ -5,6 +5,7 @@ import dbConnect from "@/lib/mongoose";
 import mongoose from "mongoose";
 import CouponStockCode from "@/models/CouponStockCode";
 import CouponStockLot, { lotNameKey } from "@/models/CouponStockLot";
+import { classifyStockCodes } from "@/lib/couponStockLots.server";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -69,6 +70,33 @@ export async function GET(req) {
         .lean();
     }
 
+    // R5-3d: ?lotId=…&stale=1 (หรือ &codeId=…) — รายการค้างจองของล็อตสำหรับหน้าต่าง "รับคืนคูปองค้างจอง"
+    //        ไม่แบ่งหน้า (ล็อตเล็ก) · มีวันเรียน + ข้อมูลผู้เรียนจากออเดอร์
+    if (searchParams.get("stale") === "1") {
+      if (!lot) return jsonError("กรุณาระบุล็อต", 400);
+      const codeIdParam = String(searchParams.get("codeId") || "").trim();
+      const codeFilter = { lotId: lot._id, status: "assigned" };
+      if (codeIdParam && mongoose.isValidObjectId(codeIdParam)) codeFilter._id = codeIdParam;
+      const codes = await CouponStockCode.find(codeFilter).select("_id code status orderId expiresYMD").sort({ code: 1 }).lean();
+      const info = await classifyStockCodes(codes, toBkkYMD(new Date()));
+      const items = codes
+        .map((c) => ({ c, i: info.get(String(c._id)) }))
+        .filter(({ i }) => i?.staleAssigned)
+        .map(({ c, i }) => ({
+          _id: String(c._id),
+          code: c.code,
+          expiresYMD: c.expiresYMD,
+          dayYMD: i.dayYMD,
+          orderId: i.orderId,
+          holderName: i.learner?.holderName || "",
+          nickname: i.learner?.nickname || "",
+          courseName: i.learner?.courseName || "",
+          roomName: i.learner?.roomName || "",
+        }))
+        .sort((a, b) => a.dayYMD.localeCompare(b.dayYMD) || a.code.localeCompare(b.code));
+      return NextResponse.json({ ok: true, items, total: items.length });
+    }
+
     // ระบุ lotId แล้วจะไม่กรองด้วยวันหมดอายุของล็อตอีก (expiry=soon/expired ยังกรองได้)
     let lotExpiryFilter = lotExpiresYMD;
     if (lot) {
@@ -127,6 +155,13 @@ export async function GET(req) {
       ).map((l) => [String(l._id), l.status]),
     );
     for (const it of items) it.lotStatus = lotStatus.get(String(it.lotId || "")) || "";
+
+    // R5-3d: ใบจองที่วันเรียนผ่านไปแล้ว (ค้างจอง) — ให้ตารางแสดงป้าย + ปุ่มรับคืน
+    const assignedItems = items.filter((it) => it.status === "assigned");
+    if (assignedItems.length) {
+      const info = await classifyStockCodes(assignedItems, toBkkYMD(new Date()));
+      for (const it of assignedItems) it.staleAssigned = !!info.get(String(it._id))?.staleAssigned;
+    }
 
     return NextResponse.json({
       ok: true,

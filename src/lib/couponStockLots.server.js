@@ -68,7 +68,7 @@ export async function classifyStockCodes(codes, todayYMD = toBkkYMD(new Date()),
 
   const orders = or.length
     ? await LunchOrder.find({ $or: or })
-        .select("_id dayYMD status stockCodeId holderName nickname courseName")
+        .select("_id dayYMD status stockCodeId holderName nickname courseName roomName")
         .session(session)
         .lean()
     : [];
@@ -98,6 +98,15 @@ export async function classifyStockCodes(codes, todayYMD = toBkkYMD(new Date()),
       dayYMD,
       orderId: order ? idStr(order._id) : idStr(c.orderId),
       learnerLabel: learnerLabelOf(order),
+      // R5-3d: ใช้แสดงรายการค้างจอง (ชื่อ / ชื่อเล่น / คลาส / ห้อง)
+      learner: order
+        ? {
+            holderName: order.holderName || "",
+            nickname: order.nickname || "",
+            courseName: order.courseName || "",
+            roomName: order.roomName || "",
+          }
+        : null,
     });
   }
   return out;
@@ -159,9 +168,12 @@ export async function returnCodeToStock(codeId, { fromStatus, set = {}, session 
     await CouponStockLot.updateOne({ _id: lot._id }, { $set: { lastReturnedAt: new Date() } }, { session });
   }
 
+  // R5-3e: การส่งมอบเป็นเหตุการณ์ของออเดอร์ (order.handedOutAt) — handedOutAt ของรหัสบอกแค่ผู้ถือปัจจุบัน
+  //         กลับเข้าคลัง (หรือ void) = ไม่มีผู้ถือแล้ว จึงล้าง ไม่ให้ค่าเก่ารั่วไปถึงผู้ถือคนถัดไป
+  //         returnedAt คงไว้ (เป็นประวัติของตัวรหัสเอง: คืนเข้าคลังครั้งล่าสุดเมื่อไร ไม่ผูกกับผู้ถือ)
   return CouponStockCode.findOneAndUpdate(
     { _id: code._id, status: fromStatus },
-    { $set: { ...set, ...back } },
+    { $set: { ...set, ...back, handedOutAt: null } },
     { new: true, session },
   ).lean();
 }
@@ -546,6 +558,8 @@ export async function restoreLot({ lotId }) {
             // ตรงกับ returnCodeToStock: รหัสที่กลับเข้าคลังได้ค่าล็อตล่าสุด
             expiresYMD: lot.expiresYMD,
             importBatch: lot.name || "",
+            // R5-3e: รหัสในคลังไม่มีผู้ถือ
+            handedOutAt: null,
           },
         },
         { session },
@@ -578,4 +592,96 @@ export function lotErrorResponse(e) {
     { ok: false, error: e?.message || "Server error", code: e?.code || "", ...(e?.extra || {}) },
     { status: e?.status || 500 },
   );
+}
+
+/* ---------------- stale bookings (R5-3d) ---------------- */
+
+/**
+ * รับคืนคูปองกระดาษที่ "ค้างจอง" (assigned แต่วันเรียนผ่านไปแล้ว) เมื่อแอดมินได้กระดาษกลับมา
+ * ไม่มีการคืนอัตโนมัติ — แอดมินเลือกเองทีละใบ / บางส่วนของล็อตได้ (ใบที่หายใช้ void รายใบตามเดิม)
+ *
+ * ทั้งหมดใน transaction เดียว: ทุกใบต้องยังเป็น assigned + ค้างจอง และอยู่ในล็อตนี้
+ * ไม่ผ่านแม้ใบเดียว = 409 stale_changed (ไม่มีอะไรถูกเขียน) พร้อมรายการที่ไม่ผ่าน
+ *
+ * ต่อใบ: ออเดอร์ "ไม่แตะ" สถานะ / ทางเลือก / stockCodeId / couponCode (วันที่ผ่านไปแล้วแก้ไม่ได้ —
+ *        รายงานอาหารของวันนั้นต้องเหมือนเดิม) แค่ประทับ couponNotCollectedAt/By
+ *        แล้วรหัสกลับเข้าคลังผ่าน returnCodeToStock (ล็อตปกติ = available ตามค่าล็อต · ล็อตยกเลิก = void)
+ * คืน { lot, results: [{ codeId, code, orderId, dayYMD, result }] }
+ */
+export async function releaseStaleCodes({ lotId, codeIds, by = "" }) {
+  if (!lotId || !mongoose.isValidObjectId(lotId)) throw new LotWriteError(400, "bad_request", "lotId ไม่ถูกต้อง");
+  const ids = [...new Set((Array.isArray(codeIds) ? codeIds : []).map(String))];
+  if (ids.length === 0) throw new LotWriteError(400, "bad_request", "กรุณาเลือกรหัสที่จะรับคืน");
+  if (ids.some((id) => !mongoose.isValidObjectId(id))) throw new LotWriteError(400, "bad_request", "รหัสไม่ถูกต้อง");
+
+  return inTransaction(async (session) => {
+    const lot = await CouponStockLot.findById(lotId).session(session).lean();
+    if (!lot) throw new LotWriteError(404, "not_found", "ไม่พบล็อต");
+
+    const today = toBkkYMD(new Date());
+    const codes = await CouponStockCode.find({ _id: { $in: ids } })
+      .select("_id code status orderId lotId expiresYMD handedOutAt")
+      .session(session)
+      .lean();
+    const info = await classifyStockCodes(codes, today, { session });
+
+    const found = new Map(codes.map((c) => [idStr(c._id), c]));
+    const offenders = [];
+    for (const id of ids) {
+      const c = found.get(id);
+      const i = c ? info.get(id) : null;
+      if (!c) offenders.push({ codeId: id, code: "", reason: "not_found" });
+      else if (idStr(c.lotId) !== idStr(lot._id)) offenders.push({ codeId: id, code: c.code, reason: "other_lot" });
+      else if (c.status !== "assigned") offenders.push({ codeId: id, code: c.code, reason: c.status });
+      else if (!i?.staleAssigned) offenders.push({ codeId: id, code: c.code, reason: "not_stale" });
+    }
+    if (offenders.length) {
+      throw new LotWriteError(
+        409,
+        "stale_changed",
+        `มี ${offenders.length} รหัสที่ไม่ได้ค้างจองแล้ว (สถานะเปลี่ยนระหว่างนี้)`,
+        { offenders },
+      );
+    }
+
+    const now = new Date();
+    const results = [];
+    for (const c of codes) {
+      const i = info.get(idStr(c._id));
+      // ประทับเฉพาะออเดอร์ที่ยังอ้างรหัสนี้อยู่ — ไม่แตะ field อื่น
+      // + เก็บสิ่งที่รายงานอาหารอ่านจากรหัสไว้ (สถานะ / handedOutAt) ให้รายงานวันนั้นคงเดิมตลอดไป
+      const upd = await LunchOrder.updateOne(
+        { _id: i.orderId, stockCodeId: c._id },
+        {
+          $set: {
+            couponNotCollectedAt: now,
+            couponNotCollectedBy: String(by || ""),
+            couponNotCollectedStock: { status: c.status, handedOutAt: c.handedOutAt || null },
+          },
+        },
+        { session },
+      );
+      if (upd.matchedCount !== 1) {
+        throw new LotWriteError(409, "stale_changed", `ออเดอร์ของรหัส ${c.code} เปลี่ยนไปแล้ว`, {
+          offenders: [{ codeId: idStr(c._id), code: c.code, reason: "order_changed" }],
+        });
+      }
+      const doc = await returnCodeToStock(c._id, {
+        fromStatus: "assigned",
+        set: { orderId: null, assignedAt: null },
+        session,
+      });
+      if (!doc) {
+        throw new LotWriteError(409, "stale_changed", `รหัส ${c.code} เปลี่ยนสถานะไปแล้ว`, {
+          offenders: [{ codeId: idStr(c._id), code: c.code, reason: "status_changed" }],
+        });
+      }
+      results.push({ codeId: idStr(c._id), code: c.code, orderId: i.orderId, dayYMD: i.dayYMD, result: doc.status });
+    }
+
+    return {
+      lot: { _id: idStr(lot._id), name: lot.name || "", status: lot.status, restaurant: idStr(lot.restaurant) },
+      results,
+    };
+  });
 }

@@ -23,7 +23,9 @@ function CodeStateChip({ state }) {
   const meta = state === "held" ? { chip: "ถืออยู่", tone: "bg-green-100 text-green-700" } : CODE_STATE[state];
   if (!meta) return <span className="text-admin-textMuted">-</span>;
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${meta.tone}`}>{meta.chip}</span>
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${meta.tone}`}>
+      {meta.historyChip || meta.chip}
+    </span>
   );
 }
 
