@@ -39,6 +39,17 @@ function CouponStockPageInner() {
   const activeLot = lotState.shop === restaurantId ? lotState.key : "";
   const setActiveLot = (key) => setLotState({ shop: restaurantId, key });
 
+  // R5-3i: แท็บสถานะของตาราง — ต่อร้านเหมือนตัวกรองล็อต (เปลี่ยนร้าน = กลับไป "ทั้งหมด")
+  const [statusState, setStatusState] = useState({ shop: "", status: "" });
+  const tableStatus = statusState.shop === restaurantId ? statusState.status : "";
+  const setTableStatus = (status) => setStatusState({ shop: restaurantId, status });
+
+  // ชิป "รอคืน n" บนการ์ดล็อต -> ตารางกรองล็อตนั้น + แท็บรอคืน
+  function showAwaitingReturn(lot) {
+    setActiveLot(lotKey(lot.importBatch, lot.expiresYMD));
+    setTableStatus("awaiting_return");
+  }
+
   const [reloadKey, setReloadKey] = useState(0);
 
   /* ---------- restaurants (stock shops only) ---------- */
@@ -258,6 +269,7 @@ function CouponStockPageInner() {
             activeLot={activeLot}
             highlightLot={highlight.shop === restaurantId ? highlight.key : ""}
             onSelect={setActiveLot}
+            onShowAwaiting={showAwaitingReturn}
             onAction={(kind, lot) => setLotAction({ kind, lot })}
             onImport={() => setImportOpen(true)}
           />
@@ -268,6 +280,8 @@ function CouponStockPageInner() {
             summary={shopSummary}
             activeLot={activeLot}
             onLotChange={setActiveLot}
+            status={tableStatus}
+            onStatusChange={setTableStatus}
             reloadKey={reloadKey}
             onChanged={refreshAll}
             onReleaseStale={(row) =>

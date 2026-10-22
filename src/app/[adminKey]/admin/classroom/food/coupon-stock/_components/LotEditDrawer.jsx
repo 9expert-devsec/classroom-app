@@ -47,8 +47,8 @@ function ImpactSummary({ impact }) {
                 เปลี่ยน {edit.expiryCodes.length} ใบ
                 <div className="text-xs text-admin-textMuted">
                   (ยังไม่ใช้ {countBy(rows, (r) => r.bucket === "unused" && !r.staleAssigned)} · ยกเลิกรายใบ{" "}
-                  {countBy(rows, (r) => r.bucket === "void")} · จองแล้วรอส่งมอบ{" "}
-                  {countBy(rows, (r) => r.bucket === "active")} · ค้างจองข้ามวัน{" "}
+                  {countBy(rows, (r) => r.bucket === "void")} · รอส่งมอบ{" "}
+                  {countBy(rows, (r) => r.bucket === "active")} · ไม่มารับ{" "}
                   {countBy(rows, (r) => r.staleAssigned)})
                 </div>
               </dd>
@@ -277,7 +277,7 @@ export default function LotEditDrawer({ lot, today, onClose, onSaved }) {
                   <p className="mt-1 text-xs text-red-600">{expiryErr}</p>
                 ) : (
                   <p className="mt-1 text-xs text-admin-textMuted">
-                    มีผลกับใบที่ยังไม่ใช้และใบที่จองไว้ — ใบที่ส่งมอบแล้วคงวันเดิม
+                    มีผลกับใบที่ยังไม่ใช้และใบที่รอส่งมอบ — ใบที่ส่งมอบแล้วคงวันเดิม
                   </p>
                 )}
               </label>

@@ -15,11 +15,16 @@ export const STATUS_ORDER = [
 export const STATUS_LABELS = {
   available: "พร้อมใช้",
   // R5-3a: กระดาษ = "ใช้แล้ว" เมื่อส่งมอบ — assigned ยังเป็นแค่การจอง
-  assigned: "จองแล้ว",
+  // R5-3f: assigned ที่วันเรียนผ่านไปแล้วแสดง "ไม่มารับ" แทน (STALE_ASSIGNED_*)
+  assigned: "รอส่งมอบ",
   handed_out: "ส่งมอบแล้ว",
   awaiting_return: "รอคืน",
   void: "ยกเลิก",
 };
+
+// R5-3f: assigned + วันเรียนผ่านไปแล้ว (item.staleAssigned) — ป้ายเดียวแทน "รอส่งมอบ"
+export const STALE_ASSIGNED_LABEL = "ไม่มารับ";
+export const STALE_ASSIGNED_STYLE = "bg-amber-100 text-amber-800";
 
 export const STATUS_STYLES = {
   available: "bg-green-100 text-green-700",
@@ -38,7 +43,7 @@ export function isLotCancelled(b) {
 }
 
 /**
- * R5-3c: ล็อต "ใช้งานอยู่" = ไม่ถูกยกเลิก และยังมีรหัสที่ยังไม่จบ (พร้อมใช้ / จองแล้ว / รอคืน) อย่างน้อย 1 ใบ
+ * R5-3c: ล็อต "ใช้งานอยู่" = ไม่ถูกยกเลิก และยังมีรหัสที่ยังไม่จบ (พร้อมใช้ / รอส่งมอบ / ไม่มารับ / รอคืน) อย่างน้อย 1 ใบ
  * นอกนั้น "ปิดแล้ว" (ยกเลิกแล้ว หรือส่งมอบ/ยกเลิกรายใบหมดทุกใบ)
  *   - หมดอายุแต่ยังมีใบพร้อมใช้ = ใช้งานอยู่ (ให้แอดมินเห็นแล้วยกเลิก)
  *   - ยกเลิกแล้วแต่ยังมีใบจอง = ปิดแล้ว (Counter ทำต่อจากหน้า tracking)
@@ -91,10 +96,27 @@ export function daysLeft(today, expiresYMD) {
   return diffDaysYMD_BKK(today, expiresYMD);
 }
 
-/** red when expired or within EXPIRING_DAYS */
-export function isExpiryUrgent(today, expiresYMD) {
+/**
+ * R5-3g: สถานะวันหมดอายุ — ใช้ร่วมกันทั้งป้ายการ์ดล็อต บรรทัดวันที่ และคอลัมน์หมดอายุในตาราง
+ *   ok      > 7 วัน      ปกติ          เขียว
+ *   soon    1–7 วัน      ใกล้หมดอายุ    เหลืองอำพัน
+ *   today   0 วัน        หมดอายุวันนี้   ส้มเข้ม
+ *   expired เลยมาแล้ว     หมดอายุแล้ว    แดง
+ * คืน { key, d, label, pillCls, textCls, dayText } หรือ null (ไม่มีวันหมดอายุ / ไม่รู้วันนี้)
+ */
+const EXPIRY_LEVELS = {
+  ok: { label: "ปกติ", pillCls: "bg-green-100 text-green-700", textCls: "text-green-700" },
+  soon: { label: "ใกล้หมดอายุ", pillCls: "bg-amber-100 text-amber-800", textCls: "text-amber-700" },
+  today: { label: "หมดอายุวันนี้", pillCls: "bg-orange-200 text-orange-900", textCls: "font-semibold text-orange-700" },
+  expired: { label: "หมดอายุแล้ว", pillCls: "bg-red-100 text-red-700", textCls: "text-red-600" },
+};
+
+export function expiryStatus(today, expiresYMD) {
   const d = daysLeft(today, expiresYMD);
-  return d !== null && d <= EXPIRING_DAYS;
+  if (d === null) return null;
+  const key = d < 0 ? "expired" : d === 0 ? "today" : d <= EXPIRING_DAYS ? "soon" : "ok";
+  const dayText = d < 0 ? `เลยมา ${-d} วัน` : d === 0 ? "หมดอายุวันนี้" : `เหลือ ${d} วัน`;
+  return { key, d, dayText, ...EXPIRY_LEVELS[key] };
 }
 
 export function formatImportedAt(value) {

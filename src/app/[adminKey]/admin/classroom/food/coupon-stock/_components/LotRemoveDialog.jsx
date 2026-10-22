@@ -2,7 +2,7 @@
 
 // R5-3: "ลบ / ยกเลิกล็อต" — เปิดมาขอ /lots/impact (action delete) แล้ววาดตาม decision ที่ server ตัดสิน
 //   delete : ไม่เคยใช้ -> ลบล็อต + รหัสทั้งหมดถาวร
-//   cancel : เคยใช้   -> ยกเลิกล็อต (void ใบที่ยังไม่ใช้ · ใบที่จองไว้ใช้ต่อได้ · ใบรอคืนจะถูก void ตอนคืน)
+//   cancel : เคยใช้   -> ยกเลิกล็อต (void ใบที่ยังไม่ใช้ · ใบที่รอส่งมอบใช้ต่อได้ · ใบรอคืนจะถูก void ตอนคืน)
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
@@ -120,7 +120,7 @@ export default function LotRemoveDialog({ lot, onClose, onDone }) {
             </div>
             <ul className="list-disc space-y-1 pl-9 text-sm text-admin-text">
               <li>ยกเลิกรหัสที่ยังไม่ใช้ {c.voidCount} ใบ</li>
-              <li>รหัสที่จองไว้ {c.stillAssigned} ใบยังใช้ต่อได้ตามเดิม</li>
+              <li>รหัสที่รอส่งมอบ {c.stillAssigned} ใบยังใช้ต่อได้ตามเดิม</li>
               <li>รอคืนเข้าคลัง {c.awaitingReturnOut} ใบ (เมื่อคืนจะถูกยกเลิกอัตโนมัติ)</li>
               <li>ส่งมอบแล้ว {c.handedOut} ใบไม่กระทบ</li>
             </ul>

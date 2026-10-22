@@ -10,8 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  daysLeft,
-  EXPIRING_DAYS,
+  expiryStatus,
   isLotActive,
   isLotCancelled,
   loadLotView,
@@ -49,15 +48,13 @@ function breakableName(name) {
   ));
 }
 
-function lotPill(b, d) {
+// R5-3g: ยกเลิกแล้ว / ใช้หมดแล้ว แทนป้ายวันหมดอายุ · นอกนั้นใช้ expiryStatus (ล็อตไม่มีชื่อก็เหมือนล็อตอื่น)
+function lotPill(b, exp) {
   if (isLotCancelled(b)) return { text: "ยกเลิกแล้ว", cls: "bg-slate-200 text-slate-600" };
   // R5-3c: ส่งมอบ / ยกเลิกรายใบหมดทุกใบ — ไม่เหลืออะไรให้ทำ
   if (!isLotActive(b)) return { text: "ใช้หมดแล้ว", cls: "bg-slate-100 text-slate-600" };
-  if (!b.importBatch) return { text: "ไม่ระบุ", cls: "bg-slate-100 text-slate-600" };
-  if (d !== null && d < 0) return { text: "หมดอายุ", cls: "bg-red-100 text-red-700" };
-  if (d !== null && d <= EXPIRING_DAYS)
-    return { text: "ใกล้หมดอายุ", cls: "bg-red-50 text-red-600" };
-  return { text: "ปกติ", cls: "bg-green-100 text-green-700" };
+  if (!exp) return null;
+  return { text: exp.label, cls: exp.pillCls };
 }
 
 // R5-3d: จำนวนใบจองที่วันเรียนผ่านไปแล้ว (summary.buckets.staleAssigned)
@@ -99,37 +96,73 @@ function LotMenu({ b, onAction }) {
         )}
         {/* R5-3d: ใบจองที่วันเรียนผ่านไปแล้ว — ล็อตยกเลิกแล้วก็รับคืนได้ (รหัสจะถูก void) */}
         {staleCount(b) > 0 && (
-          <DropdownMenuItem onSelect={() => onAction("stale", b)}>รับคืนคูปองค้างจอง</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onAction("stale", b)}>รับคืนคูปองที่ไม่มารับ</DropdownMenuItem>
         )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function LotCard({ b, today, active, highlight, onClick, onAction }) {
+// R5-3i: ตัวเลขบนการ์ดไม่ซ้อนกัน — รวมกันได้เท่าจำนวนทั้งหมดของล็อต
+//   พร้อมใช้ + รอส่งมอบ + ส่งมอบแล้ว (3 ช่อง) + ไม่มารับ + รอคืน (ชิป "ต้องจัดการ") + ยกเลิก (ท้ายบรรทัดวันที่)
+export function lotCounts(b) {
+  const stale = staleCount(b);
+  return {
+    available: b.available || 0,
+    waiting: Math.max(0, (b.assigned || 0) - stale),
+    handedOut: b.handedOut || 0,
+    notCollected: stale,
+    awaitingReturn: b.awaitingReturn || 0,
+    voided: b.voided || 0,
+  };
+}
+
+// ชิปสีเหลืองอำพันในบรรทัด "ต้องจัดการ" — กดได้
+function ActionChip({ children, onClick, title }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
+    >
+      {children}
+    </button>
+  );
+}
+
+function LotCard({ b, today, active, highlight, onClick, onAction, onShowAwaiting }) {
+  const c = lotCounts(b);
+  const canReleaseStale = c.notCollected > 0 && !!b.lotId && !!onAction;
+  const canShowAwaiting = c.awaitingReturn > 0 && !!onShowAwaiting;
   const cancelled = isLotCancelled(b);
-  const d = daysLeft(today, b.expiresYMD);
-  const pill = lotPill(b, d);
-  const urgent = !cancelled && d !== null && d <= EXPIRING_DAYS;
+  const exp = expiryStatus(today, b.expiresYMD);
+  const pill = lotPill(b, exp);
+  // R5-3g: บรรทัดวันที่ใช้สีเดียวกับป้ายวันหมดอายุ — ล็อตที่ยกเลิก / ใช้หมดแล้วไม่ต้องเตือน
+  //         R5-3h: ระดับ "ปกติ" ใช้สีเทาตามเดิม (ป้ายยังเป็นสีเขียว) — สีไว้เตือนเฉพาะใกล้/หมดอายุ
+  const showExpiry = !cancelled && isLotActive(b) && !!exp && exp.key !== "ok";
   const used = lotUsed(b);
   const pct = b.total > 0 ? Math.round((used / b.total) * 100) : 0;
 
-  // R5-3b: การ์ดสูงเท่ากันทั้งแถว — แถว flex ยืดทุกใบ, ปุ่มเต็มความสูง (flex-col), ชื่อจองที่ 2 บรรทัด,
-  //        แถบ + ตัวเลขชิดล่าง (mt-auto), บรรทัด "รอคืน" จองที่ไว้เสมอ
+  // R5-3b: การ์ดสูงเท่ากันทั้งแถว — แถว flex ยืดทุกใบ, ชื่อจองที่ 2 บรรทัด, แถบ + ตัวเลขชิดล่าง (mt-auto)
+  // R5-3i: กรอบการ์ดอยู่ที่ div นอกสุด — ปุ่มการ์ด (เลือกล็อต) คือส่วนบน + ตัวเลข
+  //        ส่วนล่างเป็นบรรทัด "ต้องจัดการ" ที่มีปุ่มของตัวเอง (ปุ่มซ้อนในปุ่มไม่ได้) จองความสูงไว้เสมอ
   return (
-    <div className="relative flex w-64 flex-shrink-0">
+    <div
+      className={[
+        "relative flex w-64 flex-shrink-0 flex-col rounded-2xl border transition",
+        cancelled ? "bg-slate-50 opacity-70" : "bg-white",
+        active
+          ? "border-brand-primary ring-2 ring-brand-primary/30"
+          : "border-admin-border hover:border-brand-primary/60",
+        highlight ? "animate-pulse ring-2 ring-green-400" : "",
+      ].join(" ")}
+    >
       <button
         type="button"
         onClick={onClick}
         aria-pressed={active}
-        className={[
-          "flex h-full w-full flex-col rounded-2xl border p-4 text-left transition",
-          cancelled ? "bg-slate-50 opacity-70" : "bg-white",
-          active
-            ? "border-brand-primary ring-2 ring-brand-primary/30"
-            : "border-admin-border hover:border-brand-primary/60",
-          highlight ? "animate-pulse ring-2 ring-green-400" : "",
-        ].join(" ")}
+        className="flex w-full flex-1 flex-col rounded-t-2xl p-4 pb-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
       >
         {/* pr-8 = ที่ของปุ่ม ⋯ ด้านขวาบน */}
         <div className="flex items-start justify-between gap-2 pr-8">
@@ -141,25 +174,28 @@ function LotCard({ b, today, active, highlight, onClick, onAction }) {
           >
             {breakableName(lotLabel(b.importBatch))}
           </div>
-          <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.cls}`}>
-            {pill.text}
-          </span>
+          {pill && (
+            <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${pill.cls}`}>
+              {pill.text}
+            </span>
+          )}
         </div>
 
-        <div className={`mt-2 flex items-center gap-1 text-xs ${urgent ? "text-red-600" : "text-admin-textMuted"}`}>
+        <div className={`mt-2 flex items-center gap-1 text-xs ${showExpiry ? exp.textCls : "text-admin-textMuted"}`}>
           <CalendarDays className="h-3.5 w-3.5" />
           <span>
             หมดอายุ {b.expiresYMD || "—"}
-            {!cancelled && d !== null && (d >= 0 ? ` (เหลือ ${d} วัน)` : ` (เลยมา ${-d} วัน)`)}
+            {!cancelled && exp && ` (${exp.dayText})`}
             {` · ${b.total} ใบ`}
+            {c.voided > 0 && ` (ยกเลิก ${c.voided})`}
           </span>
         </div>
 
         <div className="mt-auto pt-3">
-          {/* แถบ = สัดส่วนที่ออกจากคลังผ่านออเดอร์ (จองแล้ว + ส่งมอบแล้ว + รอคืน) ต่อทั้งหมด */}
+          {/* แถบ = สัดส่วนที่ออกจากคลังผ่านออเดอร์ (รอส่งมอบ + ส่งมอบแล้ว + ไม่มารับ + รอคืน) ต่อทั้งหมด */}
           <div
             className="h-2 overflow-hidden rounded-full bg-slate-100"
-            title={`ออกจากคลังแล้ว ${pct}% (จองแล้ว + ส่งมอบแล้ว + รอคืน)`}
+            title={`ออกจากคลังแล้ว ${pct}% (รอส่งมอบ + ส่งมอบแล้ว + ไม่มารับ + รอคืน)`}
           >
             <div
               className={`h-full rounded-full ${cancelled ? "bg-slate-400" : "bg-brand-primaryDark"}`}
@@ -167,43 +203,64 @@ function LotCard({ b, today, active, highlight, onClick, onAction }) {
             />
           </div>
 
-          {/* R5-3a: กระดาษ = ใช้แล้วเมื่อส่งมอบ · ส่งมอบแล้ว รวมใบที่รอคืน (กระดาษยังอยู่นอกคลัง) */}
+          {/* R5-3i: 3 ช่องนี้ไม่ซ้อนกัน — ไม่มารับ / รอคืน อยู่ในบรรทัด "ต้องจัดการ" ด้านล่าง */}
           <div className="mt-3 grid grid-cols-3 divide-x divide-admin-border text-center">
             <div>
               <div className="text-[11px] text-admin-textMuted">พร้อมใช้</div>
               <div className={`text-base font-semibold ${cancelled ? "text-admin-textMuted" : "text-green-600"}`}>
-                {b.available}
+                {c.available}
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-admin-textMuted">จองแล้ว</div>
-              <div className="text-base font-semibold">{b.assigned || 0}</div>
-              {/* R5-3d: ใบจองที่วันเรียนผ่านไปแล้ว — ใช้บรรทัดเดียวกับ "รอคืน" (จองที่ไว้เสมอ) */}
-              <div className="flex h-4 justify-center">
-                {staleCount(b) > 0 && (
-                  <span
-                    className="rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold leading-4 text-amber-800"
-                    title="วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง"
-                  >
-                    ค้างจอง {staleCount(b)}
-                  </span>
-                )}
-              </div>
+              <div className="text-[11px] text-admin-textMuted">รอส่งมอบ</div>
+              <div className="text-base font-semibold">{c.waiting}</div>
             </div>
             <div>
               <div className="text-[11px] text-admin-textMuted">ส่งมอบแล้ว</div>
-              <div className="text-base font-semibold">{(b.handedOut || 0) + (b.awaitingReturn || 0)}</div>
-              {/* จองบรรทัดไว้เสมอ — ไม่มีใบรอคืนก็ซ่อนแบบยังกินที่ (การ์ดสูงเท่ากัน) */}
-              <div
-                className={`text-[10px] leading-4 ${b.awaitingReturn > 0 ? "text-amber-700" : "invisible"}`}
-                aria-hidden={b.awaitingReturn > 0 ? undefined : true}
-              >
-                รอคืน {b.awaitingReturn || 0}
-              </div>
+              <div className="text-base font-semibold">{c.handedOut}</div>
             </div>
           </div>
         </div>
       </button>
+
+      {/* R5-3i: ต้องจัดการ — แสดงเฉพาะที่มี (ไม่มีอะไรก็ยังกินที่ การ์ดสูงเท่ากัน) */}
+      <div className="flex min-h-[2rem] flex-wrap items-center gap-1.5 border-t border-admin-border/60 px-4 py-1.5">
+        {c.notCollected > 0 || c.awaitingReturn > 0 ? (
+          <>
+            <span className="text-[11px] text-admin-textMuted">ต้องจัดการ</span>
+            {c.notCollected > 0 &&
+              (canReleaseStale ? (
+                <ActionChip
+                  onClick={() => onAction("stale", b)}
+                  title="วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง — กดเพื่อรับคืนเข้าคลัง"
+                >
+                  ไม่มารับ {c.notCollected}
+                </ActionChip>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  ไม่มารับ {c.notCollected}
+                </span>
+              ))}
+            {c.awaitingReturn > 0 &&
+              (canShowAwaiting ? (
+                <ActionChip
+                  onClick={() => onShowAwaiting(b)}
+                  title="กระดาษยังอยู่นอกคลัง — กดเพื่อดูรายการรอคืนของล็อตนี้"
+                >
+                  รอคืน {c.awaitingReturn}
+                </ActionChip>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                  รอคืน {c.awaitingReturn}
+                </span>
+              ))}
+          </>
+        ) : (
+          <span className="invisible text-[11px]" aria-hidden>
+            ต้องจัดการ
+          </span>
+        )}
+      </div>
 
       {b.lotId && onAction && (
         <div className="absolute right-2 top-3">
@@ -250,7 +307,7 @@ function LotViewSwitch({ view, counts, onChange }) {
   );
 }
 
-export default function LotCards({ batches, today, activeLot, highlightLot, onSelect, onAction, onImport }) {
+export default function LotCards({ batches, today, activeLot, highlightLot, onSelect, onAction, onImport, onShowAwaiting }) {
   // อ่านค่าที่จำไว้ใน localStorage (server ใช้ "ใช้งานอยู่" เสมอ — ไม่มี hydration mismatch)
   const view = useSyncExternalStore(subscribeLotView, loadLotView, () => "active");
   function changeView(v) {
@@ -314,6 +371,7 @@ export default function LotCards({ batches, today, activeLot, highlightLot, onSe
                 highlight={highlightLot === key}
                 onClick={() => onSelect(activeLot === key ? "" : key)}
                 onAction={onAction}
+                onShowAwaiting={onShowAwaiting}
               />
             );
           })}

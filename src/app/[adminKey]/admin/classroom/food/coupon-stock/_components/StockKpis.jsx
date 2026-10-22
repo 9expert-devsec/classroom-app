@@ -57,7 +57,7 @@ export default function StockKpis({ summary }) {
       <KpiCard
         icon={CircleCheck}
         tone="blue"
-        label="จองแล้ว"
+        label="รอส่งมอบ"
         value={s ? by.assigned : null}
         caption="คูปองที่ผูกกับออเดอร์ รอส่งมอบที่ Counter"
       />

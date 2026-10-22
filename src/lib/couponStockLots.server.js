@@ -639,7 +639,7 @@ export async function releaseStaleCodes({ lotId, codeIds, by = "" }) {
       throw new LotWriteError(
         409,
         "stale_changed",
-        `มี ${offenders.length} รหัสที่ไม่ได้ค้างจองแล้ว (สถานะเปลี่ยนระหว่างนี้)`,
+        `มี ${offenders.length} รหัสที่ไม่อยู่ในสถานะ "ไม่มารับ" แล้ว (สถานะเปลี่ยนระหว่างนี้)`,
         { offenders },
       );
     }

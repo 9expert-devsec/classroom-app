@@ -1,6 +1,6 @@
 "use client";
 
-// R5-3d: "รับคืนคูปองค้างจอง" — ใบจองที่วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่มารับคูปองกระดาษ
+// R5-3d: "รับคืนคูปองที่ไม่มารับ" (R5-3f: เดิมชื่อ "ค้างจอง") — ใบจองที่วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่มารับคูปองกระดาษ
 // แอดมินเลือกใบที่ได้กระดาษกลับมาแล้ว (ใบที่หายใช้ "ยกเลิก (void)" รายใบตามเดิม)
 // ออเดอร์ของวันนั้นไม่ถูกแก้ — server แค่ประทับ "ไม่มารับคูปอง" แล้วคืนรหัสเข้าคลัง
 import { useCallback, useEffect, useState } from "react";
@@ -31,7 +31,7 @@ export default function LotStaleDialog({ restaurantId, lot, codeId = "", onClose
       const res = await fetch(`/api/admin/food/coupon-stock?${qs.toString()}`, { cache: "no-store" });
       const data = await safeJson(res);
       if (!res.ok) {
-        setError(data.error || "โหลดรายการค้างจองไม่สำเร็จ");
+        setError(data.error || "โหลดรายการคูปองที่ไม่มารับไม่สำเร็จ");
         return;
       }
       const list = data.items || [];
@@ -40,7 +40,7 @@ export default function LotStaleDialog({ restaurantId, lot, codeId = "", onClose
       setConfirmed(false);
     } catch (err) {
       console.error(err);
-      setError("โหลดรายการค้างจองไม่สำเร็จ");
+      setError("โหลดรายการคูปองที่ไม่มารับไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function LotStaleDialog({ restaurantId, lot, codeId = "", onClose
         return;
       }
       if (data.code === "stale_changed") {
-        setNotice("รายการค้างจองเปลี่ยนไประหว่างนี้ — โหลดรายการใหม่แล้ว กรุณาตรวจสอบอีกครั้ง");
+        setNotice("รายการคูปองที่ไม่มารับเปลี่ยนไประหว่างนี้ — โหลดรายการใหม่แล้ว กรุณาตรวจสอบอีกครั้ง");
         await load();
         return;
       }
@@ -100,12 +100,12 @@ export default function LotStaleDialog({ restaurantId, lot, codeId = "", onClose
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="max-w-xl rounded-2xl bg-white">
-        <DialogTitle className="text-lg">รับคืนคูปองค้างจอง</DialogTitle>
+        <DialogTitle className="text-lg">รับคืนคูปองที่ไม่มารับ</DialogTitle>
 
         <div className="rounded-xl bg-admin-surfaceMuted p-3">
           <div className="break-words font-semibold text-admin-text">{lotLabel(lot.importBatch)}</div>
           <div className="text-xs text-admin-textMuted">
-            {items ? `ค้างจอง ${items.length} ใบ` : "กำลังโหลด..."}
+            {items ? `ไม่มารับ ${items.length} ใบ` : "กำลังโหลด..."}
           </div>
         </div>
 
@@ -134,7 +134,7 @@ export default function LotStaleDialog({ restaurantId, lot, codeId = "", onClose
           </div>
         ) : items && items.length === 0 ? (
           <p className="rounded-xl bg-admin-surfaceMuted p-3 text-sm text-admin-textMuted">
-            ไม่มีคูปองค้างจองในล็อตนี้แล้ว
+            ไม่มีคูปองที่ไม่มารับในล็อตนี้แล้ว
           </p>
         ) : items ? (
           <div className="max-h-72 overflow-auto rounded-xl border border-admin-border">

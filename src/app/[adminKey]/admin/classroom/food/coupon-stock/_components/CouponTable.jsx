@@ -10,6 +10,7 @@ import {
   Filter,
   MoreHorizontal,
   Search,
+  StickyNote,
   X,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,11 +22,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   formatImportedAt,
-  isExpiryUrgent,
+  expiryStatus,
   lotKey,
   lotLabel,
   parseLotKey,
   safeJson,
+  STALE_ASSIGNED_LABEL,
+  STALE_ASSIGNED_STYLE,
   STATUS_LABELS,
   STATUS_ORDER,
   STATUS_STYLES,
@@ -68,18 +71,57 @@ function Chip({ children, onClear }) {
   );
 }
 
+// R5-3h: ไอคอนหมายเหตุหลังรหัส (แทนคอลัมน์หมายเหตุ) — hover / focus แสดงข้อความเต็ม
+// ใช้ Popover (portal) เพราะตารางอยู่ใน overflow-x-auto ซึ่งจะตัด tooltip แบบ absolute
+function NoteHint({ note, voidReason }) {
+  const [open, setOpen] = useState(false);
+  const lines = [
+    note ? `หมายเหตุ: ${note}` : "",
+    voidReason ? `เหตุผลที่ยกเลิก: ${voidReason}` : "",
+  ].filter(Boolean);
+  if (lines.length === 0) return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={lines.join(" / ")}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          className="ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded text-admin-textMuted align-middle hover:bg-admin-surfaceMuted hover:text-admin-text focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+        >
+          <StickyNote className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="w-auto max-w-xs whitespace-pre-line break-words rounded-lg px-3 py-2 text-xs"
+      >
+        {lines.join("\n")}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function CouponTable({
   restaurantId,
   summary,
   activeLot,
   onLotChange,
+  // R5-3i: แท็บสถานะอยู่ที่หน้า (ชิป "รอคืน" บนการ์ดล็อตสั่งเปิดแท็บได้)
+  status,
+  onStatusChange,
   reloadKey,
   onChanged,
   onReleaseStale,
 }) {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
+  const setStatus = onStatusChange;
   const [expiry, setExpiry] = useState("");
   const [sort, setSort] = useState("");
   const [page, setPage] = useState(1);
@@ -348,8 +390,13 @@ export default function CouponTable({
         </div>
       )}
 
-      {/* status tabs */}
-      <div className="mt-3 flex gap-1 overflow-x-auto border-b border-admin-border">
+      {/* status tabs
+          R5-3j: เส้นใต้ (border-b) อยู่ที่ div ด้านใน ไม่ใช่ตัวที่ scroll — แท็บ active ใช้ -mb-px ทับเส้นนี้
+          ถ้าเส้นอยู่ที่ตัว scroll เอง เส้นใต้แท็บจะล้นออก 1px แล้วเกิด scrollbar แนวตั้ง
+          (แบบเดียวกับ RestaurantTabs) · เลื่อนแนวนอนได้เมื่อจอแคบ โดยซ่อน scrollbar */}
+      <div className="mt-3 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* w-max = กว้างตามแท็บเมื่อจอแคบ · min-w-full = เส้นใต้ยาวเต็มแถวเมื่อจอกว้าง */}
+      <div className="flex w-max min-w-full gap-1 border-b border-admin-border">
         {["", ...STATUS_ORDER].map((s) => {
           const active = status === s;
           return (
@@ -369,15 +416,16 @@ export default function CouponTable({
           );
         })}
       </div>
+      </div>
 
       {/* table */}
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-admin-surfaceMuted text-left text-xs text-admin-textMuted">
             <tr>
-              <th className="px-3 py-2 font-medium">รหัสคูปอง</th>
+              <th className="w-[28%] px-3 py-2 font-medium">รหัสคูปอง</th>
               <th className="px-3 py-2 font-medium">สถานะ</th>
-              <th className="px-3 py-2 font-medium">ชื่อล็อต</th>
+              <th className="w-[24%] px-3 py-2 font-medium">ชื่อล็อต</th>
               <th className="px-3 py-2 font-medium">
                 <button
                   type="button"
@@ -390,42 +438,36 @@ export default function CouponTable({
                   {sort === "expires_desc" && <ArrowDown className="h-3 w-3" />}
                 </button>
               </th>
-              <th className="px-3 py-2 font-medium">หมายเหตุ</th>
               <th className="px-3 py-2 font-medium">วันที่นำเข้า</th>
               <th className="px-3 py-2 text-right font-medium">จัดการ</th>
             </tr>
           </thead>
           <tbody className={loading ? "opacity-60" : ""}>
             {rows.map((r) => {
-              const urgent = isExpiryUrgent(today, r.expiresYMD);
+              // R5-3g: เกณฑ์/สีเดียวกับการ์ดล็อต — ปกติ (> 7 วัน) ไม่ใส่สีในตาราง
+              const exp = expiryStatus(today, r.expiresYMD);
+              const expiryCls = exp && exp.key !== "ok" ? exp.textCls : "";
               const canDelete = r.status === "available" && !r.assignedAt;
               return (
                 <tr key={r._id} className="border-t border-admin-border/60 hover:bg-admin-surfaceMuted/60">
-                  <td className="px-3 py-2 font-mono text-xs">{r.code}</td>
+                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">
+                    {r.code}
+                    <NoteHint note={r.note} voidReason={r.voidReason} />
+                  </td>
                   <td className="px-3 py-2">
+                    {/* R5-3f: ป้ายเดียวต่อรหัส — จองไว้แต่วันเรียนผ่านไปแล้ว = "ไม่มารับ" */}
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        STATUS_STYLES[r.status] || ""
+                        r.staleAssigned ? STALE_ASSIGNED_STYLE : STATUS_STYLES[r.status] || ""
                       }`}
+                      title={r.staleAssigned ? "วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง" : undefined}
                     >
-                      {STATUS_LABELS[r.status] || r.status}
+                      {r.staleAssigned ? STALE_ASSIGNED_LABEL : STATUS_LABELS[r.status] || r.status}
                     </span>
-                    {/* R5-3d: จองไว้แต่วันเรียนผ่านไปแล้ว */}
-                    {r.staleAssigned && (
-                      <span
-                        className="ml-1 inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
-                        title="วันเรียนผ่านไปแล้วแต่ผู้เรียนไม่ได้มารับคูปอง"
-                      >
-                        ค้างจอง
-                      </span>
-                    )}
                   </td>
                   <td className="px-3 py-2 text-xs">{r.importBatch || "—"}</td>
-                  <td className={`px-3 py-2 text-xs ${urgent ? "font-medium text-red-600" : ""}`}>
+                  <td className={`px-3 py-2 text-xs ${expiryCls}`} title={exp && exp.key !== "ok" ? exp.label : undefined}>
                     {r.expiresYMD || "—"}
-                  </td>
-                  <td className="max-w-[220px] truncate px-3 py-2 text-xs text-admin-textMuted" title={r.voidReason || r.note || ""}>
-                    {r.voidReason || r.note || "—"}
                   </td>
                   <td className="px-3 py-2 text-xs">{formatImportedAt(r.createdAt)}</td>
                   <td className="px-3 py-2 text-right">
@@ -516,7 +558,7 @@ export default function CouponTable({
 
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-10 text-center">
+                <td colSpan={6} className="px-3 py-10 text-center">
                   {shopIsEmpty && !hasFilters ? (
                     <div className="text-sm text-admin-textMuted">
                       ร้านนี้ยังไม่มีคูปองในคลัง — กด &quot;+ นำเข้าคูปอง&quot; เพื่อเริ่มต้น
