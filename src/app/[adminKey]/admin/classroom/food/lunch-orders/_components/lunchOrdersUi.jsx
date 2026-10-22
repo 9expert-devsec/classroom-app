@@ -207,15 +207,42 @@ const ACTION_ORDER = [
   "cancelCoupon",
 ];
 
-/** ปุ่มทั้งหมดที่เกี่ยวกับแถวนี้ (ตามลำดับ) */
+/**
+ * R3-1: ปุ่ม "รับคืนคูปอง" หนึ่งปุ่มต่อรหัสที่รอคืน (row.pendingReturns — จากใบใดก็ได้ของวันนั้น)
+ * กดแล้วใช้ทางรับคืนเดิม (onAction("return", แถวที่ชี้รหัสนั้น) -> โมดัลยืนยันเดิม -> /api/admin/lunch/return)
+ */
+function returnItems(row) {
+  if (!row?.actions?.returnCoupon) return [];
+  return (row.pendingReturns || []).map((pr) => ({
+    key: `returnCoupon:${pr.codeId}`,
+    actionKey: "return",
+    actionRow: { ...row, orderId: pr.orderId, stockCodeId: pr.codeId, couponCode: pr.code },
+    label: `รับคืนคูปอง ${pr.code}`,
+    shortLabel: "รับคืนคูปอง",
+    Icon: Undo2,
+    cls: ACTION_META.return.cls,
+    allowed: true,
+    reason: "",
+  }));
+}
+
+/** ปุ่มทั้งหมดที่เกี่ยวกับแถวนี้ (ตามลำดับ) — R3-1: รับคืนคูปองขึ้นก่อน */
 export function rowActionList(row) {
   const a = row?.actions || {};
-  return ACTION_ORDER.filter((k) => a[k]).map((k) => ({
-    key: k,
-    ...ACTION_META[k],
-    allowed: !!a[k].allowed,
-    reason: a[k].allowed ? "" : a[k].reason || "",
-  }));
+  return [
+    ...returnItems(row),
+    ...ACTION_ORDER.filter((k) => a[k]).map((k) => ({
+      key: k,
+      ...ACTION_META[k],
+      allowed: !!a[k].allowed,
+      reason: a[k].allowed ? "" : a[k].reason || "",
+    })),
+  ];
+}
+
+// ปุ่มชี้ไปที่ action จริง (รับคืนคูปองของรหัสหนึ่ง = "return" กับแถวที่ชี้รหัสนั้น)
+function runItem(item, row, onAction) {
+  if (item.allowed) onAction(item.actionKey || item.key, item.actionRow || row);
 }
 
 export function hasActions(row) {
@@ -227,9 +254,13 @@ export function hasActions(row) {
  *   pending / forfeited -> ดู QR
  *   ordered / at_shop   -> ยืนยันส่งมอบ (stock รหัส assigned) ไม่งั้น ดู QR
  *   cancelled           -> ออก QR ใหม่ ถ้ากดได้ ไม่งั้น รับคืน ถ้ากดได้
+ *   R3-1: มีคูปองกระดาษรอรับคืน -> "รับคืนคูปอง" (รหัสแรก) ก่อนเสมอ ที่เหลืออยู่ในเมนู ⋯
+ *         รับคืนแล้ว -> กลับไปใช้กติกาด้านบน (เช่น ยืนยันส่งมอบของใบใหม่)
  */
 export function primaryActionKey(row) {
   const a = row?.actions || {};
+  const firstReturn = returnItems(row)[0];
+  if (firstReturn) return firstReturn.key;
   if (row?.status === "cancelled") {
     if (a.issue?.allowed) return "issue";
     if (a.return?.allowed) return "return";
@@ -256,11 +287,11 @@ function ActionButton({ item, busy, onAction, row, full }) {
         data-testid={`action-${item.key}`}
         disabled={busy || !item.allowed}
         title={item.reason || undefined}
-        onClick={stop(() => item.allowed && onAction(item.key, row))}
+        onClick={stop(() => runItem(item, row, onAction))}
         className={`${base} ${item.cls}`}
       >
         <item.Icon className={icon} />
-        {item.label}
+        {!full && item.shortLabel ? item.shortLabel : item.label}
       </button>
       {item.reason ? (
         <span className={`text-[11px] text-admin-textMuted ${full ? "text-center" : "text-right"}`}>
@@ -309,7 +340,7 @@ export function RowActionsCell({ row, busy, onAction }) {
               <DropdownMenuItem
                 key={it.key}
                 disabled={busy || !it.allowed}
-                onSelect={() => it.allowed && onAction(it.key, row)}
+                onSelect={() => runItem(it, row, onAction)}
                 className="flex cursor-pointer flex-col items-start gap-0.5 px-3 py-2 text-xs focus:bg-admin-surfaceMuted"
               >
                 <span className="inline-flex items-center gap-1.5 font-medium">

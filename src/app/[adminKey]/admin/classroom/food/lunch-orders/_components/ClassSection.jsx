@@ -136,6 +136,17 @@ export default function ClassSection({
                           <CodeCell row={r} />
                         </IconLine>
                         <IconLine Icon={Layers}>{sourceLabel(r) || "-"}</IconLine>
+                        {/* R3-1: คูปองกระดาษจากใบก่อนหน้าของวันนั้นที่ยังต้องรับคืน */}
+                        {(r.pendingReturns || []).map((pr) => (
+                          <div
+                            key={pr.codeId}
+                            data-testid="pending-return"
+                            className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+                          >
+                            ต้องรับคูปองกระดาษคืน: {pr.code}
+                            {pr.restaurantName ? ` (${pr.restaurantName})` : ""}
+                          </div>
+                        ))}
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-3 tabular-nums">

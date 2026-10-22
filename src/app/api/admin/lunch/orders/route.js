@@ -86,7 +86,10 @@ export async function GET(req) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const items = await buildOrderRows({ rows, context: all, now, classById });
+    // R3-1: ตัวกรอง "รอรับคืน" = แถวที่มีคูปองกระดาษรอรับคืน (จากใบใดก็ได้ของวันนั้น)
+    const built = await buildOrderRows({ rows, context: all, now, classById });
+    const items =
+      statusQ === "awaiting_return" ? built.filter((r) => r.pendingReturns.length > 0) : built;
 
     return NextResponse.json(
       {

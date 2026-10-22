@@ -23,6 +23,7 @@ import { rowActions } from "@/lib/lunchActions.server";
 import { classDayIndexOf } from "@/lib/lunchChoice";
 import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
 import { couponCodeStateOf } from "@/lib/lunchCodeState";
+import { cancelReasonLabel } from "@/lib/lunchCancelReasons";
 
 export const ORDER_ROW_FIELDS =
   "classId studentId dayYMD status deadlineAt holderName nickname courseName roomName restaurantName usesCouponStock couponCode couponSource couponVoidedAt stockCodeId itemsTotal overBudget reopenCount createdAt submittedAt redeemedAt cancelledAt cancelReason cancelledBy handedOutAt handedOutBy activeKey token";
@@ -31,6 +32,17 @@ export const CLASS_ROW_FIELDS =
   "title courseName customCourseName room date days dayCount duration.dayCount";
 
 const keyOf = (o) => `${o.classId}:${o.studentId}:${o.dayYMD}`;
+
+/**
+ * R3-1: มีคูปองกระดาษรอรับคืน -> ปุ่ม returnCoupon (หนึ่งปุ่มต่อรหัส ตาม pendingReturns ของแถว)
+ * รับคืนไม่ติดกติกา "วันนี้ / ก่อน 15:00" (ตามที่ตกลงไว้) · ปุ่ม return เดิมของใบที่ยกเลิก
+ * ซ้ำกับรหัสเดียวกันใน pendingReturns จึงเอาออก
+ */
+function withReturnActions(actions, pendingReturns) {
+  if (!pendingReturns.length) return actions;
+  const { return: _legacyReturn, ...rest } = actions;
+  return { ...rest, returnCoupon: { allowed: true, reason: null } };
+}
 
 /**
  * @param rows     ออเดอร์ที่จะทำเป็นแถว (lean, select ORDER_ROW_FIELDS)
@@ -53,11 +65,33 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
   }
 
   // สถานะรหัส stock (ไว้บอกผลของการยกเลิกในหน้าจอ)
-  const stockIds = rows.map((o) => o.stockCodeId).filter(Boolean);
+  // R3-1: รวมรหัสของทุกใบในกลุ่ม (context) ด้วย — หาคูปองกระดาษที่ยังรอคืนจากใบเก่าของวันนั้น
+  const stockIds = [
+    ...new Set([...rows, ...context].map((o) => o.stockCodeId).filter(Boolean).map(String)),
+  ];
   const stockDocs = stockIds.length
-    ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status orderId").lean()
+    ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status orderId code").lean()
     : [];
   const stockById = new Map(stockDocs.map((d) => [String(d._id), d]));
+
+  // R3-1: คูปองกระดาษที่ยังต้องรับคืน (awaiting_return จากใบใดก็ได้ของผู้เรียนคนนั้นในวันนั้น)
+  //       เช่น ส่งมอบแล้วถูกโยกร้าน / ยกเลิกเพื่อแก้ไข / ยกเลิกคูปอง — แถวแสดงใบใหม่ จึงต้องบอกแยก
+  const pendingReturnsByKey = new Map();
+  for (const o of context) {
+    const code = o.stockCodeId ? stockById.get(String(o.stockCodeId)) : null;
+    if (!code || code.status !== "awaiting_return" || String(code.orderId || "") !== String(o._id)) {
+      continue;
+    }
+    const k = keyOf(o);
+    if (!pendingReturnsByKey.has(k)) pendingReturnsByKey.set(k, []);
+    pendingReturnsByKey.get(k).push({
+      orderId: String(o._id),
+      codeId: String(code._id),
+      code: code.code || o.couponCode || "",
+      restaurantName: o.restaurantName || "",
+      reason: o.status === "cancelled" ? cancelReasonLabel(o.cancelReason, { byAdmin: true }) : "",
+    });
+  }
   // R2a-3: สถานะรหัสนับเฉพาะเมื่อรหัสยังผูกกับใบนี้ — รหัสที่คืนแล้วถูกจองให้ใบอื่น
   //        ต้องไม่ทำให้ใบที่ยกเลิกไปแล้วดูเหมือนยังถือรหัสนั้นอยู่
   const stockStatusOf = (o) => {
@@ -175,7 +209,12 @@ export async function buildOrderRows({ rows, context, now, classById = null }) {
       hasLiveToken: o.status !== "cancelled" && !!o.activeKey && !!o.token,
       // R2a-2: ตัวเลือกปัจจุบัน + ปุ่มของแถว (ที่เดียวที่ตัดสิน — UI แค่วาดตามนี้)
       currentChoice,
-      actions: rowActions({ order: o, status, stockStatus: rowStockStatus, currentChoice, now }),
+      actions: withReturnActions(
+        rowActions({ order: o, status, stockStatus: rowStockStatus, currentChoice, now }),
+        pendingReturnsByKey.get(keyOf(o)) || [],
+      ),
+      // R3-1: คูปองกระดาษที่ต้องรับคืน (ทุกใบของวันนั้น) — [{ orderId, codeId, code, restaurantName, reason }]
+      pendingReturns: pendingReturnsByKey.get(keyOf(o)) || [],
       // ใบล่าสุดของวันนี้ถูกยกเลิก + เคยสั่งแล้ว + ก่อน 15:00 -> ออก QR ใหม่ได้
       canReissue: reissueable && !reissueBlocked,
       reissueBlockedReason: reissueBlocked,

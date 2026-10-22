@@ -24,7 +24,9 @@ import { AwaitingReturnPanel, CodeSearchResult } from "./_components/CrossDayPan
 import ReassignDialog from "./_components/ReassignDialog";
 
 const POLL_MS = 30_000;
-const STATUS_FILTERS = ["all", ...STATUS_KEYS];
+// R3-1: "รอรับคืน" = แถวที่มีคูปองกระดาษรอรับคืน (กรองที่ server)
+const STATUS_FILTERS = ["all", ...STATUS_KEYS, "awaiting_return"];
+const FILTER_LABELS = { all: "ทั้งหมด", awaiting_return: "รอรับคืน" };
 
 const FIELD =
   "mt-1.5 h-10 w-full rounded-xl border border-admin-border bg-white px-3 text-sm text-admin-text outline-none focus:border-brand-primary";
@@ -474,7 +476,7 @@ export default function LunchOrdersPage() {
             <select value={status} onChange={(e) => setStatus(e.target.value)} className={FIELD}>
               {STATUS_FILTERS.map((s) => (
                 <option key={s} value={s}>
-                  {s === "all" ? "ทั้งหมด" : LUNCH_STATUS_LABELS[s]}
+                  {FILTER_LABELS[s] || LUNCH_STATUS_LABELS[s]}
                 </option>
               ))}
             </select>
