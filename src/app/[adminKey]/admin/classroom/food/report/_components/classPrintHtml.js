@@ -15,6 +15,7 @@ import {
   rowNote,
   isUnchosen,
   dayHeaderLabel,
+  printableRows,
 } from "./reportUi";
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
@@ -111,11 +112,17 @@ export function buildClassPrintHtml(rows, printDate) {
           className: cleanClassTitle(raw, o.courseCode),
           courseCode: o.courseCode || "",
           roomName: o.roomName || "",
-          items: [],
+          all: [],
         });
       }
-      map.get(key).items.push(o);
+      map.get(key).all.push(o);
     });
+    // R4-6: กลุ่ม Class/วัน มาจากทุกแถว (ไม่หายเงียบ) แต่แถวที่พิมพ์ = printableRows เท่านั้น
+    //       เลขลำดับนับจาก 1 ต่อกลุ่มโดยไม่เว้น · นับ "ยังไม่เลือก" (วันนี้) ไว้บอกใต้หัวกลุ่ม
+    for (const g of map.values()) {
+      g.items = printableRows(g.all);
+      g.notChosen = g.all.filter((o) => rowType(o) === "not_chosen").length;
+    }
 
     const printGroups = Array.from(map.values()).sort(
       (a, b) => a.className.localeCompare(b.className, "th") || a.dayYMD.localeCompare(b.dayYMD),
@@ -135,9 +142,10 @@ export function buildClassPrintHtml(rows, printDate) {
         .replace(/'/g, "&#39;");
 
     // ---------- PAGE 1: SUMMARY ----------
-    const summaryItems = buildSummaryItems(rows);
-    const addonSummaryItems = buildAddonSummaryItems(rows);
-    const drinkSummaryItems = buildDrinkSummaryItems(rows);
+    const printed = printableRows(rows);
+    const summaryItems = buildSummaryItems(printed);
+    const addonSummaryItems = buildAddonSummaryItems(printed);
+    const drinkSummaryItems = buildDrinkSummaryItems(printed);
 
     const addonRowsHtml = addonSummaryItems
       .map(
@@ -353,6 +361,7 @@ export function buildClassPrintHtml(rows, printDate) {
                     <div class="class-sub">
                       ${g.dayLabel ? `${esc(g.dayLabel)} • ` : ""}${g.roomName ? `ห้อง ${g.roomName} • ` : ""}ผู้เรียน ${g.items.length} คน • ${printDate}
                     </div>
+                    ${g.notChosen > 0 ? `<div class="class-sub2">ยังไม่เลือก ${g.notChosen} คน (ไม่แสดงในเอกสารนี้)</div>` : ""}
                   </th>
                 </tr>
                 <tr>
@@ -371,7 +380,7 @@ export function buildClassPrintHtml(rows, printDate) {
               <tbody>
                 ${
                   rowsHtml ||
-                  `<tr><td colspan="10" class="td empty">ไม่มีข้อมูล</td></tr>`
+                  `<tr><td colspan="10" class="td empty">ยังไม่มีผู้เรียนเลือกอาหาร</td></tr>`
                 }
               </tbody>
             </table>
@@ -409,6 +418,7 @@ export function buildClassPrintHtml(rows, printDate) {
             .class-head { border: 1px solid #111827; padding: 10px; text-align: left; }
             .class-title { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
             .class-sub { font-size: 11px; color: #6b7280; }
+            .class-sub2 { font-size: 10px; color: #6b7280; margin-top: 2px; }
 
             .th, .td { border: 1px solid #111827; padding: 4px 5px; font-size: 11px; vertical-align: top; overflow: hidden; word-break: break-word;}
             .th { background: #f3f4f6; font-weight: 700; }

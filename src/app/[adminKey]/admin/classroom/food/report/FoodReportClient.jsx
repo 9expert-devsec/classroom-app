@@ -32,6 +32,7 @@ import {
   downloadBlob,
   emptyCounts,
   matchesSearch,
+  printableRows,
   rangeLabel,
   rowId,
   rowType,
@@ -322,8 +323,12 @@ export default function FoodReportClient({ todayYMD }) {
   /* ---------------- export / print ---------------- */
   const fileStem = from === to ? from : `${from}_${to}`;
 
+  // R4-6: Export ออกเฉพาะผลจริง (buildExportAoa กรองด้วย printableRows) — เหลือ 0 แถว = ไม่สร้างไฟล์
+  const NOTHING_TO_EXPORT = "ยังไม่มีผู้เรียนเลือกอาหาร — ไม่มีข้อมูลสำหรับ Export";
+
   function exportCsv(rows, selected) {
     if (!rows.length) return alert(selected ? "ยังไม่ได้เลือกรายชื่อ" : "ยังไม่มีข้อมูลสำหรับ Export");
+    if (!printableRows(rows).length) return alert(NOTHING_TO_EXPORT);
     const csv = aoaToCsv(buildExportAoa(rows));
     downloadBlob(
       new Blob([csv], { type: "text/csv;charset=utf-8;" }),
@@ -333,6 +338,7 @@ export default function FoodReportClient({ todayYMD }) {
 
   async function exportXlsx(rows) {
     if (!rows.length) return alert("ยังไม่มีข้อมูลสำหรับ Export");
+    if (!printableRows(rows).length) return alert(NOTHING_TO_EXPORT);
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();

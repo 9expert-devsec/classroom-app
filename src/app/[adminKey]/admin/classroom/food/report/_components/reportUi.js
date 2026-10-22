@@ -255,6 +255,12 @@ export function isUnchosen(o) {
   return UNCHOSEN_TYPES.includes(rowType(o));
 }
 
+// R4-6: พิมพ์ / Export ออกเฉพาะผลจริง (Set / คูปอง / ไม่รับอาหาร) — ยังไม่เลือก / ไม่มีข้อมูล ไม่ออกในเอกสาร
+//       (หน้าจอยังแสดงครบ) · ตัวกรองเดียวของทุกทางพิมพ์และ Export
+export function printableRows(rows) {
+  return (rows || []).filter((o) => !isUnchosen(o));
+}
+
 export function rowId(o) {
   return String(o.id || o._id);
 }
@@ -564,7 +570,7 @@ export function buildExportAoa(rows) {
     "สถานะ",
   ];
 
-  const out = rows.map((o) => {
+  const out = printableRows(rows).map((o) => {
     const t = rowType(o);
     const isSet = t === "set";
     const isCoupon = t === "coupon";

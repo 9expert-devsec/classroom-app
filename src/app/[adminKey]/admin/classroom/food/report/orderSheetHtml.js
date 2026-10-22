@@ -6,6 +6,7 @@
 //   - นับเฉพาะ ordered / at_shop (cancelled / pending / forfeited ไม่อยู่ใน sheet)
 
 import { optionGroupsOf } from "@/lib/lunchOptionGroups";
+import { printableRows } from "./_components/reportUi";
 
 export const BRAND_LOGO_PATH = "/signature_logo_9expert2026_01-ninebule.png";
 
@@ -85,7 +86,8 @@ export function sheetRowsForShop(rows, shopId, dateYMD, afterHHMM) {
   const cutoff = isHHMM(afterHHMM)
     ? new Date(`${dateYMD}T${afterHHMM}:00+07:00`).getTime()
     : null;
-  return (rows || [])
+  // R4-6: ตัวกรองเดียวกับทุกทางพิมพ์/Export (ยังไม่เลือก / ไม่มีข้อมูล ไม่ออกในเอกสาร)
+  return printableRows(rows)
     .filter(
       (r) =>
         r?.type === "coupon" &&
