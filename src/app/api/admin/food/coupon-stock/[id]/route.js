@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import CouponStockCode from "@/models/CouponStockCode";
+import CouponStockLot from "@/models/CouponStockLot";
+import LunchOrder from "@/models/LunchOrder";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -46,6 +48,16 @@ export async function PATCH(req, { params }) {
     if (action === "void") {
       item = await voidCode(id, body?.reason);
     } else if (action === "unvoid") {
+      // R5-2: ล็อตถูกยกเลิก -> คืนทีละใบไม่ได้ ต้องกู้ล็อตทั้งล็อต
+      const lot = before.lotId
+        ? await CouponStockLot.findById(before.lotId).select("status name").lean()
+        : null;
+      if (lot?.status === "cancelled") {
+        return jsonError(
+          `ล็อต "${lot.name || "ไม่ระบุล็อต"}" ถูกยกเลิกอยู่ กู้คืนล็อตก่อนจึงจะคืนรหัสนี้ได้`,
+          409,
+        );
+      }
       item = await unvoidCode(id);
     } else if (action === "confirmReturn") {
       item = await confirmReturn(id);
@@ -89,7 +101,12 @@ export async function DELETE(req, { params }) {
     const before = await CouponStockCode.findById(id).lean();
     if (!before) return jsonError("ไม่พบคูปอง", 404);
 
-    if (before.status !== "available" || before.assignedAt) {
+    // R5-1: ห้ามดู assignedAt — releaseCode / confirmReturn ล้างเป็น null ตอนคืนเข้าคลัง
+    //       "เคยถูกใช้" = มีออเดอร์ใดเคยอ้างถึงรหัสนี้ (stockCodeId) แม้ออเดอร์นั้นถูกยกเลิกไปแล้ว
+    const everReferenced =
+      before.status === "available" &&
+      (await LunchOrder.exists({ stockCodeId: before._id }));
+    if (before.status !== "available" || everReferenced) {
       return jsonError(
         "ลบได้เฉพาะคูปองที่สถานะ 'พร้อมใช้' และไม่เคยถูกผูกกับออเดอร์",
         409,

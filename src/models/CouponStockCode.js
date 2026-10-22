@@ -41,6 +41,13 @@ const CouponStockCodeSchema = new Schema(
     voidedAt: { type: Date, default: null },
     voidReason: { type: String, default: "" },
 
+    // ✅ R5-1: ล็อตที่รหัสนี้อยู่ (CouponStockLot) — importBatch คงไว้เป็นสำเนาชื่อล็อต
+    lotId: {
+      type: Schema.Types.ObjectId,
+      ref: "CouponStockLot",
+      default: null,
+      index: true,
+    },
     importBatch: { type: String, default: "" },
     note: { type: String, default: "" },
   },
@@ -54,5 +61,8 @@ CouponStockCodeSchema.index({ restaurant: 1, status: 1 });
 // ✅ P2: หยิบใบว่างที่ยังไม่หมดอายุ เรียงตามวันหมดอายุ (ใช้ก่อนหมดก่อน)
 CouponStockCodeSchema.index({ restaurant: 1, status: 1, expiresYMD: 1 });
 
-export default mongoose.models.CouponStockCode ||
-  mongoose.model("CouponStockCode", CouponStockCodeSchema);
+// R5-1: ลงทะเบียนใหม่ทุกครั้ง (แบบเดียวกับ LunchOrder) — ไม่งั้น dev server ที่ compile
+// model ไว้ก่อนมี lotId จะตัด field นี้ทิ้งเงียบ ๆ ตอน insert
+if (mongoose.models.CouponStockCode) mongoose.deleteModel("CouponStockCode");
+
+export default mongoose.model("CouponStockCode", CouponStockCodeSchema);

@@ -246,7 +246,8 @@ export async function cancelLunchOrder({
       try {
         const code = await releaseCode(order.stockCodeId, { session });
         stockStatusAfter = code.status;
-        couponEffect = code.status === "available" ? "released" : "awaiting_return";
+        // R5-2: ล็อตถูกยกเลิก -> รหัสถูก void แทนการคืนคลัง (ยังนับว่า "ปล่อยรหัสแล้ว")
+        couponEffect = code.status === "awaiting_return" ? "awaiting_return" : "released";
       } catch (e) {
         // รหัสอยู่ในสถานะอื่นไปแล้ว (เช่น คืนมือไปแล้ว) — ยกเลิกออเดอร์ต่อได้
         if (!(e instanceof CouponStockError)) throw e;
@@ -557,7 +558,8 @@ export async function confirmLunchCouponReturn({
     action: "lunch.return",
     order: order || { _id: before.orderId, holderName: "", dayYMD: "" },
     before: { stockStatus: "awaiting_return" },
-    after: { stockStatus: "available" },
+    // R5-2: ล็อตถูกยกเลิก -> void แทน available
+    after: { stockStatus: after.status },
     meta: {
       statusBefore: order?.status || "",
       statusAfter: order?.status || "",

@@ -2,7 +2,9 @@
 // GET รายการคูปอง stock แบบแบ่งหน้า
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
+import mongoose from "mongoose";
 import CouponStockCode from "@/models/CouponStockCode";
+import CouponStockLot, { lotNameKey } from "@/models/CouponStockLot";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -25,7 +27,8 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// GET /api/admin/food/coupon-stock?restaurantId=&status=&batch=&expiresYMD=&expiry=&q=&sort=&page=1&pageSize=50
+// GET /api/admin/food/coupon-stock?restaurantId=&status=&lotId=&batch=&expiresYMD=&expiry=&q=&sort=&page=1&pageSize=50
+//   lotId              : R5-2 ทุกใบในล็อต (batch+expiresYMD ที่ตรงกับล็อตก็แปลงเป็น lotId ให้)
 //   batch=__none__     : เฉพาะใบที่ไม่ระบุล็อต
 //   expiry=soon        : พร้อมใช้และหมดอายุภายใน 7 วัน
 //   expiry=expired     : พร้อมใช้แต่หมดอายุแล้ว
@@ -51,9 +54,31 @@ export async function GET(req) {
 
     const filter = { restaurant: restaurantId };
     if (status) filter.status = status;
-    if (batch === NO_BATCH) filter.importBatch = { $in: ["", null] };
-    else if (batch) filter.importBatch = batch;
-    if (lotExpiresYMD) filter.expiresYMD = lotExpiresYMD;
+
+    // R5-2: เลือกล็อตด้วย lotId — หรือ batch+expiresYMD (การ์ดล็อตเดิม) ที่ตรงกับเอกสารล็อต
+    // รหัสในล็อตเดียวกันอาจมีวันหมดอายุต่างกันหลังแก้ล็อต (ใบที่ใช้แล้วคงค่าเดิม) จึงต้องกรองด้วย lotId
+    let lot = null;
+    const lotIdParam = String(searchParams.get("lotId") || "").trim();
+    if (lotIdParam && mongoose.isValidObjectId(lotIdParam)) {
+      lot = await CouponStockLot.findOne({ _id: lotIdParam, restaurant: restaurantId }).select("_id").lean();
+      if (!lot) return jsonError("ไม่พบล็อต", 404);
+    } else if (batch && lotExpiresYMD && mongoose.isValidObjectId(restaurantId)) {
+      const nameKey = batch === NO_BATCH ? "" : lotNameKey(batch);
+      lot = await CouponStockLot.findOne({ restaurant: restaurantId, nameKey, expiresYMD: lotExpiresYMD })
+        .select("_id")
+        .lean();
+    }
+
+    // ระบุ lotId แล้วจะไม่กรองด้วยวันหมดอายุของล็อตอีก (expiry=soon/expired ยังกรองได้)
+    let lotExpiryFilter = lotExpiresYMD;
+    if (lot) {
+      filter.lotId = lot._id;
+      lotExpiryFilter = "";
+    } else {
+      if (batch === NO_BATCH) filter.importBatch = { $in: ["", null] };
+      else if (batch) filter.importBatch = batch;
+      if (lotExpiresYMD) filter.expiresYMD = lotExpiresYMD;
+    }
 
     if (expiry === "soon" || expiry === "expired") {
       const today = toBkkYMD(new Date());
@@ -63,8 +88,8 @@ export async function GET(req) {
         expiry === "expired"
           ? { $lt: today }
           : { $gte: today, $lte: addDaysYMD_BKK(today, 7) };
-      filter.expiresYMD = lotExpiresYMD
-        ? { $eq: lotExpiresYMD, ...range }
+      filter.expiresYMD = lotExpiryFilter
+        ? { $eq: lotExpiryFilter, ...range }
         : range;
     }
 
@@ -92,6 +117,16 @@ export async function GET(req) {
         .lean(),
       CouponStockCode.countDocuments(filter),
     ]);
+
+    // R5-2: สถานะล็อตของแต่ละใบ (เพิ่ม field — ของเดิมไม่เปลี่ยน)
+    const lotIds = [...new Set(items.map((it) => String(it.lotId || "")).filter(Boolean))];
+    const lotStatus = new Map(
+      (lotIds.length
+        ? await CouponStockLot.find({ _id: { $in: lotIds } }).select("_id status").lean()
+        : []
+      ).map((l) => [String(l._id), l.status]),
+    );
+    for (const it of items) it.lotStatus = lotStatus.get(String(it.lotId || "")) || "";
 
     return NextResponse.json({
       ok: true,

@@ -2,6 +2,7 @@
 // ตรรกะการตรวจรหัสที่ import เข้ามา ใช้ร่วมกันทั้ง /import/preview และ /import
 // เพื่อให้ preview กับของจริงตัดสินเหมือนกันเป๊ะ
 import CouponStockCode from "@/models/CouponStockCode";
+import CouponStockLot, { lotNameKey } from "@/models/CouponStockLot";
 import Restaurant from "@/models/Restaurant";
 import {
   classifyLinesLocal,
@@ -48,10 +49,86 @@ export async function validateImportTarget({ restaurantId, expiresYMD }) {
 }
 
 /**
- * ตรวจข้อมูลล็อต (เมื่อหน้า import ส่ง importType มา)
- *   new      : ต้องมีชื่อล็อต และชื่อนี้ต้องยังไม่เคยใช้ในร้านนี้
- *   existing : ล็อตต้องมีอยู่แล้วในร้านนี้ ด้วยวันหมดอายุเดียวกัน
- * ไม่ส่ง importType มา = พฤติกรรมเดิม (ไม่ตรวจล็อต)
+ * R5-1: หาล็อต (CouponStockLot) ที่การ import ครั้งนี้จะเขียนลง
+ *   new      : ต้องมีชื่อล็อต และชื่อนี้ (ไม่สนตัวพิมพ์) ต้องยังไม่เคยใช้ในร้านนี้ -> lot = null (สร้างใหม่)
+ *   existing : ล็อตต้องมีอยู่แล้วในร้านนี้ ยังไม่ถูกยกเลิก และวันหมดอายุต้องตรงกับล็อต
+ *   (ไม่ส่ง) : แบบเดิม (สคริปต์ dev seed) — ชื่อ+วันหมดอายุตรงกับล็อตเดิม = เติมเข้าล็อตนั้น
+ *              ไม่เจอ = สร้างล็อตใหม่ · ชื่อซ้ำแต่วันหมดอายุไม่ตรง = ปฏิเสธ
+ * คืน { lot } — lot = null แปลว่าต้องสร้างล็อตใหม่ตอนบันทึก
+ * ใช้ทั้ง preview และ import (import เรียกซ้ำใน transaction ด้วย session)
+ */
+export async function resolveImportLot({
+  restaurantId,
+  importType,
+  importBatch,
+  expiresYMD,
+  session = null,
+}) {
+  if (importType && importType !== "new" && importType !== "existing") {
+    throw new CouponImportError("ประเภทการนำเข้าไม่ถูกต้อง");
+  }
+  if (importType && !importBatch) throw new CouponImportError("กรุณาระบุชื่อล็อต");
+
+  const key = lotNameKey(importBatch);
+  const findLot = (q) =>
+    CouponStockLot.findOne({ restaurant: restaurantId, ...q }).session(session).lean();
+
+  if (importType === "new") {
+    const [lot, legacy] = await Promise.all([
+      findLot({ nameKey: key }),
+      // รหัสเก่าที่ยังไม่ backfill ล็อต
+      CouponStockCode.exists({ restaurant: restaurantId, importBatch }).session(session),
+    ]);
+    if (lot || legacy) {
+      throw new CouponImportError(
+        `ชื่อล็อต "${importBatch}" มีอยู่แล้วในร้านนี้`,
+        409,
+      );
+    }
+    return { lot: null };
+  }
+
+  // ล็อตไม่มีชื่อ: แยกล็อตด้วยวันหมดอายุ (แบบเดียวกับ backfill)
+  const lot = key
+    ? await findLot({ nameKey: key })
+    : await findLot({ nameKey: "", expiresYMD, status: "active" });
+
+  if (lot) {
+    if (lot.status === "cancelled") {
+      throw new CouponImportError(
+        `ล็อต "${lot.name || "ไม่ระบุล็อต"}" ถูกยกเลิกแล้ว เพิ่มรหัสไม่ได้`,
+        409,
+      );
+    }
+    if (lot.expiresYMD !== expiresYMD) {
+      throw new CouponImportError(
+        `ล็อต "${lot.name}" หมดอายุ ${lot.expiresYMD} ไม่ตรงกับ ${expiresYMD}`,
+        409,
+      );
+    }
+    return { lot };
+  }
+
+  if (importType === "existing") {
+    // ล็อตเก่าที่ยังไม่ backfill: มีรหัสชื่อ+วันหมดอายุนี้อยู่ -> สร้างล็อตให้ตอนบันทึก
+    // (backfill จะผูกรหัสเก่าเข้าล็อตเดียวกันทีหลัง เพราะหาล็อตด้วยชื่อ+วันหมดอายุ)
+    const legacy = await CouponStockCode.exists({
+      restaurant: restaurantId,
+      importBatch,
+      expiresYMD,
+    }).session(session);
+    if (!legacy) {
+      throw new CouponImportError(
+        `ไม่พบล็อต "${importBatch}" หมดอายุ ${expiresYMD} ในร้านนี้`,
+        404,
+      );
+    }
+  }
+  return { lot: null };
+}
+
+/**
+ * ตรวจหมายเหตุ + ล็อต (ไม่เขียนอะไร) — preview และ import ใช้ตัวเดียวกัน
  */
 export async function validateImportLot({
   restaurantId,
@@ -65,38 +142,7 @@ export async function validateImportLot({
       `หมายเหตุต้องไม่เกิน ${MAX_IMPORT_NOTE} ตัวอักษร`,
     );
   }
-
-  if (!importType) return;
-  if (importType !== "new" && importType !== "existing") {
-    throw new CouponImportError("ประเภทการนำเข้าไม่ถูกต้อง");
-  }
-  if (!importBatch) throw new CouponImportError("กรุณาระบุชื่อล็อต");
-
-  if (importType === "new") {
-    const taken = await CouponStockCode.exists({
-      restaurant: restaurantId,
-      importBatch,
-    });
-    if (taken) {
-      throw new CouponImportError(
-        `ชื่อล็อต "${importBatch}" มีอยู่แล้วในร้านนี้`,
-        409,
-      );
-    }
-    return;
-  }
-
-  const lot = await CouponStockCode.exists({
-    restaurant: restaurantId,
-    importBatch,
-    expiresYMD,
-  });
-  if (!lot) {
-    throw new CouponImportError(
-      `ไม่พบล็อต "${importBatch}" หมดอายุ ${expiresYMD} ในร้านนี้`,
-      404,
-    );
-  }
+  return resolveImportLot({ restaurantId, importType, importBatch, expiresYMD });
 }
 
 /**

@@ -3,6 +3,8 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import CouponStockCode from "@/models/CouponStockCode";
+import CouponStockLot from "@/models/CouponStockLot";
+import { classifyStockCodes } from "@/lib/couponStockLots.server";
 import Restaurant from "@/models/Restaurant";
 import LunchOrder from "@/models/LunchOrder";
 
@@ -35,14 +37,29 @@ export async function GET(req) {
     const today = toBkkYMD(new Date());
     const in7 = addDaysYMD_BKK(today, 7);
 
+    // R5-2: ล็อตเป็นตัวตั้ง (ชื่อ / วันหมดอายุ / สถานะ จากเอกสารล็อต)
+    const lotDocs = await CouponStockLot.find({ restaurant: restaurant._id }).lean();
+    const lotById = new Map(lotDocs.map((l) => [String(l._id), l]));
+    const cancelledLotIds = lotDocs.filter((l) => l.status === "cancelled").map((l) => l._id);
+
     const isAvailable = { $eq: ["$status", "available"] };
+    // ใบ available ของล็อตที่ถูกยกเลิกไม่นับเป็นของพร้อมใช้ (ปกติถูก void ไปแล้ว — กันไว้อีกชั้น)
+    const inCancelledLot = { $in: ["$lotId", cancelledLotIds] };
+    const isLiveAvailable = { $and: [isAvailable, { $not: [inCancelledLot] }] };
 
     // นับทุกอย่างใน aggregate เดียว
     const [facets] = await CouponStockCode.aggregate([
       { $match: { restaurant: restaurant._id } },
       {
         $facet: {
-          byStatus: [{ $group: { _id: "$status", n: { $sum: 1 } } }],
+          byStatus: [
+            {
+              $group: {
+                _id: { $cond: [{ $and: [isAvailable, inCancelledLot] }, "__cancelled_lot", "$status"] },
+                n: { $sum: 1 },
+              },
+            },
+          ],
           expiry: [
             {
               $group: {
@@ -50,7 +67,7 @@ export async function GET(req) {
                 availableNotExpired: {
                   $sum: {
                     $cond: [
-                      { $and: [isAvailable, { $gte: ["$expiresYMD", today] }] },
+                      { $and: [isLiveAvailable, { $gte: ["$expiresYMD", today] }] },
                       1,
                       0,
                     ],
@@ -59,7 +76,7 @@ export async function GET(req) {
                 expiredStillAvailable: {
                   $sum: {
                     $cond: [
-                      { $and: [isAvailable, { $lt: ["$expiresYMD", today] }] },
+                      { $and: [isLiveAvailable, { $lt: ["$expiresYMD", today] }] },
                       1,
                       0,
                     ],
@@ -70,7 +87,7 @@ export async function GET(req) {
                     $cond: [
                       {
                         $and: [
-                          isAvailable,
+                          isLiveAvailable,
                           { $gte: ["$expiresYMD", today] },
                           { $lte: ["$expiresYMD", in7] },
                         ],
@@ -86,7 +103,13 @@ export async function GET(req) {
           byBatch: [
             {
               $group: {
-                _id: { batch: "$importBatch", expiresYMD: "$expiresYMD" },
+                // R5-2: 1 ล็อต = 1 การ์ด (รหัสในล็อตเดียวกันอาจมีวันหมดอายุต่างกันหลังแก้ล็อต)
+                // รหัสที่ไม่มี lotId (ไม่ควรมีหลัง backfill) จัดกลุ่มแบบเดิม
+                _id: {
+                  lotId: "$lotId",
+                  batch: { $cond: [{ $ifNull: ["$lotId", false] }, null, "$importBatch"] },
+                  expiresYMD: { $cond: [{ $ifNull: ["$lotId", false] }, null, "$expiresYMD"] },
+                },
                 total: { $sum: 1 },
                 available: { $sum: { $cond: [isAvailable, 1, 0] } },
                 assigned: {
@@ -106,7 +129,6 @@ export async function GET(req) {
                 lastImportedAt: { $max: "$createdAt" },
               },
             },
-            { $sort: { "_id.expiresYMD": 1, "_id.batch": 1 } },
           ],
         },
       },
@@ -131,17 +153,52 @@ export async function GET(req) {
       if (r._id in byStatus) byStatus[r._id] = r.n;
     }
 
-    const batches = byBatchRows.map((b) => ({
-      importBatch: b._id.batch || "",
-      expiresYMD: b._id.expiresYMD || "",
-      total: b.total,
-      available: b.available,
-      assigned: b.assigned,
-      handedOut: b.handedOut,
-      awaitingReturn: b.awaitingReturn,
-      voided: b.voided,
-      lastImportedAt: b.lastImportedAt || null,
-    }));
+    // bucket ต่อล็อต: นอกจาก assigned ตัดสินจากสถานะได้เลย · assigned ต้องดูวันอบรมของออเดอร์
+    const assignedCodes = await CouponStockCode.find({ restaurant: restaurant._id, status: "assigned" })
+      .select("_id status orderId lotId")
+      .lean();
+    const assignedInfo = await classifyStockCodes(assignedCodes, today);
+    const assignedByLot = new Map(); // lotKey -> { active, stale }
+    for (const c of assignedCodes) {
+      const k = String(c.lotId || "");
+      if (!assignedByLot.has(k)) assignedByLot.set(k, { active: 0, stale: 0 });
+      const i = assignedInfo.get(String(c._id));
+      if (i?.staleAssigned) assignedByLot.get(k).stale += 1;
+      else assignedByLot.get(k).active += 1;
+    }
+
+    const batches = byBatchRows
+      .map((b) => {
+        const lotId = b._id.lotId ? String(b._id.lotId) : null;
+        const lot = lotId ? lotById.get(lotId) : null;
+        const a = assignedByLot.get(lotId || "") || { active: 0, stale: 0 };
+        return {
+          importBatch: lot ? lot.name || "" : b._id.batch || "",
+          expiresYMD: lot ? lot.expiresYMD || "" : b._id.expiresYMD || "",
+          total: b.total,
+          available: b.available,
+          assigned: b.assigned,
+          handedOut: b.handedOut,
+          awaitingReturn: b.awaitingReturn,
+          voided: b.voided,
+          lastImportedAt: b.lastImportedAt || null,
+          // R5-2: เพิ่ม (คีย์เดิมคงไว้)
+          lotId,
+          lotStatus: lot?.status || "",
+          buckets: {
+            unused: b.available + a.stale,
+            void: b.voided,
+            active: a.active,
+            used: b.handedOut + b.awaitingReturn,
+            staleAssigned: a.stale,
+          },
+        };
+      })
+      .sort(
+        (x, y) =>
+          (x.expiresYMD || "").localeCompare(y.expiresYMD || "") ||
+          (x.importBatch || "").localeCompare(y.importBatch || ""),
+      );
 
     const lowThreshold = Number(restaurant.couponStockLowThreshold ?? 5);
 

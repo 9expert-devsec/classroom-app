@@ -12,6 +12,7 @@
 // ห้ามอ่านมาก่อนแล้วค่อยเขียน เพราะสองคนกดพร้อมกันจะได้ใบเดียวกัน
 
 import CouponStockCode from "@/models/CouponStockCode";
+import { returnCodeToStock } from "@/lib/couponStockLots.server";
 
 /* ---------------- code normalisation ---------------- */
 
@@ -99,24 +100,19 @@ export async function markHandedOut(codeId, { session, at } = {}) {
 
 /**
  * ยกเลิกออเดอร์:
- *   assigned   -> available      (ยังไม่ได้ยื่น คืนเข้าคลังได้เลย)
+ *   assigned   -> available      (ยังไม่ได้ยื่น คืนเข้าคลังได้เลย · ล็อตถูกยกเลิก -> void)
  *   handed_out -> awaiting_return (ยื่นไปแล้ว ต้องตามเก็บกระดาษคืน)
  * P4a: รับ session เพิ่ม (optional) เพื่อให้อยู่ใน transaction เดียวกับการยกเลิกออเดอร์
  */
 export async function releaseCode(codeId, { session } = {}) {
   const opts = session ? { new: true, session } : { new: true };
 
-  const back = await CouponStockCode.findOneAndUpdate(
-    { _id: codeId, status: "assigned" },
-    {
-      $set: {
-        status: "available",
-        orderId: null,
-        assignedAt: null,
-      },
-    },
-    opts,
-  ).lean();
+  // R5-2: กลับเข้าคลังผ่าน returnCodeToStock — ล็อตถูกยกเลิก = void, ไม่งั้นได้ค่าล็อตล่าสุด
+  const back = await returnCodeToStock(codeId, {
+    fromStatus: "assigned",
+    set: { orderId: null, assignedAt: null },
+    session,
+  });
   if (back) return back;
 
   const pending = await CouponStockCode.findOneAndUpdate(
@@ -131,20 +127,14 @@ export async function releaseCode(codeId, { session } = {}) {
   );
 }
 
-/** awaiting_return -> available (ได้กระดาษคืนมาแล้ว) */
-export async function confirmReturn(codeId) {
-  const doc = await CouponStockCode.findOneAndUpdate(
-    { _id: codeId, status: "awaiting_return" },
-    {
-      $set: {
-        status: "available",
-        orderId: null,
-        assignedAt: null,
-        returnedAt: new Date(),
-      },
-    },
-    { new: true },
-  ).lean();
+/** awaiting_return -> available (ได้กระดาษคืนมาแล้ว) · ล็อตถูกยกเลิก -> void */
+export async function confirmReturn(codeId, { session } = {}) {
+  // R5-2: ผ่าน returnCodeToStock เหมือน releaseCode (ไม่ส่ง session = เปิด transaction เอง)
+  const doc = await returnCodeToStock(codeId, {
+    fromStatus: "awaiting_return",
+    set: { orderId: null, assignedAt: null, returnedAt: new Date() },
+    session,
+  });
 
   if (!doc) {
     throw new CouponStockError(
