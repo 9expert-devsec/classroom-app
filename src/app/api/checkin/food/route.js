@@ -25,6 +25,10 @@ import { LunchAdminError } from "@/lib/lunchAdmin.server";
 // R2a: ตัวเลือกอาหาร + ออเดอร์ (log / audit อยู่ในนี้ด้วย)
 import { changeFoodChoice } from "@/lib/lunchActions.server";
 import { stripAutoNote } from "@/lib/foodNotes";
+import {
+  getFoodDayOptions,
+  validateSetChoice,
+} from "@/lib/foodDayOptions.server";
 
 export const dynamic = "force-dynamic";
 
@@ -284,6 +288,29 @@ export async function POST(req) {
             ? { day: safeDay, todayDay: avail.todayDay }
             : {}),
         },
+        { status: 409 },
+      );
+    }
+  }
+
+  // R4-5A: Set ต้องอยู่ในแผน Food Calendar ของวันนี้ (kiosk และแอดมิน) — กฎเดียวกับตัวเลือกที่ kiosk เห็น
+  //        ร้านไม่อยู่ในแผน/ปิดวันนี้, เมนูไม่อยู่ในชุด Set, add-on/เครื่องดื่มที่เมนูนี้ไม่มี -> 409
+  //        (คูปองตรวจกับ getCouponAvailability ด้านบน ซึ่งเป็นตัวเดียวกับใน getFoodDayOptions)
+  if (finalChoiceType === "food") {
+    const plan = await getFoodDayOptions({
+      classId: safeClassId,
+      day: safeDay,
+      includeCoupon: false,
+    });
+    const offPlan = validateSetChoice(plan, {
+      restaurantId,
+      menuId,
+      addonIds: uniqStrArr(addonIds),
+      drinkId,
+    });
+    if (offPlan) {
+      return NextResponse.json(
+        { ok: false, error: offPlan.error, reason: offPlan.reason },
         { status: 409 },
       );
     }

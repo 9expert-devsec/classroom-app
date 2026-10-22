@@ -2,21 +2,11 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongoose";
 import { kioskGuard } from "@/lib/kioskAuth.server";
-import Restaurant from "@/models/Restaurant";
-import FoodMenu from "@/models/FoodMenu";
-import FoodDaySet from "@/models/FoodDaySet";
-import FoodSet from "@/models/FoodSet";
 import Student from "@/models/Student";
 import Class from "@/models/Class";
 
-import FoodAddon from "@/models/FoodAddon";
-import FoodDrink from "@/models/FoodDrink";
-
-import {
-  resolveClassDayYMD,
-  getDaySet,
-  getCouponAvailability,
-} from "@/lib/couponAvailability.server";
+import { resolveClassDayYMD } from "@/lib/couponAvailability.server";
+import { getFoodDayOptions } from "@/lib/foodDayOptions.server";
 import { toBkkYMD, isCouponClosed } from "@/lib/lunchConfig";
 import { lunchNow } from "@/lib/lunchClock.server";
 import { todayFoodOf } from "@/lib/lunchChoice";
@@ -136,14 +126,14 @@ export async function GET(req) {
       ? resolveClassDayYMD(classDoc, hasDay ? day : 1)
       : toBkkYMD(new Date());
 
-    const daySet = await getDaySet(dayYMD);
-
-    // ✅ กฎเดียวสำหรับ "วันนี้กด Cash Coupon ได้ไหม"
-    const baseAvail = await getCouponAvailability({
-      classDoc,
-      dayYMD,
-      daySet,
-    });
+    // R4-5A: ร้าน Set / เมนู / add-on / เครื่องดื่ม / คูปองของวัน มาจาก getFoodDayOptions
+    //         (ตัวเดียวกับโมดัลแก้ไขอาหารของแอดมิน และการตรวจตอนบันทึก /api/checkin/food)
+    //         คูปองยังเป็นกฎเดียว getCouponAvailability (เรียกจากในนั้น)
+    const {
+      hasFoodSetup,
+      items,
+      coupon: baseAvail,
+    } = await getFoodDayOptions({ classDoc, dayYMD });
 
     // C2: ถึง 15:00 (เวลาไทยของ server ไม่ใช่นาฬิกาแท็บเล็ต) -> ไม่เสนอ Cash Coupon
     //     เหลือแค่ร้าน set กับ "ไม่รับอาหาร" เหมือนคลาสที่ปิดคูปองไว้
@@ -153,208 +143,10 @@ export async function GET(req) {
       ? { ...baseAvail, available: false, reason: "coupon_closed", couponRestaurants: [] }
       : baseAvail;
 
-    // ✅ RULE: ถ้าไม่มีการตั้งค่าใน Calendar → ไม่มีร้าน/เมนูวันนี้
-    if (
-      !daySet ||
-      !Array.isArray(daySet.entries) ||
-      daySet.entries.length === 0
-    ) {
-      return NextResponse.json({
-        ok: true,
-        hasFoodSetup: false,
-        items: [],
-        currentFood, // ✅ still return
-        classInfo,
-        dayYMD,
-        couponAvailable: couponAvail.available,
-        couponUnavailableReason: couponAvail.reason,
-        couponRestaurants: couponAvail.couponRestaurants || [],
-      couponClosed,
-      });
-    }
-
-    // ✅ P1c: เฉพาะร้านโหมด "set" เท่านั้นที่เข้ารายการเลือกเมนูแบบเดิม
-    //    ร้านโหมด coupon/closed ไม่โผล่ที่นี่ (คูปองไปทาง couponAvailable)
-    //    entry เก่าที่ยังไม่มี mode ถือเป็น "set" เพื่อความเข้ากันได้
-    const setEntries = (daySet.entries || []).filter(
-      (e) => (e.mode || "set") === "set",
-    );
-
-    const restaurantIds = setEntries.map((e) => e.restaurant);
-
-    const restaurants = await Restaurant.find({
-      _id: { $in: restaurantIds },
-      isActive: { $ne: false },
-    })
-      .select("name logoUrl isActive")
-      .lean();
-
-    // restaurantId -> allowed menuIds (string) based on set
-    const setMenuMap = new Map();
-
-    const setIds = setEntries.map((e) => e.set).filter(Boolean);
-    if (setIds.length > 0) {
-      const sets = await FoodSet.find({ _id: { $in: setIds } }).lean();
-      const setsMap = new Map(sets.map((s) => [String(s._id), s]));
-
-      setEntries.forEach((entry) => {
-        if (!entry.set) return;
-        const setDoc = setsMap.get(String(entry.set));
-        if (!setDoc) return;
-
-        const restKey = String(entry.restaurant);
-        const menuIds = (setDoc.menuIds || []).map((id) => String(id));
-        if (menuIds.length > 0) setMenuMap.set(restKey, menuIds);
-      });
-    }
-
-    const activeRestaurantIds = restaurants.map((r) => r._id);
-
-    const menus = await FoodMenu.find({
-      isActive: { $ne: false },
-      restaurant: { $in: activeRestaurantIds },
-    })
-      .select(
-        "restaurant name imageUrl addons drinks addonIds drinkIds isActive",
-      )
-      .lean();
-
-    // ✅ ดึง add-on/drink เฉพาะที่ถูก “อ้างอิงโดยเมนูวันนี้” เพื่อไม่ให้ query หนัก
-    const allAddonIds = new Set();
-    const allDrinkIds = new Set();
-
-    for (const m of menus) {
-      const restKey = String(m.restaurant);
-      const allowedMenuIds = setMenuMap.get(restKey);
-      if (Array.isArray(allowedMenuIds) && allowedMenuIds.length > 0) {
-        if (!allowedMenuIds.includes(String(m._id))) continue;
-      }
-      (m.addonIds || []).forEach((id) => allAddonIds.add(String(id)));
-      (m.drinkIds || []).forEach((id) => allDrinkIds.add(String(id)));
-    }
-
-    const [addonDocs, drinkDocs] = await Promise.all([
-      allAddonIds.size
-        ? FoodAddon.find({
-            _id: { $in: [...allAddonIds] },
-            isActive: { $ne: false },
-          })
-            .select("name imageUrl")
-            .lean()
-        : [],
-      allDrinkIds.size
-        ? FoodDrink.find({
-            _id: { $in: [...allDrinkIds] },
-            isActive: { $ne: false },
-          })
-            .select("name imageUrl")
-            .lean()
-        : [],
-    ]);
-
-    const addonById = new Map(addonDocs.map((a) => [String(a._id), a]));
-    const drinkById = new Map(drinkDocs.map((d) => [String(d._id), d]));
-
-    // ✅ สร้าง output map (ต่อร้าน) + เตรียม set สำหรับรวม addons/drinks ของร้านนั้น ๆ
-    const map = new Map();
-    const restaurantAddonIdsMap = new Map(); // restKey -> Set(addonId)
-    const restaurantDrinkIdsMap = new Map(); // restKey -> Set(drinkId)
-
-    restaurants.forEach((r) => {
-      const restKey = String(r._id);
-      map.set(restKey, {
-        id: restKey,
-        name: r.name,
-        logoUrl: r.logoUrl,
-        menus: [],
-
-        // ✅ NEW: ให้ FoodPage ใช้ (master list ของร้าน)
-        addons: [],
-        drinks: [],
-      });
-      restaurantAddonIdsMap.set(restKey, new Set());
-      restaurantDrinkIdsMap.set(restKey, new Set());
-    });
-
-    // ✅ ใส่เมนู + สะสม addonIds/drinkIds ต่อร้าน
-    menus.forEach((m) => {
-      const restKey = String(m.restaurant);
-      if (!map.has(restKey)) return;
-
-      const allowedMenuIds = setMenuMap.get(restKey);
-      if (
-        Array.isArray(allowedMenuIds) &&
-        allowedMenuIds.length > 0 &&
-        !allowedMenuIds.includes(String(m._id))
-      ) {
-        return;
-      }
-
-      // สะสม id ต่อร้าน (union)
-      const aSet = restaurantAddonIdsMap.get(restKey);
-      const dSet = restaurantDrinkIdsMap.get(restKey);
-      (m.addonIds || []).forEach((id) => aSet?.add(String(id)));
-      (m.drinkIds || []).forEach((id) => dSet?.add(String(id)));
-
-      map.get(restKey).menus.push({
-        id: String(m._id),
-        name: m.name,
-        imageUrl: m.imageUrl,
-
-        // ✅ new: ผูกจริงรายเมนู
-        addonIds: (m.addonIds || []).map((x) => String(x)),
-        drinkIds: (m.drinkIds || []).map((x) => String(x)),
-
-        // legacy compat
-        addons: m.addons || [],
-        drinks: m.drinks || [],
-      });
-    });
-
-    // ✅ สร้าง restaurant.addons / restaurant.drinks จาก union set
-    for (const [restKey, restObj] of map.entries()) {
-      const aSet = restaurantAddonIdsMap.get(restKey) || new Set();
-      const dSet = restaurantDrinkIdsMap.get(restKey) || new Set();
-
-      const addons = [...aSet]
-        .map((id) => {
-          const doc = addonById.get(String(id));
-          if (!doc) return null;
-          return {
-            id: String(id),
-            name: doc.name,
-            imageUrl: doc.imageUrl || "",
-          };
-        })
-        .filter(Boolean)
-        .sort((x, y) =>
-          String(x.name || "").localeCompare(String(y.name || "")),
-        );
-
-      const drinks = [...dSet]
-        .map((id) => {
-          const doc = drinkById.get(String(id));
-          if (!doc) return null;
-          return {
-            id: String(id),
-            name: doc.name,
-            imageUrl: doc.imageUrl || "",
-          };
-        })
-        .filter(Boolean)
-        .sort((x, y) =>
-          String(x.name || "").localeCompare(String(y.name || "")),
-        );
-
-      restObj.addons = addons;
-      restObj.drinks = drinks;
-    }
-
-    const items = Array.from(map.values()).filter((r) => r.menus.length > 0);
-
+    // ✅ RULE: ถ้าไม่มีการตั้งค่าใน Calendar → ไม่มีร้าน/เมนูวันนี้ (hasFoodSetup = false, items = [])
     return NextResponse.json({
       ok: true,
-      hasFoodSetup: true,
+      hasFoodSetup,
       items,
       currentFood, // ✅ NEW
       classInfo,
