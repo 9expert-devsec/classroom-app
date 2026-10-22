@@ -26,7 +26,9 @@ function KpiCard({ icon: Icon, label, value, caption, tone }) {
           </span>
           <span className="text-xs text-admin-textMuted">ใบ</span>
         </div>
-        <div className="truncate text-xs text-admin-textMuted">{caption}</div>
+        <div className="truncate text-xs text-admin-textMuted" title={caption}>
+          {caption}
+        </div>
       </div>
     </div>
   );
@@ -55,9 +57,9 @@ export default function StockKpis({ summary }) {
       <KpiCard
         icon={CircleCheck}
         tone="blue"
-        label="ถูกใช้แล้ว"
+        label="จองแล้ว"
         value={s ? by.assigned : null}
-        caption="คูปองที่ผูกกับออเดอร์แล้ว"
+        caption="คูปองที่ผูกกับออเดอร์ รอส่งมอบที่ Counter"
       />
       <KpiCard
         icon={Truck}

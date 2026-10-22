@@ -9,7 +9,11 @@ import StockKpis from "./_components/StockKpis";
 import LotCards from "./_components/LotCards";
 import CouponTable from "./_components/CouponTable";
 import ImportDrawer from "./_components/ImportDrawer";
-import { safeJson } from "./_components/stockUi";
+import LotEditDrawer from "./_components/LotEditDrawer";
+import LotRemoveDialog from "./_components/LotRemoveDialog";
+import LotRestoreDialog from "./_components/LotRestoreDialog";
+import { lotKey, safeJson } from "./_components/stockUi";
+import { bangkokTodayYMD } from "@/lib/classDates";
 
 function CouponStockPageInner() {
   const router = useRouter();
@@ -114,6 +118,30 @@ function CouponStockPageInner() {
     );
   }
 
+  /* ---------- R5-3: lot actions (card menu) ---------- */
+  // { kind: "edit" | "remove" | "restore", lot } — lot = การ์ดจาก summary (มี lotId)
+  const [lotAction, setLotAction] = useState(null);
+  const closeLotAction = () => setLotAction(null);
+
+  function handleLotSaved({ oldKey, newKey }) {
+    setLotAction(null);
+    // ตัวกรองตารางผูกกับ key ของการ์ด (ชื่อ|วันหมดอายุ) — ตามไปที่ key ใหม่
+    if (activeLot && activeLot === oldKey) setActiveLot(newKey);
+    refreshAll();
+  }
+
+  function handleLotRemoved({ decision }) {
+    const key = lotAction?.lot ? lotKey(lotAction.lot.importBatch, lotAction.lot.expiresYMD) : "";
+    setLotAction(null);
+    if (decision === "delete" && activeLot && activeLot === key) setActiveLot("");
+    refreshAll();
+  }
+
+  function handleLotRestored() {
+    setLotAction(null);
+    refreshAll();
+  }
+
   return (
     <div className="h-full space-y-5 overflow-y-auto overflow-x-hidden overscroll-contain pr-1">
       {/* header */}
@@ -164,6 +192,26 @@ function CouponStockPageInner() {
         />
       )}
 
+      {lotAction?.kind === "edit" && (
+        <LotEditDrawer
+          lot={lotAction.lot}
+          today={shopSummary?.today || bangkokTodayYMD()}
+          onClose={closeLotAction}
+          onSaved={handleLotSaved}
+        />
+      )}
+      {lotAction?.kind === "remove" && (
+        <LotRemoveDialog lot={lotAction.lot} onClose={closeLotAction} onDone={handleLotRemoved} />
+      )}
+      {lotAction?.kind === "restore" && (
+        <LotRestoreDialog
+          lot={lotAction.lot}
+          today={shopSummary?.today || bangkokTodayYMD()}
+          onClose={closeLotAction}
+          onDone={handleLotRestored}
+        />
+      )}
+
       {restaurants && restaurants.length === 0 && (
         <div className="rounded-2xl bg-admin-surface p-6 text-sm text-admin-textMuted shadow-sm">
           ยังไม่มีร้านที่เปิด &quot;ร้านนี้ใช้คูปอง stock&quot; — ไปเปิดได้ที่หน้า
@@ -194,6 +242,8 @@ function CouponStockPageInner() {
             activeLot={activeLot}
             highlightLot={highlight.shop === restaurantId ? highlight.key : ""}
             onSelect={setActiveLot}
+            onAction={(kind, lot) => setLotAction({ kind, lot })}
+            onImport={() => setImportOpen(true)}
           />
 
           <CouponTable

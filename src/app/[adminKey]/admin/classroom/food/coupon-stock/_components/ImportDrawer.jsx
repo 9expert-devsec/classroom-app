@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Loader2, X } from "lucide-react";
 import { bangkokTodayYMD } from "@/lib/classDates";
 import { classifyLinesLocal, MAX_IMPORT_CODES } from "@/lib/couponStockCode";
-import { lotKey, parseLotKey, safeJson } from "./stockUi";
+import { isLotCancelled, lotKey, parseLotKey, safeJson } from "./stockUi";
 import { sortLots } from "./LotCards";
 import { StepCodes, StepLot, StepReview } from "./ImportSteps";
 
@@ -119,7 +119,8 @@ export default function ImportDrawer({ restaurants, initialRestaurantId, onClose
 
   const allLots = lotsState.shop === form.restaurantId ? lotsState.lots : null;
   const namedLots = useMemo(
-    () => sortLots((allLots || []).filter((b) => b.importBatch)),
+    // R5-3: ล็อตที่ยกเลิกแล้วรับรหัสเพิ่มไม่ได้ (server ก็ปฏิเสธ) — ไม่ให้เลือก
+    () => sortLots((allLots || []).filter((b) => b.importBatch && !isLotCancelled(b))),
     [allLots],
   );
 
@@ -134,7 +135,12 @@ export default function ImportDrawer({ restaurants, initialRestaurantId, onClose
   const errors = {};
   if (isNew) {
     if (!importBatch) errors.batchName = "กรุณาระบุชื่อล็อต";
-    else if ((allLots || []).some((b) => b.importBatch === importBatch))
+    // ชื่อล็อตห้ามซ้ำแบบไม่สนตัวพิมพ์ (ตรงกับ server) — รวมล็อตที่ยกเลิกแล้ว
+    else if (
+      (allLots || []).some(
+        (b) => (b.importBatch || "").toLowerCase() === importBatch.toLowerCase(),
+      )
+    )
       errors.batchName = "ชื่อล็อตนี้มีอยู่แล้วในร้านนี้";
     if (!form.expiresYMD) errors.expiresYMD = "กรุณาระบุวันหมดอายุ";
     else if (form.expiresYMD < today)

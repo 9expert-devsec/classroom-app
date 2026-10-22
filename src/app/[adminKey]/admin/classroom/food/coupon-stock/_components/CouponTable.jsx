@@ -295,6 +295,7 @@ export default function CouponTable({
                     return (
                       <option key={key} value={key}>
                         {lotLabel(b.importBatch)} · {b.expiresYMD || "—"}
+                        {b.lotStatus === "cancelled" ? " (ยกเลิกแล้ว)" : ""}
                       </option>
                     );
                   })}
@@ -446,19 +447,32 @@ export default function CouponTable({
                             ยืนยันรับคืน
                           </DropdownMenuItem>
                         )}
-                        {r.status === "void" && (
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              patchCode(
-                                r._id,
-                                { action: "unvoid" },
-                                `นำรหัส ${r.code} กลับเข้าคลัง?`,
-                              )
-                            }
-                          >
-                            นำกลับเข้าคลัง
-                          </DropdownMenuItem>
-                        )}
+                        {r.status === "void" &&
+                          (r.lotStatus === "cancelled" ? (
+                            // R5-3: ล็อตถูกยกเลิก -> คืนทีละใบไม่ได้ (server ตอบ 409 อยู่แล้ว)
+                            <DropdownMenuItem
+                              disabled
+                              title="ล็อตนี้ถูกยกเลิก — กู้คืนล็อตก่อน"
+                              className="flex-col items-start"
+                            >
+                              นำกลับเข้าคลัง
+                              <span className="text-[11px] text-admin-textMuted">
+                                ล็อตนี้ถูกยกเลิก — กู้คืนล็อตก่อน
+                              </span>
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                patchCode(
+                                  r._id,
+                                  { action: "unvoid" },
+                                  `นำรหัส ${r.code} กลับเข้าคลัง?`,
+                                )
+                              }
+                            >
+                              นำกลับเข้าคลัง
+                            </DropdownMenuItem>
+                          ))}
                         <DropdownMenuItem onSelect={() => handleNote(r)}>
                           แก้หมายเหตุ
                         </DropdownMenuItem>
