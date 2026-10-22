@@ -11,7 +11,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 import ReportTable from "./ReportTable";
-import { cleanClassTitle, cx, formatDateDMY, rowId, rowType } from "./reportUi";
+import { cleanClassTitle, cx, dayHeaderLabel, formatDateDMY, rowId, rowType } from "./reportUi";
 
 export const NO_CLASS_TITLE = "ไม่ระบุ Class";
 
@@ -68,12 +68,14 @@ export function groupRowsByClass(rows) {
   return named;
 }
 
-/** แถวของ Class -> กลุ่มตามวัน (เรียงวันที่จากเก่าไปใหม่) [{ dayYMD, day, rows }] */
+/** แถวของ Class -> กลุ่มตามวัน (เรียงวันที่จากเก่าไปใหม่) [{ dayYMD, day, classDayCount, rows }] */
 function groupRowsByDay(rows) {
   const map = new Map();
   for (const o of rows) {
     const k = String(o.dayYMD || "");
-    if (!map.has(k)) map.set(k, { dayYMD: k, day: o.day || null, rows: [] });
+    if (!map.has(k)) {
+      map.set(k, { dayYMD: k, day: o.day || null, classDayCount: o.classDayCount || null, rows: [] });
+    }
     map.get(k).rows.push(o);
   }
   return [...map.values()].sort((a, b) => a.dayYMD.localeCompare(b.dayYMD));
@@ -98,10 +100,10 @@ function dayCountsLine(rows) {
     .join(" · ");
 }
 
-/** หัวข้อย่อยของวัน (พับได้ เปิดไว้ก่อน) + ตารางของวันนั้น */
-function DaySection({ dayGroup, shownRows, tableProps, classTitle }) {
+/** หัวข้อย่อยของวัน (พับได้ เปิดไว้ก่อน — การพับเป็นแค่สถานะของมุมมองนี้ ไม่จำข้ามการโหลดใหม่) + ตารางของวันนั้น */
+function DaySection({ dayGroup, tableProps, classTitle }) {
   const [open, setOpen] = useState(true);
-  // "#" นับใหม่ทุกวัน (นับจากทั้งวัน — ต่อเนื่องถ้าวันเดียวยาวข้ามหน้า)
+  // "#" นับใหม่ทุกวัน
   const numbers = new Map(dayGroup.rows.map((o, i) => [rowId(o), i + 1]));
   return (
     <div data-testid="day-section" className="rounded-xl border border-admin-border/70">
@@ -113,15 +115,14 @@ function DaySection({ dayGroup, shownRows, tableProps, classTitle }) {
       >
         <ChevronDown className={cx("h-4 w-4 shrink-0 text-admin-textMuted transition-transform", !open && "-rotate-90")} />
         <span className="text-xs font-semibold text-admin-text">
-          {dayGroup.day ? `วันที่ ${dayGroup.day} · ` : ""}
-          {formatDateDMY(dayGroup.dayYMD)} · {dayGroup.rows.length} รายการ
+          {dayHeaderLabel(dayGroup)} · {dayGroup.rows.length} รายการ
         </span>
         <span className="text-[11px] text-admin-textMuted">{dayCountsLine(dayGroup.rows)}</span>
       </button>
       {open && (
         <div className="px-2 pb-2">
           <ReportTable
-            rows={shownRows}
+            rows={dayGroup.rows}
             numberOf={(o) => numbers.get(rowId(o))}
             selectAllLabel={`เลือกทั้งหมดใน ${classTitle} วันที่ ${formatDateDMY(dayGroup.dayYMD)}`}
             showDate={false}
@@ -134,15 +135,17 @@ function DaySection({ dayGroup, shownRows, tableProps, classTitle }) {
 }
 
 /**
- * @param groups   groupRowsByClass(listRows) — ทั้งชุดที่กรองแล้ว (นับ n รายการ / ลำดับในการ์ด)
- * @param shownIds rowId ของแถวที่อยู่ในหน้านี้ (หลังแบ่งหน้า) — การ์ดที่ไม่มีแถวในหน้านี้ไม่แสดง
+ * @param groups คลาสของหน้านี้ (groupRowsByClass หลังกรอง แล้วตัดตามหน้า) — R4-3: ทุกแถวของคลาส
+ *               ไม่ถูกตัดกลางคลาส/วันแล้ว · คลาส/วันที่ไม่มีแถวหลังกรองไม่ปรากฏอยู่แล้ว
  */
-export default function ClassGroupedTable({ groups, shownIds, tableProps }) {
+// R4-3: viewKey = ช่วงวัน + ตัวกรอง + หน้า — ใช้เป็นส่วนหนึ่งของ key ของหัวข้อวัน
+//        เดิม key = วันอย่างเดียว: คลาสที่ยังอยู่บนจอหลังเปลี่ยนหน้า/ตัวกรอง/ช่วงวันใช้ instance เดิม
+//        สถานะ "พับ" ที่ผู้ใช้กดไว้จึงติดมาด้วย -> ตอนนี้ทุกครั้งที่มุมมองเปลี่ยน หัวข้อวันเริ่มเปิดใหม่หมด
+export default function ClassGroupedTable({ groups, tableProps, viewKey = "" }) {
   return (
     <div className="space-y-4">
       {groups.map((g) => {
-        const rows = g.rows.filter((o) => shownIds.has(rowId(o)));
-        if (!rows.length) return null;
+        if (!g.rows.length) return null;
         const dayGroups = groupRowsByDay(g.rows);
         return (
           <div
@@ -161,19 +164,14 @@ export default function ClassGroupedTable({ groups, shownIds, tableProps }) {
               </div>
             </div>
             <div className="space-y-2">
-              {dayGroups.map((dg) => {
-                const shownRows = dg.rows.filter((o) => shownIds.has(rowId(o)));
-                if (!shownRows.length) return null;
-                return (
-                  <DaySection
-                    key={dg.dayYMD}
-                    dayGroup={dg}
-                    shownRows={shownRows}
-                    tableProps={tableProps}
-                    classTitle={g.title}
-                  />
-                );
-              })}
+              {dayGroups.map((dg) => (
+                <DaySection
+                  key={`${dg.dayYMD}|${viewKey}`}
+                  dayGroup={dg}
+                  tableProps={tableProps}
+                  classTitle={g.title}
+                />
+              ))}
             </div>
           </div>
         );

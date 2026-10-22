@@ -14,7 +14,7 @@ import {
   cleanClassTitle,
   rowNote,
   isUnchosen,
-  formatDateDMY,
+  dayHeaderLabel,
 } from "./reportUi";
 
 /* ---------- Summary builder (สำหรับหน้าแรกของ Print) ---------- */
@@ -106,9 +106,8 @@ export function buildClassPrintHtml(rows, printDate) {
         map.set(key, {
           key,
           dayYMD: o.dayYMD || "",
-          dayLabel: o.dayYMD
-            ? `${o.day ? `วันที่ ${o.day} · ` : ""}${formatDateDMY(o.dayYMD)}`
-            : "",
+          // R4-3: ป้ายเดียวกับหน้าจอ ("วันเรียนที่ n/N · dd/MM/yyyy" / คลาสวันเดียว "dd/MM/yyyy")
+          dayLabel: o.dayYMD ? dayHeaderLabel(o) : "",
           className: cleanClassTitle(raw, o.courseCode),
           courseCode: o.courseCode || "",
           roomName: o.roomName || "",

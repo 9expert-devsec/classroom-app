@@ -17,7 +17,17 @@ function pageList(page, totalPages) {
   return out;
 }
 
-export default function ReportPagination({ page, totalPages, size, total, onPage, onSize }) {
+// R4-3: unit = หน่วยของ page size ("คลาส") · summary = ข้อความ "จากทั้งหมด ..." (ไม่ส่ง = แบบเดิม)
+export default function ReportPagination({
+  page,
+  totalPages,
+  size,
+  total,
+  onPage,
+  onSize,
+  unit = "รายการ",
+  summary = "",
+}) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
       <div className="flex flex-wrap items-center gap-2 text-admin-textMuted">
@@ -34,9 +44,9 @@ export default function ReportPagination({ page, totalPages, size, total, onPage
               </option>
             ))}
           </select>
-          รายการ
+          {unit}
         </label>
-        <span>จากทั้งหมด {total} รายการ</span>
+        <span>{summary || `จากทั้งหมด ${total} รายการ`}</span>
       </div>
 
       {totalPages > 1 && (

@@ -12,6 +12,13 @@
 //   (d) FoodChoice บอก noFood → none
 //   (e) ไม่มีแถว FoodChoice → ยังไม่มีผล: วันนี้/อนาคต = "not_chosen" (ยังไม่เลือก), วันที่ผ่านมา = "no_data"
 //       ไม่นับในยอดใด ๆ (ร้าน / ประเภท / ไม่รับอาหาร / KPI) — นับแยกใน totals.notChosen / totals.noData
+// R4-3: ใครอยู่ในรายงาน (ต่อผู้เรียนต่อวัน)
+//   - มีแถว FoodChoice / มีออเดอร์คูปอง -> แสดงเสมอ (ข้อมูลจริง แม้เป็นผู้เรียนออนไลน์)
+//   - ออนไลน์ (live ในวันนั้น) และไม่มีแถว -> ไม่แสดง
+//   - ในห้อง ไม่มีแถว: วันนี้ = ยังไม่เลือก · วันที่ผ่านมา = ไม่มีข้อมูล เฉพาะคนที่เช็คอินวันนั้น (ไม่เช็คอิน = ไม่แสดง)
+//   - R4-4: วันเรียนในอนาคต (นาฬิกา lunch) ไม่มีใครเลือกล่วงหน้าได้ -> ไม่มีแถว = ไม่แสดง
+//           (แสดงเฉพาะที่มีแถว FoodChoice / ออเดอร์ — ปกติไม่มี หัวข้อวันนั้นจึงหายไป)
+//   "เช็คอินแล้ว" = มี Checkin ของ (ผู้เรียน, คลาส, วันเรียนนั้น) — query เดียว
 // ออเดอร์ที่ไม่มี Checkin วันนั้น → flag "no_checkin" (เฉพาะแถวที่มีออเดอร์ เหมือนเดิม)
 // ไม่มีราคา/ยอดเงินใน output ใด ๆ
 import mongoose from "mongoose";
@@ -33,7 +40,22 @@ import { computeDayIndexToday } from "@/lib/classDates";
 import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
 
 const CLASS_FIELDS = "title courseCode room roomName date startDate days dayCount duration.dayCount classKind";
-const STUDENT_FIELDS = "name thaiName engName company classId studentStatus";
+const STUDENT_FIELDS = "name thaiName engName company classId studentStatus type typeTimeline";
+
+/**
+ * R4-3: ประเภทผู้เรียน (classroom | live) ของวันเรียนที่ day — กติกาเดียวกับตารางผู้เรียนของคลาส
+ * (getLearnTypeForDay ใน classes/[id]/StudentsTable.jsx): Student.type เป็นค่าตั้งต้น แล้ว
+ * typeTimeline ที่ effectiveDay <= day ทับตามลำดับ
+ */
+function learnTypeOnDay(stu, day) {
+  const norm = (t) => (String(t || "").toLowerCase() === "live" ? "live" : "classroom");
+  let cur = norm(stu?.type);
+  const tl = (Array.isArray(stu?.typeTimeline) ? stu.typeTimeline : [])
+    .map((x) => ({ effectiveDay: Number(x?.effectiveDay ?? 1) || 1, type: norm(x?.type) }))
+    .sort((a, b) => a.effectiveDay - b.effectiveDay);
+  for (const it of tl) if (it.effectiveDay <= Number(day)) cur = it.type;
+  return cur;
+}
 
 const ORDER_FIELDS =
   "classId studentId dayYMD day status restaurantId restaurantName usesCouponStock " +
@@ -64,6 +86,11 @@ function classFields(cls) {
     courseCode: c.courseCode || "",
     roomName: c.roomName || c.room || "",
     classDate: c.date || c.startDate || null,
+    // R4-3: จำนวนวันเรียนทั้งหมดของคลาส (หัวข้อ "วันเรียนที่ n/N")
+    classDayCount:
+      Array.isArray(c.days) && c.days.length
+        ? c.days.length
+        : Number(c.dayCount || c.duration?.dayCount || 0) || null,
   };
 }
 
@@ -154,8 +181,13 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   const orderMatch = { dayYMD: dateYMD };
   if (classFilter) orderMatch.classId = classFilter;
 
-  const ciMatch = { time: { $gte: start, $lt: end } };
-  if (classFilter) ciMatch.classId = classFilter;
+  // R4-3: เช็คอินของวันนั้น = Checkin ของ (คลาส, วันเรียนนั้น) — query เดียว
+  //        (+ เช็คอินตามเวลาในวันนั้น สำหรับออเดอร์ของคลาสที่ไม่อยู่ในรายชื่อวันเรียน เหมือนเดิม)
+  const timeMatch = { time: { $gte: start, $lt: end } };
+  if (classFilter) timeMatch.classId = classFilter;
+  const ciMatch = {
+    $or: [...dayClasses.map((x) => ({ classId: x.c._id, day: x.day })), timeMatch],
+  };
 
   const [classStudents, checkins, allOrders, choices] = await Promise.all([
     dayClassIds.length
@@ -166,7 +198,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
           .select(STUDENT_FIELDS)
           .lean()
       : [],
-    Checkin.find(ciMatch).select("classId studentId time").lean(),
+    Checkin.find(ciMatch).select("classId studentId day time").lean(),
     LunchOrder.find(orderMatch).select(ORDER_FIELDS).lean(),
     getFoodChoicesForRange({
       classIds: classFilter ? [classFilter] : null,
@@ -191,9 +223,11 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
   const finalCloseTs = finalCloseAt(dateYMD);
   const dayClosed = !!finalCloseTs && now.getTime() >= finalCloseTs.getTime();
 
-  // เช็คอินของวันนั้น (เวลาแรกของแต่ละคน)
+  // เช็คอินของวันนั้น (เวลาแรกของแต่ละคน) — คลาสที่วันนั้นเป็นวันเรียน: ต้องเป็น Checkin ของวันเรียนนั้น
   const checkinAt = new Map();
   for (const ch of checkins) {
+    const d = dayByClass.get(idStr(ch.classId));
+    if (d && Number(ch.day) !== d) continue;
     const k = keyOf(ch.classId, ch.studentId);
     if (!checkinAt.has(k)) checkinAt.set(k, ch.time || null);
   }
@@ -388,9 +422,21 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
     };
   }
 
+  // R4-3: ใครอยู่ในรายงาน (ดูหัวไฟล์) — แถวที่ไม่มีทั้งแถว FoodChoice และออเดอร์
+  const isPastDay = dateYMD < todayYMD;
+  const isFutureDay = dateYMD > todayYMD;
+  const listed = (stu) => {
+    const k = keyOf(stu.classId, stu._id);
+    if (choiceOf(stu.classId, stu._id) || liveByKey.has(k)) return true;
+    const day = dayByClass.get(idStr(stu.classId));
+    if (learnTypeOnDay(stu, day) === "live") return false;
+    if (isFutureDay) return false;
+    return isPastDay ? checkinAt.has(k) : true;
+  };
+
   // R4-2: id ของแถว = คลาส:ผู้เรียน:วัน (ไม่ซ้ำข้ามวันในช่วง)
   let rows = [
-    ...classStudents.map((stu) => {
+    ...classStudents.filter(listed).map((stu) => {
       const k = keyOf(stu.classId, stu._id);
       return buildRow({
         id: `${idStr(stu.classId)}:${idStr(stu._id)}:${dateYMD}`,

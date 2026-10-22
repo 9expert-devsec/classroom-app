@@ -25,9 +25,35 @@ import {
   PAST_DAY_EDIT_MESSAGE,
 } from "./reportUi";
 
-const TH = "whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-medium text-admin-textMuted";
+const TH = "px-3 py-2.5 text-left text-[11px] font-medium text-admin-textMuted";
 // ชิดบน: ช่องรายการอาหารเรียงซ้อนสูงได้หลายบรรทัด (r2e) — ชิดกลางแล้วแถวดูเหลื่อม
-const TD = "px-3 py-2.5 align-top";
+// R4-4: ข้อความยาวขึ้นบรรทัดใหม่ในช่องของตัวเอง ไม่ล้นไปช่องถัดไป
+const TD = "px-3 py-2.5 align-top break-words";
+
+/**
+ * R4-4: คอลัมน์ของตารางรายละเอียด — กำหนดที่เดียว ทุกตาราง (ทุกวัน ทุกคลาส ทุกแท็บ) วาดจากชุดนี้
+ * table-fixed + colgroup ชุดเดียวกัน -> ตำแหน่งคอลัมน์ตรงกันทุกตาราง
+ *   px = กว้างคงที่ (พอดีเนื้อหาที่กว้างที่สุดตามปกติ) · % = ส่วนที่ยืดหยุ่น · null = ส่วนที่เหลือทั้งหมด
+ *   date มีเฉพาะตารางที่ไม่ได้อยู่ใต้หัวข้อวัน (แท็บตามร้าน / ตามประเภท)
+ */
+export const REPORT_COLUMNS = [
+  { key: "select", header: "", width: "40px" },
+  { key: "num", header: "#", width: "44px" },
+  { key: "date", header: "วันที่", width: "96px", dateOnly: true },
+  { key: "student", header: "ผู้เรียน", width: "18%" },
+  { key: "shop", header: "ร้าน", width: "14%" },
+  // "E-coupon" / "ยังไม่เลือก / ไม่มีข้อมูล" chip
+  { key: "type", header: "ประเภท", width: "112px" },
+  // รหัส CASA เต็ม (ตัวอักษรกว้างเท่ากัน 11px) / 9XP-XXXX
+  { key: "code", header: "รหัสคูปอง", width: "184px" },
+  // chip "ตัดสิทธิ์ (หมดเวลา 15:00)" + ป้ายข้อสังเกต
+  { key: "status", header: "สถานะ", width: "200px" },
+  { key: "time", header: "เวลา", width: "64px" },
+  { key: "items", header: "รายการอาหาร / ชุด", width: null },
+  { key: "actions", header: "จัดการ", width: "64px", center: true },
+];
+// ความกว้างขั้นต่ำของตาราง (จอแคบกว่านี้เลื่อนแนวนอน — ทุกตารางกว้างเท่ากันจึงยังตรงกัน)
+const TABLE_MIN_WIDTH = "min-w-[1100px]";
 
 /**
  * Detail table (one row per learner per day). Selection lives in the parent so it
@@ -50,17 +76,23 @@ export default function ReportTable({
   // R4-2: ตารางที่อยู่ใต้หัวกลุ่มวัน (รายละเอียดรายการ) ไม่ต้องมีคอลัมน์วันที่
   showDate = true,
 }) {
-  const cols = showDate ? 11 : 10;
+  const columns = REPORT_COLUMNS.filter((c) => showDate || !c.dateOnly);
+  const cols = columns.length;
   const ids = rows.map(rowId);
   const allChecked = ids.length > 0 && ids.every((id) => selectedIds.has(id));
   const someChecked = !allChecked && ids.some((id) => selectedIds.has(id));
 
   return (
     <div className="min-w-0 overflow-x-auto rounded-xl border border-admin-border">
-      <table className="w-full min-w-[1100px] text-xs">
+      <table className={`w-full table-fixed ${TABLE_MIN_WIDTH} text-xs`}>
+        <colgroup>
+          {columns.map((c) => (
+            <col key={c.key} style={c.width ? { width: c.width } : undefined} />
+          ))}
+        </colgroup>
         <thead className="bg-admin-surfaceMuted">
           <tr>
-            <th className={`${TH} w-10`}>
+            <th className={TH}>
               <input
                 type="checkbox"
                 aria-label={selectAllLabel}
@@ -73,16 +105,13 @@ export default function ReportTable({
                 onChange={() => onToggleMany(ids, !allChecked)}
               />
             </th>
-            <th className={`${TH} w-10`}>#</th>
-            {showDate ? <th className={TH}>วันที่</th> : null}
-            <th className={TH}>ผู้เรียน</th>
-            <th className={TH}>ร้าน</th>
-            <th className={TH}>ประเภท</th>
-            <th className={TH}>รหัสคูปอง</th>
-            <th className={TH}>สถานะ</th>
-            <th className={TH}>เวลา</th>
-            <th className={TH}>รายการอาหาร / ชุด</th>
-            <th className={`${TH} w-14 text-center`}>จัดการ</th>
+            {columns
+              .filter((c) => c.key !== "select")
+              .map((c) => (
+                <th key={c.key} className={c.center ? `${TH} text-center` : TH}>
+                  {c.header}
+                </th>
+              ))}
           </tr>
         </thead>
         <tbody>
@@ -112,25 +141,15 @@ export default function ReportTable({
                   {numberOf ? numberOf(o) : startIndex + idx + 1}
                 </td>
                 {showDate ? <td className={`${TD} whitespace-nowrap`}>{formatDateDMY(o.dayYMD)}</td> : null}
-                <td className={`${TD} max-w-[200px]`}>
-                  <div className="truncate font-medium text-admin-text" title={o.studentName}>
-                    {o.studentName || "-"}
-                  </div>
-                  {o.company && (
-                    <div className="truncate text-[11px] text-admin-textMuted" title={o.company}>
-                      {o.company}
-                    </div>
-                  )}
+                <td className={TD}>
+                  <div className="font-medium text-admin-text">{o.studentName || "-"}</div>
+                  {o.company && <div className="text-[11px] text-admin-textMuted">{o.company}</div>}
                 </td>
-                <td className={`${TD} max-w-[180px]`}>
-                  <div className="truncate" title={shop}>
-                    {shop}
-                  </div>
-                </td>
+                <td className={TD}>{shop}</td>
                 <td className={TD}>
                   <TypeBadge type={typeKeyOf(o)} label={isUnchosen(o) ? TYPE_LABEL[rowType(o)] : ""} />
                 </td>
-                <td className={`${TD} whitespace-nowrap font-mono`}>{o.code || "-"}</td>
+                <td className={`${TD} break-all font-mono`}>{o.code || "-"}</td>
                 <td className={TD}>
                   <StatusPill status={statusKeyOf(o)} />
                   {/* R2b: ใบที่ยกเลิกแล้วแต่คูปองกระดาษยังไม่คืน (ตรงกับ couponCodeState) */}
@@ -152,7 +171,7 @@ export default function ReportTable({
                   )}
                 </td>
                 <td className={`${TD} whitespace-nowrap`}>{statusTimeOf(o) || "-"}</td>
-                <td className={`${TD} min-w-[200px] max-w-[320px]`}>
+                <td className={TD}>
                   {/* เรียงซ้อน: รายการ / ตัวเลือกต่อกลุ่ม / หมายเหตุของแต่ละรายการ, หมายเหตุของแถวท้ายสุด */}
                   <ItemsCell row={o} />
                 </td>

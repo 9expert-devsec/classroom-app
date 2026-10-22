@@ -12,7 +12,7 @@ export function TypeBadge({ type, label }) {
   return (
     <span
       title={m.hint}
-      className={cx("inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold", m.cls)}
+      className={cx("inline-block max-w-full whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-semibold", m.cls)}
     >
       {label || m.label}
     </span>
@@ -25,7 +25,7 @@ export function StatusPill({ status }) {
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold",
+        "inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight",
         m.cls,
       )}
     >

@@ -28,7 +28,9 @@ export function rowNote(o) {
 }
 
 export const TABS = ["overview", "shops", "types", "list"];
-export const PAGE_SIZES = [10, 25, 50, 100];
+// R4-3: รายละเอียดรายการแบ่งหน้าตาม "คลาส" (ทั้งคลาส ทุกวัน ทุกแถว) — ค่าเริ่มต้น 10 คลาส
+export const PAGE_SIZES = [5, 10, 20];
+export const DEFAULT_PAGE_SIZE = 10;
 export const MAX_RANGE_DAYS = 31;
 
 export function cx(...a) {
@@ -84,7 +86,7 @@ export function useReportParams(todayYMD) {
     type: pick(sp.get("type"), Object.keys(TYPE_META), ""),
     status: pick(sp.get("status"), [...Object.keys(STATUS_META), "flagged"], ""),
     q: sp.get("q") || "",
-    size: PAGE_SIZES.includes(size) ? size : PAGE_SIZES[0],
+    size: PAGE_SIZES.includes(size) ? size : DEFAULT_PAGE_SIZE,
     page: Math.max(1, Math.floor(Number(sp.get("page")) || 1)),
   };
 
@@ -142,6 +144,20 @@ export function formatDateDMY(d) {
     year: "numeric",
     timeZone: "Asia/Bangkok",
   });
+}
+
+/**
+ * R4-3: ป้ายหัวข้อวันของคลาส (หน้าจอ + พิมพ์)
+ *   คลาสหลายวัน : "วันเรียนที่ n/N · dd/MM/yyyy"
+ *   คลาสวันเดียว : "dd/MM/yyyy" (ไม่มีลำดับวัน)
+ * ("วันที่ n" เดิมอ่านเป็นวันที่ของเดือน — ขัดกับวันที่จริง)
+ */
+export function dayHeaderLabel({ day, classDayCount, dayYMD }) {
+  const date = formatDateDMY(dayYMD);
+  const n = Number(day);
+  const total = Number(classDayCount);
+  if (n > 0 && total > 1) return `วันเรียนที่ ${n}/${total} · ${date}`;
+  return date;
 }
 
 export function rangeLabel(from, to) {

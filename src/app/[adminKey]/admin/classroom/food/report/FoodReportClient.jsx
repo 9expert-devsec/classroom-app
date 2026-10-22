@@ -279,15 +279,16 @@ export default function FoodReportClient({ todayYMD }) {
     [allRows, params.cls, params.type, params.status, params.q],
   );
 
-  const totalPages = Math.max(1, Math.ceil(listRows.length / params.size));
-  const page = Math.min(params.page, totalPages);
-  const pageStart = (page - 1) * params.size;
-  const pageRows = listRows.slice(pageStart, pageStart + params.size);
-
   // r2d: "รายละเอียดรายการ" แยกการ์ดตาม Class — จัดกลุ่มหลังกรอง, เรียงตาม Class เฉพาะตอนแสดง
   // (listRows เองไม่เปลี่ยนลำดับ -> export / พิมพ์ ยังได้ลำดับเดิม)
+  // R4-3: แบ่งหน้าตาม "คลาส" — 1 หน้า = ทั้งคลาส (ทุกวันในช่วง ทุกแถวของแต่ละวัน) ไม่ตัดกลางคลาส/วัน
   const classGroups = useMemo(() => groupRowsByClass(listRows), [listRows]);
-  const classOrderedRows = useMemo(() => classGroups.flatMap((g) => g.rows), [classGroups]);
+  const totalPages = Math.max(1, Math.ceil(classGroups.length / params.size));
+  const page = Math.min(params.page, totalPages);
+  const pageClassGroups = useMemo(
+    () => classGroups.slice((page - 1) * params.size, page * params.size),
+    [classGroups, page, params.size],
+  );
 
   const selectedRows = useMemo(
     () => allRows.filter((o) => selectedIds.has(rowId(o))),
@@ -417,7 +418,7 @@ export default function FoodReportClient({ todayYMD }) {
     <section className="min-w-0 space-y-3 rounded-2xl border border-admin-border bg-white p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-admin-text">รายละเอียดรายการ</h2>
-        {overview && listRows.length > pageRows.length && (
+        {overview && classGroups.length > pageClassGroups.length && (
           <button
             type="button"
             onClick={() => setParams({ tab: "list" })}
@@ -429,10 +430,9 @@ export default function FoodReportClient({ todayYMD }) {
       </div>
       <ReportFilters params={params} setParams={setParams} classOptions={classOptions} />
       {(() => {
-        // แถวของหน้านี้ = ช่วงเดียวกับเดิม แต่ตัดจากลำดับตาม Class แล้วแบ่งเป็นการ์ด
-        const shown = overview
-          ? classOrderedRows.slice(0, params.size)
-          : classOrderedRows.slice(pageStart, pageStart + params.size);
+        // R4-3: คลาสของหน้านี้ (ภาพรวม = หน้าแรก) — ทุกแถวของคลาสเหล่านั้น
+        const groupsShown = overview ? classGroups.slice(0, params.size) : pageClassGroups;
+        const shown = groupsShown.flatMap((g) => g.rows);
         if (!shown.length) return <ReportTable rows={[]} empty={listEmpty} {...tableProps} />;
         const shownIdList = shown.map(rowId);
         const allOn = shownIdList.every((id) => selectedIds.has(id));
@@ -452,22 +452,36 @@ export default function FoodReportClient({ todayYMD }) {
               />
               เลือกทั้งหมดในหน้านี้ ({shown.length})
             </label>
+            {/* R4-3: viewKey เปลี่ยนเมื่อช่วงวัน / ตัวกรอง / หน้าเปลี่ยน -> หัวข้อวันกลับมาเปิดทุกครั้ง */}
             <ClassGroupedTable
-              groups={classGroups}
-              shownIds={new Set(shownIdList)}
+              groups={groupsShown}
               tableProps={tableProps}
+              viewKey={[
+                from,
+                to,
+                params.cls,
+                params.type,
+                params.status,
+                params.q,
+                overview ? "overview" : page,
+                params.size,
+              ].join("|")}
             />
           </>
         );
       })()}
       {overview ? (
-        <div className="text-xs text-admin-textMuted">จากทั้งหมด {listRows.length} รายการ</div>
+        <div className="text-xs text-admin-textMuted">
+          จากทั้งหมด {classGroups.length} คลาส · {listRows.length} รายการ
+        </div>
       ) : (
         <ReportPagination
           page={page}
           totalPages={totalPages}
           size={params.size}
-          total={listRows.length}
+          total={classGroups.length}
+          unit="คลาส"
+          summary={`จากทั้งหมด ${classGroups.length} คลาส · ${listRows.length} รายการ`}
           onPage={(p) => setParams({ page: p })}
           onSize={(n) => setParams({ size: n })}
         />
