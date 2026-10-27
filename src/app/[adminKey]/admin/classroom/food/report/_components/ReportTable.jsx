@@ -36,24 +36,23 @@ const TD = "px-3 py-2.5 align-top break-words";
  *   px = กว้างคงที่ (พอดีเนื้อหาที่กว้างที่สุดตามปกติ) · % = ส่วนที่ยืดหยุ่น · null = ส่วนที่เหลือทั้งหมด
  *   date มีเฉพาะตารางที่ไม่ได้อยู่ใต้หัวข้อวัน (แท็บตามร้าน / ตามประเภท)
  */
+// R6-1: 9 คอลัมน์ -> 5 (+ checkbox / # ซ้ายสุด) — ร้าน / ประเภท / รหัสคูปอง ซ้อนในช่องเดียว,
+//       สถานะ / เวลา ซ้อนในช่องเดียว · รายการอาหารได้ส่วนที่เหลือทั้งหมด (ไม่ต่ำกว่า ~220px)
 export const REPORT_COLUMNS = [
   { key: "select", header: "", width: "40px" },
   { key: "num", header: "#", width: "44px" },
   { key: "date", header: "วันที่", width: "96px", dateOnly: true },
-  { key: "student", header: "ผู้เรียน", width: "18%" },
-  { key: "shop", header: "ร้าน", width: "14%" },
-  // "E-coupon" / "ยังไม่เลือก / ไม่มีข้อมูล" chip
-  { key: "type", header: "ประเภท", width: "112px" },
-  // รหัส CASA เต็ม (ตัวอักษรกว้างเท่ากัน 11px) / 9XP-XXXX
-  { key: "code", header: "รหัสคูปอง", width: "184px" },
-  // chip "ตัดสิทธิ์ (หมดเวลา 15:00)" + ป้ายข้อสังเกต
-  { key: "status", header: "สถานะ", width: "200px" },
-  { key: "time", header: "เวลา", width: "64px" },
+  { key: "student", header: "ผู้เรียน", width: "20%" },
+  // ชื่อร้าน · chip ประเภท (E-coupon / Stock / Set ...) · รหัส CASA เต็ม / 9XP-XXXX
+  { key: "shop", header: "ร้าน / ประเภท / รหัสคูปอง", width: "200px" },
+  // chip "ตัดสิทธิ์ (หมดเวลา 15:00)" + ป้ายข้อสังเกต + เวลา
+  { key: "status", header: "สถานะ / เวลา", width: "196px" },
   { key: "items", header: "รายการอาหาร / ชุด", width: null },
   { key: "actions", header: "จัดการ", width: "64px", center: true },
 ];
-// ความกว้างขั้นต่ำของตาราง (จอแคบกว่านี้เลื่อนแนวนอน — ทุกตารางกว้างเท่ากันจึงยังตรงกัน)
-const TABLE_MIN_WIDTH = "min-w-[1100px]";
+// ความกว้างขั้นต่ำของตาราง — แคบกว่านี้ตารางเลื่อนแนวนอนในการ์ดของตัวเอง (หน้าไม่เลื่อนข้าง)
+//   รายการอาหาร = 0.8W - คอลัมน์คงที่ ≥ 220px:  ไม่มีวันที่ 0.8·960 - 544 = 224 · มีวันที่ 0.8·1080 - 640 = 224
+const TABLE_MIN_WIDTH = { withDate: "min-w-[1080px]", noDate: "min-w-[960px]" };
 
 /**
  * Detail table (one row per learner per day). Selection lives in the parent so it
@@ -84,7 +83,9 @@ export default function ReportTable({
 
   return (
     <div className="min-w-0 overflow-x-auto rounded-xl border border-admin-border">
-      <table className={`w-full table-fixed ${TABLE_MIN_WIDTH} text-xs`}>
+      <table
+        className={`w-full table-fixed ${showDate ? TABLE_MIN_WIDTH.withDate : TABLE_MIN_WIDTH.noDate} text-xs`}
+      >
         <colgroup>
           {columns.map((c) => (
             <col key={c.key} style={c.width ? { width: c.width } : undefined} />
@@ -145,12 +146,14 @@ export default function ReportTable({
                   <div className="font-medium text-admin-text">{o.studentName || "-"}</div>
                   {o.company && <div className="text-[11px] text-admin-textMuted">{o.company}</div>}
                 </td>
-                <td className={TD}>{shop}</td>
-                <td className={TD}>
-                  <TypeBadge type={typeKeyOf(o)} label={isUnchosen(o) ? TYPE_LABEL[rowType(o)] : ""} />
+                <td className={TD} data-testid="cell-shop">
+                  {shop !== "-" ? <div className="text-admin-text">{shop}</div> : null}
+                  <div className={shop !== "-" ? "mt-1" : ""}>
+                    <TypeBadge type={typeKeyOf(o)} label={isUnchosen(o) ? TYPE_LABEL[rowType(o)] : ""} />
+                  </div>
+                  {o.code ? <div className="mt-1 break-all font-mono text-[11px] text-admin-text">{o.code}</div> : null}
                 </td>
-                <td className={`${TD} break-all font-mono`}>{o.code || "-"}</td>
-                <td className={TD}>
+                <td className={TD} data-testid="cell-status">
                   <StatusPill status={statusKeyOf(o)} />
                   {/* R2b: ใบที่ยกเลิกแล้วแต่คูปองกระดาษยังไม่คืน (ตรงกับ couponCodeState) */}
                   {stageNoteOf(o) ? (
@@ -169,9 +172,14 @@ export default function ReportTable({
                       ))}
                     </div>
                   )}
+                  {statusTimeOf(o) ? (
+                    <div className="mt-1 whitespace-nowrap text-[11px] text-admin-textMuted">
+                      เวลา {statusTimeOf(o)}
+                    </div>
+                  ) : null}
                 </td>
-                <td className={`${TD} whitespace-nowrap`}>{statusTimeOf(o) || "-"}</td>
-                <td className={TD}>
+                {/* min-w ของคอลัมน์มาจาก TABLE_MIN_WIDTH · ตัดคำตามคำ (break-words) ไม่ตัดทีละตัวอักษร */}
+                <td className={TD} data-testid="cell-items">
                   {/* เรียงซ้อน: รายการ / ตัวเลือกต่อกลุ่ม / หมายเหตุของแต่ละรายการ, หมายเหตุของแถวท้ายสุด */}
                   <ItemsCell row={o} />
                 </td>
