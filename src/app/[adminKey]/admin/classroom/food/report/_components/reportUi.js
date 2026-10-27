@@ -497,6 +497,31 @@ export function couponFilterStatusOf(o) {
   return o.dayFinalClosed ? "forfeited" : "wait";
 }
 
+// R6-1a: สีของป้ายสถานะคูปอง — กลาง (รอสั่ง / สั่งแล้ว) · เขียว ใช้แล้ว · เหลือง ไม่ได้ใช้ · เทา ตัดสิทธิ์ · แดง ยกเลิก
+export const COUPON_STATUS_CLS = {
+  wait: "bg-white text-slate-700 ring-1 ring-slate-300",
+  ordered: "bg-white text-slate-700 ring-1 ring-slate-300",
+  used: "bg-emerald-100 text-emerald-800",
+  not_used: "bg-amber-100 text-amber-800",
+  forfeited: "bg-slate-200 text-slate-600",
+  cancelled: "bg-red-100 text-red-700",
+};
+
+/**
+ * R6-1a: ป้ายสถานะของแถว (1 ป้ายต่อแถว) — หน้าจอ / พิมพ์รายคลาส / Export ใช้ตัวเดียวกัน
+ *   คูปอง = 6 สถานะเดียวกับตัวกรอง (couponFilterStatusOf) · Set = "สั่งอาหาร" · ไม่รับอาหาร · ยังไม่เลือก / ไม่มีข้อมูล
+ * @returns {{ key, label, cls, icon? }}
+ */
+export function rowStatusBadge(o) {
+  const cs = couponFilterStatusOf(o);
+  if (cs) {
+    return { key: cs, label: COUPON_FILTER_STATUSES[cs], cls: COUPON_STATUS_CLS[cs], icon: cs === "used" ? "✓" : "" };
+  }
+  const k = statusKeyOf(o); // set | none | not_chosen | no_data
+  const m = STATUS_META[k] || STATUS_META.none;
+  return { key: k, label: m.label, cls: m.cls, icon: "" };
+}
+
 // URL เดิม (?type= / ?status= ก่อน R6-1) -> ตัวกรองใหม่ (ลิงก์เก่ายังเปิดได้)
 const LEGACY_TYPE = { ecoupon: "coupon", stock: "coupon" };
 const LEGACY_STATUS = {
@@ -555,6 +580,26 @@ export function shopOf(o) {
   return null;
 }
 
+/**
+ * R6-1a: ร้านที่มีปุ่ม "พิมพ์ใบสั่งร้าน" — จากทุกออเดอร์ของช่วง (เช็คอินหรือไม่ก็ตาม) ไม่ใช่แถวที่หน้าจอแสดง
+ *   คูปอง = ร้านใน days[].shops ของ server · Set = ร้านของแถว type "set" ใน allRows (data.rows ทั้งหมด)
+ * @returns Map(key -> { key, name, kind: "coupon" | "set" })
+ */
+export function sheetShopsOf(allRows, sheetDays) {
+  const out = new Map();
+  for (const d of sheetDays || []) {
+    for (const s of d.shops || []) {
+      if (!out.has(s.id)) out.set(s.id, { key: s.id, name: s.name || "-", kind: "coupon" });
+    }
+  }
+  for (const o of allRows || []) {
+    if (rowType(o) !== "set") continue;
+    const shop = shopOf(o);
+    if (shop && !out.has(shop.key)) out.set(shop.key, { key: shop.key, name: shop.name, kind: "set" });
+  }
+  return out;
+}
+
 export const NO_SHOP_KEY = "_none";
 export const NO_SHOP_LABEL = "ไม่ระบุร้าน";
 
@@ -567,10 +612,12 @@ export function setMenuLabel(o) {
 }
 
 // R4-2: แถวที่ยังไม่มีผลไม่นับใน total / byType / byStatus — นับแยกใน c.unchosen
+// R6-1a: byCoupon = 6 สถานะคูปอง (KPI / สรุปร้าน / หัวกลุ่ม) — byStatus เดิมยังนับไว้เหมือนเดิม
 export function emptyCounts() {
-  const c = { total: 0, coupon: 0, byStatus: {}, byType: {}, unchosen: { not_chosen: 0, no_data: 0 } };
+  const c = { total: 0, coupon: 0, byStatus: {}, byType: {}, byCoupon: {}, unchosen: { not_chosen: 0, no_data: 0 } };
   for (const k of Object.keys(STATUS_META)) c.byStatus[k] = 0;
   for (const k of Object.keys(TYPE_META)) c.byType[k] = 0;
+  for (const k of Object.keys(COUPON_FILTER_STATUSES)) c.byCoupon[k] = 0;
   return c;
 }
 
@@ -581,9 +628,24 @@ export function addCount(c, o) {
     return;
   }
   c.total += 1;
-  if (rowType(o) === "coupon") c.coupon += 1;
+  if (rowType(o) === "coupon") {
+    c.coupon += 1;
+    c.byCoupon[couponFilterStatusOf(o)] += 1;
+  }
   c.byStatus[statusKeyOf(o)] += 1;
   c.byType[typeKeyOf(o)] += 1;
+}
+
+/** R6-1a: "Set a · รอสั่ง b · … · ไม่รับอาหาร z" (ค่าศูนย์ไม่แสดง) — หัวกลุ่มตามร้าน / ตามประเภท */
+export function countsLineOf(c) {
+  return [
+    ["Set", c.byType.set],
+    ...Object.entries(COUPON_FILTER_STATUSES).map(([k, label]) => [label, c.byCoupon[k]]),
+    ["ไม่รับอาหาร", c.byType.none],
+  ]
+    .filter(([, n]) => n > 0)
+    .map(([label, n]) => `${label} ${n}`)
+    .join(" · ");
 }
 
 export function countRows(rows) {
@@ -661,7 +723,8 @@ export function buildExportAoa(rows) {
       o.studentName || o.studentThaiName || o.studentEngName || "",
       o.company || "",
       TYPE_LABEL[t],
-      isCoupon ? couponStateText(o) : "",
+      // R6-1a: 6 สถานะเดียวกับป้ายบนจอ / ตัวกรอง
+      isCoupon ? rowStatusBadge(o).label : "",
       shopText(o) === "-" ? "" : shopText(o),
       isCoupon ? sourceBadge(o) : "",
       isCoupon ? o.code || "" : "",
@@ -672,7 +735,7 @@ export function buildExportAoa(rows) {
       isCoupon ? couponLinesText(o) : "",
       flagLabels(o),
       rowNote(o),
-      STATUS_META[statusKeyOf(o)].label,
+      rowStatusBadge(o).label,
     ];
   });
 

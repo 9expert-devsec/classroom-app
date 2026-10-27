@@ -4,7 +4,7 @@ import {
   rowType,
   TYPE_LABEL,
   couponLabelFor,
-  couponStateText,
+  rowStatusBadge,
   sourceBadge,
   shopText,
   progressText,
@@ -295,8 +295,9 @@ export function buildClassPrintHtml(rows, printDate) {
             const isCoupon = t === "coupon";
             const isSet = t === "set";
 
+            // R6-1a: สถานะคูปอง = 6 สถานะเดียวกับป้ายบนจอ / ตัวกรอง (rowStatusBadge)
             const typeCell = isCoupon
-              ? `${TYPE_LABEL[t]}<div class="sub">${esc(couponStateText(o))}</div>`
+              ? `${TYPE_LABEL[t]}<div class="sub">${esc(rowStatusBadge(o).label)}</div>`
               : esc(TYPE_LABEL[t]);
 
             const codeCell = isCoupon && o.code

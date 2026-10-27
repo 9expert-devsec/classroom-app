@@ -2,19 +2,10 @@
 
 import { CollapsibleCard, TypeBadge } from "./ReportBits";
 import ReportTable from "./ReportTable";
-import { MAPPED_STATUSES, STATUS_META } from "./reportUi";
+import { countsLineOf } from "./reportUi";
 
-function countsLine(c) {
-  return Object.entries(c.byStatus)
-    .filter(([, n]) => n > 0)
-    .sort(([a], [b]) => {
-      const ia = MAPPED_STATUSES.indexOf(a);
-      const ib = MAPPED_STATUSES.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    })
-    .map(([k, n]) => `${STATUS_META[k].label} ${n}`)
-    .join(" · ");
-}
+// R6-1a: Set · 6 สถานะคูปอง · ไม่รับอาหาร (เดียวกับป้ายแถว / KPI / สรุปร้าน)
+const countsLine = countsLineOf;
 
 /**
  * One collapsible section per group (shop or type), each with its rows in the detail-table format.

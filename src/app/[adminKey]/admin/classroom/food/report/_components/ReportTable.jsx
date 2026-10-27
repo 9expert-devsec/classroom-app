@@ -19,7 +19,7 @@ import {
   TYPE_LABEL,
   shopText,
   stageNoteOf,
-  statusKeyOf,
+  rowStatusBadge,
   statusTimeOf,
   typeKeyOf,
   PAST_DAY_EDIT_MESSAGE,
@@ -154,7 +154,8 @@ export default function ReportTable({
                   {o.code ? <div className="mt-1 break-all font-mono text-[11px] text-admin-text">{o.code}</div> : null}
                 </td>
                 <td className={TD} data-testid="cell-status">
-                  <StatusPill status={statusKeyOf(o)} />
+                  {/* R6-1a: 6 สถานะคูปองเดียวกับตัวกรอง · กระดาษ / e-coupon ดูที่ป้ายประเภท */}
+                  <StatusPill badge={rowStatusBadge(o)} />
                   {/* R2b: ใบที่ยกเลิกแล้วแต่คูปองกระดาษยังไม่คืน (ตรงกับ couponCodeState) */}
                   {stageNoteOf(o) ? (
                     <div className="mt-1 text-[11px] font-medium text-amber-700">{stageNoteOf(o)}</div>

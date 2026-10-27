@@ -1,18 +1,21 @@
 "use client";
 
-import { CalendarX, CheckCircle2, Clock, Hand, Ticket, UtensilsCrossed } from "lucide-react";
+import { Ban, CalendarX, CheckCircle2, Clock, ShoppingBag, Ticket, UtensilsCrossed, XCircle } from "lucide-react";
 
-import { STATUS_META, reportFinalCloseLabel } from "./reportUi";
+import { COUPON_FILTER_STATUSES, reportFinalCloseLabel } from "./reportUi";
 
-// coupon rows whose status keeps its own label — shown under "คูปองทั้งหมด" so the card adds up
-// R2b: no_qr / cancelled_wait_qr แทน no_order เดิม (no_order คงไว้ให้ข้อมูลเก่า)
-const OWN_LABEL_COUPON = ["unused", "no_qr", "pending", "cancelled_wait_qr", "forfeited", "no_order"];
+// R6-1a: การ์ดสถานะคูปอง = 6 สถานะเดียวกับป้ายแถว / ตัวกรอง (counts.byCoupon) — รวมกันเท่ากับ "คูปองทั้งหมด"
+//        กระดาษ / e-coupon ไม่แยกการ์ดแล้ว (ดูได้จากป้ายประเภทของแถว และสรุปตามร้าน)
+const COUPON_CARDS = [
+  { key: "wait", Icon: Clock, tone: "bg-slate-50 text-slate-700", caption: () => "เลือกคูปอง ยังไม่สั่ง" },
+  { key: "ordered", Icon: ShoppingBag, tone: "bg-slate-50 text-slate-700", caption: () => "สั่งแล้ว ยังไม่ใช้ / ยังไม่รับคูปอง" },
+  { key: "used", Icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-700", caption: () => "e-coupon ที่ร้านกดใช้ / ส่งมอบคูปองกระดาษแล้ว" },
+  { key: "not_used", Icon: CalendarX, tone: "bg-amber-50 text-amber-700", caption: () => `ไม่ได้ใช้ / ไม่มารับ ภายใน ${reportFinalCloseLabel()}` },
+  { key: "forfeited", Icon: Ban, tone: "bg-slate-100 text-slate-600", caption: () => `ไม่สั่งภายใน ${reportFinalCloseLabel()}` },
+  { key: "cancelled", Icon: XCircle, tone: "bg-red-50 text-red-700", caption: () => "ยกเลิก ยังไม่มี QR ใหม่" },
+];
 
 export default function KpiCards({ counts }) {
-  const ownLabelLine = OWN_LABEL_COUPON.filter((k) => counts.byStatus[k] > 0)
-    .map((k) => `${STATUS_META[k].label} ${counts.byStatus[k]}`)
-    .join(" · ");
-
   const cards = [
     {
       key: "set",
@@ -27,44 +30,27 @@ export default function KpiCards({ counts }) {
       value: counts.coupon,
       Icon: Ticket,
       tone: "bg-violet-50 text-violet-700",
-      caption: ownLabelLine,
+      // คูปองที่ยังไม่มีร้าน (รอสั่ง / ตัดสิทธิ์ / ยกเลิก) ไม่มีกระดาษ / e-coupon — บอกแยกให้รวมกันได้ครบ
+      caption: [
+        `กระดาษ ${counts.byType.stock}`,
+        `e-coupon ${counts.byType.ecoupon}`,
+        counts.byType.coupon ? `ยังไม่เลือกร้าน ${counts.byType.coupon}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     },
-    {
-      key: "used",
-      label: STATUS_META.used.label,
-      value: counts.byStatus.used,
-      Icon: CheckCircle2,
-      tone: "bg-emerald-50 text-emerald-700",
-      caption: "E-coupon ที่ร้านกดใช้แล้ว",
-    },
-    {
-      key: "received",
-      label: STATUS_META.received.label,
-      value: counts.byStatus.received,
-      Icon: Hand,
-      tone: "bg-blue-50 text-blue-700",
-      caption: "Stock ที่ส่งมอบคูปองแล้ว",
-    },
-    {
-      key: "awaiting",
-      label: STATUS_META.awaiting.label,
-      value: counts.byStatus.awaiting,
-      Icon: Clock,
-      tone: "bg-amber-50 text-amber-700",
-      caption: "Stock ที่สั่งแล้ว ยังไม่ได้รับคูปอง",
-    },
-    {
-      key: "expired",
-      label: STATUS_META.expired.label,
-      value: counts.byStatus.expired,
-      Icon: CalendarX,
-      tone: "bg-red-50 text-red-700",
-      caption: `E-coupon ที่ไม่ได้ใช้ภายใน ${reportFinalCloseLabel()}`,
-    },
+    ...COUPON_CARDS.map((c) => ({
+      key: c.key,
+      label: COUPON_FILTER_STATUSES[c.key],
+      value: counts.byCoupon[c.key],
+      Icon: c.Icon,
+      tone: c.tone,
+      caption: c.caption(),
+    })),
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
       {cards.map(({ key, label, value, Icon, tone, caption }) => (
         <div key={key} className="min-w-0 rounded-2xl border border-admin-border bg-white p-3 sm:p-4">
           <div className="flex items-start gap-3">

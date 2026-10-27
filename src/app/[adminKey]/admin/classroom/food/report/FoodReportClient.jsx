@@ -40,6 +40,7 @@ import {
   rowType,
   setMenuLabel,
   setReportCloseTimes,
+  sheetShopsOf,
   shopOf,
   isUnchosen,
   typeKeyOf,
@@ -328,6 +329,20 @@ export default function FoodReportClient({ todayYMD }) {
     [data.days],
   );
 
+  // R6-1a: ปุ่มใบสั่งร้านมาจากทุกออเดอร์ (data.rows) — ร้านที่มีแต่ผู้เรียนไม่เช็คอินยังมีหัวข้อ + ปุ่มในแท็บตามร้านค้า
+  const sheetShops = useMemo(() => sheetShopsOf(data.rows, sheetDays), [data.rows, sheetDays]);
+  const shopTabGroups = useMemo(() => {
+    const have = new Set(shopGroups.map((g) => g.key));
+    const extra = [...sheetShops.values()]
+      .filter((s) => !have.has(s.key))
+      .map((s) => ({ key: s.key, name: s.name, types: [], counts: emptyCounts(), rows: [], extras: "" }));
+    if (!extra.length) return shopGroups;
+    return [...shopGroups, ...extra].sort(
+      (a, b) =>
+        (a.key === NO_SHOP_KEY) - (b.key === NO_SHOP_KEY) || a.name.localeCompare(b.name, "th"),
+    );
+  }, [shopGroups, sheetShops]);
+
   /* ---------------- selection ---------------- */
   function toggleRow(id) {
     setSelectedIds((prev) => {
@@ -601,10 +616,10 @@ export default function FoodReportClient({ todayYMD }) {
           tableProps={tableProps}
           idPrefix={SHOP_SECTION_ID}
           focusKey={focusShop}
-          groups={shopGroups.map((g) => ({
+          groups={shopTabGroups.map((g) => ({
             ...g,
             title: g.name,
-            action: sheetDays.some((d) => d.shops.some((s) => s.id === g.key)) ? (
+            action: sheetShops.get(g.key)?.kind === "coupon" ? (
               <button
                 type="button"
                 onClick={() => openOrderSheet(g.key)}
@@ -612,7 +627,7 @@ export default function FoodReportClient({ todayYMD }) {
               >
                 พิมพ์ใบสั่งร้าน
               </button>
-            ) : g.types.includes("set") ? (
+            ) : sheetShops.get(g.key)?.kind === "set" ? (
               <button
                 type="button"
                 onClick={() => openSetSheet(g)}

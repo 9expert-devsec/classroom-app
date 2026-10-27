@@ -8,10 +8,10 @@ const SELECT =
   "mt-1 h-10 w-full rounded-xl border border-admin-border bg-white px-3 text-sm text-admin-text focus:outline-none focus:ring-1 focus:ring-brand-primary disabled:cursor-not-allowed disabled:bg-admin-surfaceMuted disabled:text-admin-textMuted";
 
 /**
- * detail-table filters: class / type / coupon status / มีข้อสังเกต / search — URL params;
+ * detail-table filters: class / type / coupon status / ข้อมูลไม่ตรง / search — URL params;
  * the date range is the page's own filter
  * R6-1: ประเภท = ทั้งหมด · Set · คูปอง · ไม่รับอาหาร · สถานะคูปองใช้ได้เมื่อประเภท = ทั้งหมด / คูปอง
- *       "มีข้อสังเกต" แยกเป็น checkbox (?flagged=1) — ใช้ร่วมกับตัวกรองอื่นได้
+ *       "ข้อมูลไม่ตรง" (เดิม "มีข้อสังเกต") แยกเป็น checkbox (?flagged=1) — ใช้ร่วมกับตัวกรองอื่นได้
  */
 export default function ReportFilters({ params, setParams, classOptions }) {
   const active = params.cls || params.type || params.status || params.flagged || params.q;
@@ -77,7 +77,8 @@ export default function ReportFilters({ params, setParams, classOptions }) {
           // ?status=flagged (URL เดิม) ถูกแทนด้วย ?flagged=1
           onChange={(e) => setParams({ flagged: e.target.checked ? 1 : "", status: params.status })}
         />
-        มีข้อสังเกต
+        {/* R6-1a: ชื่อใหม่ (URL ยังเป็น ?flagged=1) — หน้าจอเหลือแค่ flag "ข้อมูลไม่ตรง" เพราะแถวไม่เช็คอินถูกซ่อน */}
+        ข้อมูลไม่ตรง
       </label>
 
       <label className="relative block min-w-[220px] flex-[2] text-[11px] text-admin-textMuted">

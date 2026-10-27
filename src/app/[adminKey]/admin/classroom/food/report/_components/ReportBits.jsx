@@ -19,8 +19,9 @@ export function TypeBadge({ type, label }) {
   );
 }
 
-export function StatusPill({ status }) {
-  const m = STATUS_META[status];
+// R6-1a: ส่ง badge ({ label, cls, icon } จาก rowStatusBadge) หรือ status key เดิมของ STATUS_META
+export function StatusPill({ status, badge }) {
+  const m = badge || STATUS_META[status];
   if (!m) return null;
   return (
     <span
