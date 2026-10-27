@@ -8,7 +8,8 @@
 // ทำไมเป็นรูป PNG ไม่ใช่ SVG: dark mode แบบบังคับของเบราว์เซอร์ (Samsung Internet, Chrome Auto Dark)
 // เปลี่ยนสี fill ของ SVG และพื้นหลัง CSS ได้ ทำให้ QR/บาร์โค้ดเป็นเทาบนเทา สแกนไม่ติด
 //   - วาดลง canvas นอกจอ แล้วแสดงเป็น <img src="data:image/png">
-//   - quiet zone อยู่ในพิกเซลของรูปเลย (QR 4 โมดูล / บาร์โค้ด 10 โมดูล) ขอบขาวไม่หายแม้กรอบถูกเปลี่ยนสี
+//   - quiet zone อยู่ในพิกเซลของรูปเลย ขอบขาวไม่หายแม้กรอบถูกเปลี่ยนสี
+//     R5-8a: QR 1 โมดูล (แผงขาว + การ์ดขาวรอบ ๆ เป็นส่วนที่เหลือ) / บาร์โค้ด 10 โมดูลซ้าย-ขวา ไม่มีขอบบน-ล่าง
 //   - วาดที่ความละเอียด devicePixelRatio (อย่างน้อย 2x) แสดงด้วย image-rendering: pixelated ให้ขอบคม
 //   - ค่า encode เหมือนเดิม: QR = รหัสเปล่า (qr.js ตัวเดียวกับที่ react-qr-code ใช้, ระดับ L), บาร์โค้ด = รหัสตรงตัว
 // ส่วนอื่นของการ์ดยังเป็นไปตาม theme ปกติ — ล็อกเฉพาะแผงนี้
@@ -17,9 +18,11 @@ import QRCodeImpl from "qr.js/lib/QRCode";
 import ErrorCorrectLevel from "qr.js/lib/ErrorCorrectLevel";
 import CouponStamp, { stampFadeClass } from "@/components/shared/CouponStamp";
 
-const QR_QUIET_MODULES = 4;
+// R5-8a: 4 -> 1 — กรอบ 218px เท่าเดิม โมดูลจึงใหญ่ขึ้น
+const QR_QUIET_MODULES = 1;
 const BAR_MODULE_CSS_PX = 2;
-const BAR_HEIGHT_CSS_PX = 64;
+// R5-8: เตี้ยลง 64 -> 40 (ความกว้างโมดูล / quiet zone เท่าเดิม — เครื่องสแกนอ่านจากความกว้าง)
+const BAR_HEIGHT_CSS_PX = 40;
 const BAR_QUIET_MODULES = 10;
 
 function renderScale() {
@@ -64,7 +67,11 @@ async function barcodeImage(value) {
     format: "CODE128",
     width: BAR_MODULE_CSS_PX * scale,
     height: BAR_HEIGHT_CSS_PX * scale,
-    margin: BAR_QUIET_MODULES * BAR_MODULE_CSS_PX * scale,
+    // R5-8a: quiet zone เฉพาะซ้าย-ขวา — แท่งชิดขอบบน/ล่างของรูป
+    //   (jsbarcode ใช้ marginTop || margin — ส่ง marginTop: 0 ไม่ได้ผล จึงตั้ง margin = 0 แล้วกำหนดซ้าย/ขวาเอง)
+    margin: 0,
+    marginLeft: BAR_QUIET_MODULES * BAR_MODULE_CSS_PX * scale,
+    marginRight: BAR_QUIET_MODULES * BAR_MODULE_CSS_PX * scale,
     displayValue: false,
     background: "#ffffff",
     lineColor: "#000000",
@@ -163,11 +170,9 @@ export default function ScanPanel({ value, qrSize = 168, status = "unused", show
           <RasterQr value={value} size={qrSize} />
         </div>
         {showBarcode ? (
-          <div data-testid="coupon-barcode" data-value={value} data-status={status} className="flex flex-col items-center gap-1">
+          // R5-8: ไม่มีคำบรรยายใต้บาร์โค้ดแล้ว
+          <div data-testid="coupon-barcode" data-value={value} data-status={status}>
             <RasterBarcode value={value} />
-            <p className="text-[12px]" style={{ color: "#4b5563" }}>
-              สำหรับเครื่องสแกน POS ของร้าน
-            </p>
           </div>
         ) : null}
       </div>

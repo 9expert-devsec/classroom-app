@@ -95,10 +95,11 @@ function ECouponCard({ order, dateLabel, token }) {
       <div className="flex flex-col items-center gap-2 px-4 pb-4 pt-3">
         {/* QR = รหัสเปล่า ๆ เท่านั้น ร้านสแกนแล้วได้ 9XP-XXXX เหมือนพิมพ์เอง
             บาร์โค้ด POS: เฉพาะ e-coupon ที่ร้านเปิดไว้ · ใช้แล้ว = ตราประทับทับ · อื่น ๆ ไม่แสดง
-            แผงสแกนดำบนขาวเสมอ ไม่ตาม dark mode (ดู ScanPanel) */}
+            แผงสแกนดำบนขาวเสมอ ไม่ตาม dark mode (ดู ScanPanel)
+            R5-8: QR 168 -> 218 (~+30%) */}
         <ScanPanel
           value={order.couponCode}
-          qrSize={168}
+          qrSize={218}
           status={live.state === "used" ? "used" : "unused"}
           showBarcode={showBarcode && (live.state === "unused" || live.state === "used")}
         />
