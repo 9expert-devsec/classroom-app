@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import MasterclassStepHeader from "../MasterclassStepHeader";
 import UserButton from "@/components/ui/UserButton";
 import AnimatedCheck from "@/components/icons/check-success";
+import { KioskScroll } from "../../KioskCardBody";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -54,10 +55,11 @@ export default function MasterclassSuccessClient({ searchParams = {} }) {
   }
 
   return (
-    <div className="flex flex-col">
+    // R5-6a: แถบขั้นตอนอยู่นอกพื้นที่เลื่อน — เลื่อนเฉพาะเนื้อหาด้านล่าง
+    <div className="flex h-full min-h-0 flex-col">
       <MasterclassStepHeader currentStep={3} />
 
-      <div className="px-6 py-10 flex flex-col items-center text-center gap-6">
+      <KioskScroll className="px-6 py-10 flex flex-col items-center text-center gap-6">
         <div className="p-6">
           <AnimatedCheck size={140} className="mx-auto" />
         </div>
@@ -81,7 +83,7 @@ export default function MasterclassSuccessClient({ searchParams = {} }) {
             เช็คอินคนถัดไป
           </UserButton>
         </div>
-      </div>
+      </KioskScroll>
     </div>
   );
 }

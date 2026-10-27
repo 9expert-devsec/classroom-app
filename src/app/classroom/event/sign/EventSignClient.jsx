@@ -154,7 +154,7 @@ export default function EventSignClient({ searchParams }) {
       </div>
     </div>
 
-    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+    <div className="min-h-0 flex-1 kiosk-scrollbar overflow-y-auto pr-1">
       {!!eventInfo && (
         <div className="mt-2 rounded-xl border border-[#66ccff] bg-white p-4 text-lg">
           <div className="text-xl font-semibold">

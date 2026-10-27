@@ -148,7 +148,7 @@ export default function SignPage({ searchParams = {} }) {
           กรุณาเซ็นชื่อของท่านในพื้นที่ด้านล่าง
         </p>
 
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
+        <div className="min-h-0 flex-1 space-y-2 kiosk-scrollbar overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
           {/* --------- กล่องสรุปข้อมูลผู้เรียน & อาหาร --------- */}
           <div className="rounded-2xl border border-brand-border bg-white px-4 py-3 text-sm shadow-sm">
             <h3 className="mb-2 sm:text-xl lg:text-base font-semibold">

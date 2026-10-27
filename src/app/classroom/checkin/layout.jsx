@@ -2,6 +2,7 @@ import localFont from "next/font/local";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import Image from "next/image";
+import KioskCardBody from "../KioskCardBody";
 
 const lineSeedSansTH = localFont({
   src: [
@@ -34,7 +35,7 @@ const lineSeedSansTH = localFont({
 export default function CheckinLayout({ children }) {
   return (
     <div
-      className={`${lineSeedSansTH.className} h-screen bg-[#F8FAFD] text-front-text`}
+      className={`${lineSeedSansTH.className} h-dvh overflow-hidden bg-[#F8FAFD] text-front-text`}
     >
       <div className="mx-auto flex h-dvh max-w-4xl flex-col px-4 py-6">
         <div className="flex flex-col items-center justify-center text-center my-4">
@@ -81,12 +82,8 @@ export default function CheckinLayout({ children }) {
           </div>
         </header> */}
 
-        {/* ✅ เลื่อนเฉพาะ main */}
-        <main className="min-h-0 flex-1 overflow-hidden rounded-3xl shadow-md">
-          <div className="h-full min-h-0 rounded-3xl bg-front-surface ">
-            {children}
-          </div>
-        </main>
+        {/* ✅ เลื่อนเฉพาะในการ์ด (R5-6) */}
+        <KioskCardBody>{children}</KioskCardBody>
 
         <footer className="mt-4 shrink-0 text-center sm:text-base lg:text-xs text-front-textMuted">
           © 9Expert Training

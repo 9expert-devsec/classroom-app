@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import SignaturePad from "@/components/shared/SignaturePad";
 import UserButton from "@/components/ui/UserButton";
 import { kioskFetch } from "@/lib/kioskFetch";
+import { KioskScroll } from "../../KioskCardBody";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -137,6 +138,8 @@ export default function EventCheckinClient({ searchParams }) {
   }
 
   return (
+    // R5-6a: ไม่มีแถบขั้นตอน — ทั้งเนื้อหาเป็นพื้นที่เลื่อนของการ์ด
+    <KioskScroll>
     <div className="mx-auto w-full max-w-3xl px-4 py-8">
       <div className="mb-6 rounded-2xl border bg-white p-5 shadow-sm">
         <div className="flex items-start justify-between gap-3">
@@ -343,5 +346,6 @@ export default function EventCheckinClient({ searchParams }) {
         </div>
       )}
     </div>
+    </KioskScroll>
   );
 }

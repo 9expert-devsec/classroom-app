@@ -17,7 +17,7 @@ const QR_FAIL = "ออก QR สั่งอาหารไม่สำเร�
 
 function QrView({ view, onClose }) {
   return (
-    <div className="flex h-full flex-col items-center overflow-y-auto px-6 py-8 text-center" data-testid="qr-view">
+    <div className="flex h-full flex-col items-center kiosk-scrollbar overflow-y-auto px-6 py-8 text-center" data-testid="qr-view">
       <div className="text-2xl font-semibold text-front-text sm:text-3xl lg:text-xl">{view.name}</div>
       <div className="mt-1 text-front-textMuted sm:text-lg lg:text-sm">
         {view.className}
@@ -246,7 +246,7 @@ export default function LunchQrLookupClient() {
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto p-1">
+      <div className="mt-4 min-h-0 flex-1 space-y-3 kiosk-scrollbar overflow-y-auto p-1">
         {loading ? <p className="text-front-textMuted sm:text-lg lg:text-sm">กำลังค้นหา…</p> : null}
         {error ? <p className="text-red-600 sm:text-lg lg:text-sm">{error}</p> : null}
         {items && !loading && items.length === 0 && !error ? (

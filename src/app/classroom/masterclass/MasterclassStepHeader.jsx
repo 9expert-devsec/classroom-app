@@ -13,7 +13,8 @@ const steps = [
 
 export default function MasterclassStepHeader({ currentStep }) {
   return (
-    <div className="flex gap-4 border-b border-brand-border px-6 py-4">
+    // R5-6a: อยู่นอกพื้นที่เลื่อน (KioskScroll / รายการของหน้า) — shrink-0 ไม่ถูกบีบ
+    <div className="relative z-20 flex shrink-0 gap-4 border-b border-brand-border bg-front-surface px-6 py-4">
       {steps.map((step) => {
         const isActive = step.id === currentStep;
         const isDone = step.id < currentStep;

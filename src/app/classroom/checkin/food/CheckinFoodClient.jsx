@@ -698,7 +698,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
           {isEdit ? "แก้ไขเมนูอาหาร" : "Step 2: เลือกเมนูอาหาร"}
         </h2>
 
-        <div className=" min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
+        <div className=" min-h-0 flex-1 space-y-2 kiosk-scrollbar overflow-y-auto overscroll-contain p-2 flex flex-col gap-2">
           {!hasFoodSetup ? (
             <div className="mt-4 space-y-4">
               <div className="grid grid-cols-2 gap-3 animate-fadeIn">

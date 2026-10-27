@@ -99,3 +99,19 @@ body:has([data-merchant-shell]) {
     @apply bg-background text-foreground;
   }
 }
+
+/* R5-6a: kiosk card scroll area — slim (6px) rounded light thumb on a transparent track,
+   inset from the card edge (transparent border + background-clip).
+   Firefox: thin + colour only. Touch devices keep their native overlay scrollbar. */
+.kiosk-scrollbar::-webkit-scrollbar { width: 10px; }
+.kiosk-scrollbar::-webkit-scrollbar-track { background: transparent; margin-block: 8px; }
+.kiosk-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(148 163 184 / 0.55);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+.kiosk-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgb(100 116 139 / 0.7); }
+@supports (-moz-appearance: none) {
+  .kiosk-scrollbar { scrollbar-width: thin; scrollbar-color: rgb(148 163 184 / 0.55) transparent; }
+}

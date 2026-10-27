@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AnimatedCheck from "@/components/icons/check-success";
+import { KioskScroll } from "../../KioskCardBody";
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -44,7 +45,8 @@ export default function EventCompleteClient({ searchParams }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col p-4">
+    // R5-6a: ไม่มีแถบขั้นตอน — ทั้งเนื้อหาเป็นพื้นที่เลื่อนของการ์ด
+    <KioskScroll className="flex flex-col p-4">
       <div className="text-center">
         <div className="p-6">
           <AnimatedCheck size={140} className="mx-auto" />
@@ -71,6 +73,6 @@ export default function EventCompleteClient({ searchParams }) {
           </button>
         </div>
       </div>
-    </div>
+    </KioskScroll>
   );
 }

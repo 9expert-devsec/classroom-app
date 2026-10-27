@@ -121,7 +121,7 @@ export default function MasterclassListClient() {
         {err && <div className="mb-4 text-sm text-red-600">{err}</div>}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 kiosk-scrollbar overflow-y-auto pr-1">
         {loading ? (
           <div className="text-sm text-zinc-500">
             กำลังโหลดรายการ Masterclass...

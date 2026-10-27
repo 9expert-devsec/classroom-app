@@ -3,6 +3,7 @@
 import localFont from "next/font/local";
 import Image from "next/image";
 import StaffGate from "@/app/classroom/StaffGate";
+import KioskCardBody, { KioskScroll } from "@/app/classroom/KioskCardBody";
 
 const googleSans = localFont({
   src: [
@@ -18,7 +19,7 @@ export const metadata = {
 
 export default function LunchQrLayout({ children }) {
   return (
-    <div className={`${googleSans.className} h-screen bg-[#F8FAFD] text-front-text`}>
+    <div className={`${googleSans.className} h-dvh overflow-hidden bg-[#F8FAFD] text-front-text`}>
       <div className="mx-auto flex h-dvh max-w-4xl flex-col px-4 py-6">
         <div className="my-4 flex flex-col items-center justify-center text-center">
           <Image src="/logo-9expert-app.png" alt="9Expert" width={90} height={90} priority />
@@ -30,12 +31,14 @@ export default function LunchQrLayout({ children }) {
           </header>
         </div>
 
-        <main className="min-h-0 flex-1 overflow-hidden rounded-3xl shadow-md">
-          <div className="h-full min-h-0 overflow-hidden rounded-3xl bg-front-surface">
+        <KioskCardBody>
+          {/* R5-6a: ไม่มีแถบขั้นตอน — หน้าปลดล็อก (PIN) ที่สูงกว่าการ์ดเลื่อนได้
+              หน้าค้นหา / QR สูงเต็มการ์ดและเลื่อนรายการของตัวเอง -> พื้นที่เลื่อนเดียว */}
+          <KioskScroll>
             {/* L2b: staff tool - content only after the staff step-up */}
             <StaffGate fill>{children}</StaffGate>
-          </div>
-        </main>
+          </KioskScroll>
+        </KioskCardBody>
       </div>
     </div>
   );

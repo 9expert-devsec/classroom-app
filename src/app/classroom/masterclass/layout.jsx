@@ -1,6 +1,7 @@
 // src/app/classroom/masterclass/layout.jsx
 import localFont from "next/font/local";
 import MasterclassLogo from "./MasterclassLogo";
+import KioskCardBody from "../KioskCardBody";
 
 const lineSeedSansTH = localFont({
   src: [
@@ -19,7 +20,7 @@ const lineSeedSansTH = localFont({
 export default function MasterclassLayout({ children }) {
   return (
     // ✅ พื้นหลังเข้มต่อเนื่องทุกหน้าของ Masterclass (list → step 1 → 2 → 3)
-    <div className={`${lineSeedSansTH.className} h-dvh bg-[#0d1b2a]`}>
+    <div className={`${lineSeedSansTH.className} h-dvh overflow-hidden bg-[#0d1b2a]`}>
       <div className="mx-auto flex h-full max-w-4xl flex-col px-4 py-6">
         <div className="my-4 flex flex-col items-center justify-center text-center">
           <MasterclassLogo size={90} />
@@ -34,12 +35,8 @@ export default function MasterclassLayout({ children }) {
           </header>
         </div>
 
-        {/* ✅ เลื่อนเฉพาะ main */}
-        <main className="min-h-0 flex-1 overflow-hidden rounded-3xl shadow-md">
-          <div className="h-full min-h-0 rounded-3xl bg-front-surface">
-            {children}
-          </div>
-        </main>
+        {/* ✅ เลื่อนเฉพาะในการ์ด (R5-6) */}
+        <KioskCardBody>{children}</KioskCardBody>
 
         <footer className="mt-4 shrink-0 text-center sm:text-base lg:text-xs text-front-textMuted">
           © 9Expert Training
