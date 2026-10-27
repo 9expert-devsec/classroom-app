@@ -74,34 +74,41 @@ function groupRowsByDay(rows) {
   for (const o of rows) {
     const k = String(o.dayYMD || "");
     if (!map.has(k)) {
-      map.set(k, { dayYMD: k, day: o.day || null, classDayCount: o.classDayCount || null, rows: [] });
+      map.set(k, {
+        dayYMD: k,
+        day: o.day || null,
+        classDayCount: o.classDayCount || null,
+        classKey: classKeyOf(o), // R6-1: key ของ dayStats
+        rows: [],
+      });
     }
     map.get(k).rows.push(o);
   }
   return [...map.values()].sort((a, b) => a.dayYMD.localeCompare(b.dayYMD));
 }
 
-/** "Set a · Coupon b · ไม่รับอาหาร c · ยังไม่เลือก/ไม่มีข้อมูล d" ของวันนั้น */
-function dayCountsLine(rows) {
-  const n = { set: 0, coupon: 0, none: 0, unchosen: 0 };
-  for (const o of rows) {
-    const t = rowType(o);
-    if (t === "set" || t === "coupon" || t === "none") n[t] += 1;
-    else n.unchosen += 1;
-  }
-  const unchosenLabel = rows.some((o) => rowType(o) === "not_chosen") ? "ยังไม่เลือก" : "ไม่มีข้อมูล";
+/**
+ * R6-1: "เช็คอิน a/b คน · Set x · คูปอง y · ไม่รับอาหาร z" (+ ยังไม่เลือก / ไม่มีข้อมูล เมื่อมี)
+ *   stats = ทั้งวันของคลาส (ไม่ขึ้นกับตัวกรอง) · ไม่มี stats = นับจากแถวที่ส่งมา
+ *   b = ผู้เรียนในห้องของคลาส ("-" เมื่อ server ไม่รู้ — ออเดอร์ของคลาสที่วันนั้นไม่ใช่วันเรียน)
+ */
+function dayCountsLine(rows, stats) {
+  const n = stats || { checkedIn: rows.length, learners: null, set: 0, coupon: 0, none: 0, not_chosen: 0, no_data: 0 };
+  if (!stats) for (const o of rows) n[rowType(o)] = (n[rowType(o)] || 0) + 1;
   return [
+    `เช็คอิน ${n.checkedIn}/${n.learners ?? "-"} คน`,
     `Set ${n.set}`,
-    `Coupon ${n.coupon}`,
+    `คูปอง ${n.coupon}`,
     `ไม่รับอาหาร ${n.none}`,
-    n.unchosen ? `${unchosenLabel} ${n.unchosen}` : "",
+    n.not_chosen ? `ยังไม่เลือก ${n.not_chosen}` : "",
+    n.no_data ? `ไม่มีข้อมูล ${n.no_data}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
 }
 
 /** หัวข้อย่อยของวัน (พับได้ เปิดไว้ก่อน — การพับเป็นแค่สถานะของมุมมองนี้ ไม่จำข้ามการโหลดใหม่) + ตารางของวันนั้น */
-function DaySection({ dayGroup, tableProps, classTitle }) {
+function DaySection({ dayGroup, tableProps, classTitle, stats }) {
   const [open, setOpen] = useState(true);
   // "#" นับใหม่ทุกวัน
   const numbers = new Map(dayGroup.rows.map((o, i) => [rowId(o), i + 1]));
@@ -114,10 +121,12 @@ function DaySection({ dayGroup, tableProps, classTitle }) {
         className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-admin-surfaceMuted/50"
       >
         <ChevronDown className={cx("h-4 w-4 shrink-0 text-admin-textMuted transition-transform", !open && "-rotate-90")} />
-        <span className="text-xs font-semibold text-admin-text">
-          {dayHeaderLabel(dayGroup)} · {dayGroup.rows.length} รายการ
+        <span className="text-xs font-semibold text-admin-text">{dayHeaderLabel(dayGroup)}</span>
+        <span className="text-[11px] text-admin-textMuted" data-testid="day-counts">
+          {dayCountsLine(dayGroup.rows, stats)}
+          {/* ตัวกรองเหลือบางแถว -> บอกจำนวนที่แสดง */}
+          {stats && dayGroup.rows.length < stats.checkedIn ? ` · แสดง ${dayGroup.rows.length} รายการ` : ""}
         </span>
-        <span className="text-[11px] text-admin-textMuted">{dayCountsLine(dayGroup.rows)}</span>
       </button>
       {open && (
         <div className="px-2 pb-2">
@@ -141,7 +150,8 @@ function DaySection({ dayGroup, tableProps, classTitle }) {
 // R4-3: viewKey = ช่วงวัน + ตัวกรอง + หน้า — ใช้เป็นส่วนหนึ่งของ key ของหัวข้อวัน
 //        เดิม key = วันอย่างเดียว: คลาสที่ยังอยู่บนจอหลังเปลี่ยนหน้า/ตัวกรอง/ช่วงวันใช้ instance เดิม
 //        สถานะ "พับ" ที่ผู้ใช้กดไว้จึงติดมาด้วย -> ตอนนี้ทุกครั้งที่มุมมองเปลี่ยน หัวข้อวันเริ่มเปิดใหม่หมด
-export default function ClassGroupedTable({ groups, tableProps, viewKey = "" }) {
+// R6-1: dayStats = Map("<classKey>|<dayYMD>" -> นับทั้งวัน) จาก FoodReportClient (หัวข้อวัน)
+export default function ClassGroupedTable({ groups, tableProps, viewKey = "", dayStats = null }) {
   return (
     <div className="space-y-4">
       {groups.map((g) => {
@@ -170,6 +180,7 @@ export default function ClassGroupedTable({ groups, tableProps, viewKey = "" }) 
                   dayGroup={dg}
                   tableProps={tableProps}
                   classTitle={g.title}
+                  stats={dayStats?.get(`${dg.classKey}|${dg.dayYMD}`) || null}
                 />
               ))}
             </div>

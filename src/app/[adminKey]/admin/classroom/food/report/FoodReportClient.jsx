@@ -12,7 +12,7 @@ import ShopSummary from "./_components/ShopSummary";
 import TopMenus from "./_components/TopMenus";
 import ReportFilters from "./_components/ReportFilters";
 import ReportTable from "./_components/ReportTable";
-import ClassGroupedTable, { groupRowsByClass } from "./_components/ClassGroupedTable";
+import ClassGroupedTable, { classKeyOf, groupRowsByClass } from "./_components/ClassGroupedTable";
 import ReportPagination from "./_components/ReportPagination";
 import SelectionBar from "./_components/SelectionBar";
 import GroupSections from "./_components/GroupSections";
@@ -137,21 +137,45 @@ export default function FoodReportClient({ todayYMD }) {
   }, [params.tab, focusShop]);
 
   /* ---------------- derived ---------------- */
-  // day → class → server order (stable)
+  // R6-1: หน้าจอ / พิมพ์รายคลาส / Export = เฉพาะผู้เรียนที่เช็คอินวันนั้น (hasCheckin)
+  //       ใบสั่งร้าน (คูปอง + Set) ยังใช้ทุกแถว (data.rows) — ร้านต้องทำทุกออเดอร์ แม้ไม่ได้เช็คอิน
+  // day → class → เวลาเช็คอิน (เก่า→ใหม่) → ชื่อ → server order
   const allRows = useMemo(() => {
-    const withTitle = data.rows.map((o, i) => ({
-      o,
-      i,
-      cls: cleanClassTitle(o.className || o.classTitle || "-", o.courseCode),
-    }));
+    const withTitle = data.rows
+      .filter((o) => o.hasCheckin)
+      .map((o, i) => ({
+        o,
+        i,
+        cls: cleanClassTitle(o.className || o.classTitle || "-", o.courseCode),
+        at: o.date ? new Date(o.date).getTime() || 0 : 0,
+      }));
     withTitle.sort(
       (a, b) =>
         String(a.o.dayYMD).localeCompare(String(b.o.dayYMD)) ||
         a.cls.localeCompare(b.cls, "th") ||
+        a.at - b.at ||
+        String(a.o.studentName || "").localeCompare(String(b.o.studentName || ""), "th") ||
         a.i - b.i,
     );
     return withTitle.map((x) => x.o);
   }, [data.rows]);
+
+  // R6-1: หัวข้อวันของคลาส "เช็คอิน a/b คน · Set x · คูปอง y · ไม่รับอาหาร z" — นับจากแถวทั้งหมดของวันนั้น
+  //       (ไม่ขึ้นกับตัวกรองของตาราง) · b = ผู้เรียนในห้องของคลาส (server: classLearnerCount)
+  const dayStats = useMemo(() => {
+    const map = new Map();
+    for (const o of allRows) {
+      const k = `${classKeyOf(o)}|${o.dayYMD || ""}`;
+      let s = map.get(k);
+      if (!s) {
+        s = { checkedIn: 0, learners: o.classLearnerCount ?? null, set: 0, coupon: 0, none: 0, not_chosen: 0, no_data: 0 };
+        map.set(k, s);
+      }
+      s.checkedIn += 1;
+      s[rowType(o)] += 1;
+    }
+    return map;
+  }, [allRows]);
 
   // the date range is the only page-level filter: KPIs, summaries, every tab, export and print use allRows
   // R4-2: countRows ไม่นับแถวที่ยังไม่มีผล (counts.unchosen นับแยก)
@@ -296,7 +320,8 @@ export default function FoodReportClient({ todayYMD }) {
     [allRows, selectedIds],
   );
 
-  const rowsByDay = useMemo(() => groupBy(allRows, (o) => o.dayYMD), [allRows]);
+  // R6-1: ใบสั่งร้านคูปองใช้ทุกแถว (รวมผู้เรียนที่ไม่ได้เช็คอิน)
+  const rowsByDay = useMemo(() => groupBy(data.rows, (o) => o.dayYMD), [data.rows]);
   const sheetDays = useMemo(
     () => data.days.filter((d) => (d.shops || []).length > 0),
     [data.days],
@@ -355,10 +380,11 @@ export default function FoodReportClient({ todayYMD }) {
     openAndPrint(buildClassPrintHtml(rows, rangeLabel(from, to)));
   }
 
-  // ใบสั่งร้าน Set: rows of that shop section (set only), one day per sheet
+  // ใบสั่งร้าน Set: rows of that shop (set only), one day per sheet
+  // R6-1: จากทุกแถว (data.rows) ไม่ใช่แถวที่เช็คอินแล้วของหน้าจอ — ร้านต้องทำทุกที่ที่เลือกไว้
   function setSheetDaysOf(group) {
     const byDay = groupBy(
-      group.rows.filter((o) => rowType(o) === "set"),
+      data.rows.filter((o) => rowType(o) === "set" && shopOf(o)?.key === group.key),
       (o) => o.dayYMD,
     );
     return [...byDay.entries()]
@@ -462,6 +488,7 @@ export default function FoodReportClient({ todayYMD }) {
             <ClassGroupedTable
               groups={groupsShown}
               tableProps={tableProps}
+              dayStats={dayStats}
               viewKey={[
                 from,
                 to,

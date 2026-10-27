@@ -233,6 +233,14 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
     const k = keyOf(ch.classId, ch.studentId);
     if (!checkinAt.has(k)) checkinAt.set(k, ch.time || null);
   }
+  // R6-1: จำนวนผู้เรียนของคลาสในวันนั้น (ตัวหารของ "เช็คอิน a/b คน") — รายชื่อคลาส ไม่รวมยกเลิก/เลื่อน
+  //       (query ข้างบนตัดไว้แล้ว) และไม่รวมผู้เรียนออนไลน์ของวันนั้น (learnTypeOnDay = live ไม่เช็คอินที่ kiosk)
+  const learnerCountByClass = new Map();
+  for (const stu of classStudents) {
+    const cId = idStr(stu.classId);
+    if (learnTypeOnDay(stu, dayByClass.get(cId)) === "live") continue;
+    learnerCountByClass.set(cId, (learnerCountByClass.get(cId) || 0) + 1);
+  }
   // ผู้เรียนของวันนั้น (คลาส × ผู้เรียน) — ออเดอร์ที่ไม่อยู่ในชุดนี้ยังเป็นแถวเหมือนเดิม (ดึง Student/Class เพิ่ม)
   const rosterKeys = new Set(classStudents.map((s) => keyOf(s.classId, s._id)));
   const orphanOrders = liveOrders.filter((o) => !rosterKeys.has(keyOf(o.classId, o.studentId)));
@@ -390,6 +398,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
       // R4-2: วันเรียนที่เท่าไรของคลาส (หัวกลุ่มวันในรายงาน)
       day: dayByClass.get(idStr(cls?._id)) || null,
       ...classFields(cls),
+      // R6-1: ผู้เรียนในห้องของคลาสวันนั้น (null = คลาสที่วันนั้นไม่ใช่วันเรียน — ออเดอร์ตกค้าง)
+      classLearnerCount: learnerCountByClass.get(idStr(cls?._id)) ?? null,
       ...studentFields(stu),
 
       // C5b
