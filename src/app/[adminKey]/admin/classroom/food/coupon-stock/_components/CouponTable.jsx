@@ -34,6 +34,7 @@ import {
   STATUS_STYLES,
 } from "./stockUi";
 import { sortLots } from "./LotCards";
+import CodeActionDialog from "./CodeActionDialog";
 
 const PAGE_SIZES = [10, 20, 50];
 
@@ -229,59 +230,10 @@ export default function CouponTable({
     onLotChange("");
   }
 
-  /* ---------- row actions (existing API only) ---------- */
-  async function patchCode(id, payload, confirmMsg) {
-    if (confirmMsg && !confirm(confirmMsg)) return;
-    try {
-      const res = await fetch(`/api/admin/food/coupon-stock/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await safeJson(res);
-      if (!res.ok) {
-        console.error(data);
-        toast.error(data.error || "ทำรายการไม่สำเร็จ");
-        return;
-      }
-      onChanged();
-    } catch (err) {
-      console.error(err);
-      toast.error("ทำรายการไม่สำเร็จ");
-    }
-  }
-
-  function handleVoid(row) {
-    const reason = prompt(`เหตุผลที่ยกเลิกรหัส ${row.code}:`, "");
-    if (reason === null) return;
-    if (!reason.trim()) return toast.error("กรุณาระบุเหตุผล");
-    patchCode(row._id, { action: "void", reason });
-  }
-
-  function handleNote(row) {
-    const note = prompt("หมายเหตุ:", row.note || "");
-    if (note === null) return;
-    patchCode(row._id, { action: "note", note });
-  }
-
-  async function handleDelete(row) {
-    if (!confirm(`ลบรหัส ${row.code} ออกจากคลังถาวร?`)) return;
-    try {
-      const res = await fetch(`/api/admin/food/coupon-stock/${row._id}`, {
-        method: "DELETE",
-      });
-      const data = await safeJson(res);
-      if (!res.ok) {
-        console.error(data);
-        toast.error(data.error || "ลบไม่สำเร็จ");
-        return;
-      }
-      onChanged();
-    } catch (err) {
-      console.error(err);
-      toast.error("ลบไม่สำเร็จ");
-    }
-  }
+  /* ---------- row actions (existing API only) ----------
+     R5-4: ทุก action เปิด CodeActionDialog (แทน prompt / confirm) — สำเร็จแล้วปิด + onChanged() */
+  const [codeAction, setCodeAction] = useState(null); // { kind, row }
+  const openAction = (kind, row) => setCodeAction({ kind, row });
 
   function toggleSort() {
     setSort((s) => (s === "expires_asc" ? "expires_desc" : s === "expires_desc" ? "" : "expires_asc"));
@@ -492,15 +444,7 @@ export default function CouponTable({
                           </DropdownMenuItem>
                         )}
                         {r.status === "awaiting_return" && (
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              patchCode(
-                                r._id,
-                                { action: "confirmReturn" },
-                                `ยืนยันว่าได้รับคูปอง ${r.code} คืนแล้ว?`,
-                              )
-                            }
-                          >
+                          <DropdownMenuItem onSelect={() => openAction("confirmReturn", r)}>
                             ยืนยันรับคืน
                           </DropdownMenuItem>
                         )}
@@ -518,33 +462,25 @@ export default function CouponTable({
                               </span>
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem
-                              onSelect={() =>
-                                patchCode(
-                                  r._id,
-                                  { action: "unvoid" },
-                                  `นำรหัส ${r.code} กลับเข้าคลัง?`,
-                                )
-                              }
-                            >
+                            <DropdownMenuItem onSelect={() => openAction("unvoid", r)}>
                               นำกลับเข้าคลัง
                             </DropdownMenuItem>
                           ))}
-                        <DropdownMenuItem onSelect={() => handleNote(r)}>
+                        <DropdownMenuItem onSelect={() => openAction("note", r)}>
                           แก้หมายเหตุ
                         </DropdownMenuItem>
                         {r.status === "available" && (
                           <DropdownMenuItem
                             className="text-red-600 focus:text-red-600"
-                            onSelect={() => handleVoid(r)}
+                            onSelect={() => openAction("void", r)}
                           >
-                            ยกเลิก (void)
+                            ยกเลิกรหัส
                           </DropdownMenuItem>
                         )}
                         {canDelete && (
                           <DropdownMenuItem
                             className="text-red-600 focus:text-red-600"
-                            onSelect={() => handleDelete(r)}
+                            onSelect={() => openAction("delete", r)}
                           >
                             ลบถาวร
                           </DropdownMenuItem>
@@ -644,6 +580,18 @@ export default function CouponTable({
           </div>
         )}
       </div>
+
+      {codeAction && (
+        <CodeActionDialog
+          kind={codeAction.kind}
+          row={codeAction.row}
+          onClose={() => setCodeAction(null)}
+          onDone={() => {
+            setCodeAction(null);
+            onChanged();
+          }}
+        />
+      )}
     </div>
   );
 }

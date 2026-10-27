@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Loader2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2, X } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { bangkokTodayYMD } from "@/lib/classDates";
 import { classifyLinesLocal, MAX_IMPORT_CODES } from "@/lib/couponStockCode";
 import { isLotCancelled, lotKey, parseLotKey, safeJson } from "./stockUi";
@@ -80,6 +81,7 @@ export default function ImportDrawer({ restaurants, initialRestaurantId, onClose
   const [touchedState, setTouchedState] = useState({});
 
   const [mode, setMode] = useState("paste");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [codesText, setCodesText] = useState("");
   const [fileName, setFileName] = useState("");
 
@@ -173,7 +175,8 @@ export default function ImportDrawer({ restaurants, initialRestaurantId, onClose
 
   function requestClose() {
     if (saving) return;
-    if (dirty && !confirm("ปิดหน้าต่างนี้? ข้อมูลที่กรอกไว้จะหายไป")) return;
+    // R5-4: ถามด้วย dialog แทน window.confirm
+    if (dirty) return setConfirmDiscard(true);
     onClose();
   }
 
@@ -407,6 +410,37 @@ export default function ImportDrawer({ restaurants, initialRestaurantId, onClose
               </button>
             )}
           </div>
+
+          {/* ซ้อนอยู่ใน Content เพื่อให้คลิกใน dialog นี้ไม่นับเป็นการคลิกนอก drawer */}
+          {confirmDiscard && (
+            <Dialog open onOpenChange={(o) => !o && setConfirmDiscard(false)}>
+              <DialogContent className="max-w-md rounded-2xl bg-white">
+                <DialogTitle className="text-lg">ปิดหน้าต่างนำเข้า?</DialogTitle>
+                <div className="flex gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+                  <DialogDescription className="text-sm text-admin-text">
+                    ข้อมูลที่กรอกไว้จะหายไป
+                  </DialogDescription>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDiscard(false)}
+                    className="flex-1 rounded-xl border border-admin-border bg-white py-2.5 text-sm font-medium hover:bg-admin-surfaceMuted"
+                  >
+                    กลับไปกรอกต่อ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    ปิดและล้างข้อมูล
+                  </button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
