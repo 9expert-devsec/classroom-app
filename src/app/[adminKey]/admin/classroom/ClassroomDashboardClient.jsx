@@ -494,6 +494,15 @@ export default function ClassroomDashboardClient({
     }
   }
 
+  // ปุ่มรีเฟรช (R5-9: ย้ายจากปุ่ม Refresh ด้านขวามาไว้ในชิปอัปเดตล่าสุด — โค้ดเดิม)
+  function refreshAll() {
+    loadedStudentsKeyRef.current = "";
+    refresh({ include: "cards,lists" });
+    refresh({ include: "cards,program", silent: true });
+    if (isStudentMode(active))
+      refresh({ include: "students", mode: active, silent: true });
+  }
+
   // โหลดเริ่มต้น (ถ้าไม่มี initialData)
   useEffect(() => {
     if (!initialData) {
@@ -615,8 +624,9 @@ export default function ClassroomDashboardClient({
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 overflow-hidden">
       <div className="shrink-0 min-h-0 flex flex-col gap-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        {/* R5-9: wrap แทนการบีบ — หัวเรื่องซ้ายไม่ถูกบีบ, ตัวเลือกช่วงเวลาไม่หด */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold">Classroom Dashboard</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <p className="text-sm text-admin-textMuted">
@@ -625,11 +635,31 @@ export default function ClassroomDashboardClient({
                 {loading ? " • กำลังโหลด..." : ""}
               </p>
 
-              {lastUpdatedAt ? (
-                <span className="inline-flex items-center rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] text-admin-textMuted">
-                  อัปเดตล่าสุด {fmtDateTimeTH(lastUpdatedAt)}
+              {/* R5-9: ชิปแยกสองส่วน — เวลาอัปเดต | ปุ่มรีเฟรช (ย้ายมาจากกลุ่มขวา, handler เดิม) */}
+              <span className="inline-flex items-stretch rounded-full border border-admin-border bg-admin-surface text-[11px] text-admin-textMuted">
+                <span className="inline-flex items-center px-2 py-0.5" aria-live="polite">
+                  {loading
+                    ? "กำลังอัปเดต…"
+                    : `อัปเดตล่าสุด ${lastUpdatedAt ? fmtDateTimeTH(lastUpdatedAt) : "-"}`}
                 </span>
-              ) : null}
+                <span aria-hidden="true" className="w-px bg-admin-border" />
+                <button
+                  type="button"
+                  onClick={refreshAll}
+                  disabled={loading}
+                  aria-label="รีเฟรชข้อมูล"
+                  title="รีเฟรชข้อมูล"
+                  className={cx(
+                    "inline-flex items-center rounded-r-full px-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-primary",
+                    loading ? "opacity-70" : "hover:bg-admin-surfaceMuted",
+                  )}
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={cx("h-3.5 w-3.5", loading ? "animate-spin" : "")}
+                  />
+                </button>
+              </span>
 
               {errorMsg ? (
                 <span className="inline-flex items-center rounded-full border border-brand-danger/30 bg-brand-danger/10 px-2 py-0.5 text-[11px] font-semibold text-brand-danger">
@@ -639,31 +669,7 @@ export default function ClassroomDashboardClient({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                loadedStudentsKeyRef.current = "";
-                refresh({ include: "cards,lists" });
-                refresh({ include: "cards,program", silent: true });
-                if (isStudentMode(active))
-                  refresh({ include: "students", mode: active, silent: true });
-              }}
-              disabled={loading}
-              className={cx(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition",
-                loading
-                  ? "border-admin-border bg-admin-surface text-admin-textMuted opacity-70"
-                  : "border-admin-border bg-admin-surface text-admin-textMuted hover:bg-admin-surfaceMuted",
-              )}
-              title="Refresh ข้อมูล"
-            >
-              <RefreshCw
-                className={cx("h-4 w-4", loading ? "animate-spin" : "")}
-              />
-              Refresh
-            </button>
-
+          <div className="flex shrink-0 items-center gap-2">
             <div className="inline-flex rounded-full bg-admin-surface border border-admin-border p-1 text-xs">
               {RANGE_OPTIONS.map((opt) => (
                 <button
