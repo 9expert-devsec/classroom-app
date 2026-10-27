@@ -34,6 +34,8 @@ import { withCouponCodeRetry } from "@/lib/couponCodeRetry.server";
 export const MAX_LINES = 30;
 export const MAX_QTY = 20;
 export const MAX_NOTE = 200;
+// R5-7: กระดาษหมดระหว่างเลือกร้านกับยืนยัน (ร้านตั้ง fallback) — หน้ายืนยันแสดงข้อความนี้ก่อนออก e-coupon
+export const COUPON_MODE_CHANGED_MESSAGE = "คูปองกระดาษหมดแล้ว — จะได้รับ E-coupon แสดงที่ร้านแทน";
 
 // ตัด 0 O 1 I L ออก เพราะอ่านจากกระดาษแล้วสับสน
 const ECOUPON_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -313,6 +315,8 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
   // --- 8) coupon + status change, in ONE transaction ---
   const usesCouponStock = !!restaurant.usesCouponStock;
   const stockFallback = usesCouponStock && !!restaurant.stockFallbackToECoupon;
+  // R5-7: ชนิดคูปองที่หน้าจอบอกผู้เรียนไว้ ("stock" = ป้ายกระดาษที่ Counter) — ไม่ส่งมา = ไม่ตรวจ
+  const expectedSource = String(body?.expectedSource || "") === "stock" ? "stock" : "";
   const nextStatus = mode === "at_shop" ? "at_shop" : "ordered";
   const at = new Date(now);
 
@@ -347,6 +351,11 @@ export async function submitLunchOrder({ order, body, now = lunchNow() }) {
           couponSource = "stock";
           stockCodeId = code._id;
         } else if (!usesCouponStock || stockFallback) {
+          // R5-7: ผู้เรียนเห็นป้าย "คูปองกระดาษ" (expectedSource = stock) แต่กระดาษหมดระหว่างนั้น
+          //       -> ยกเลิกทั้ง transaction ไม่ออกอะไร ให้หน้ายืนยันแจ้งก่อน แล้วผู้เรียนกดยืนยันอีกครั้ง
+          if (usesCouponStock && expectedSource === "stock") {
+            fail(409, "coupon_mode_changed", COUPON_MODE_CHANGED_MESSAGE);
+          }
           couponSource = "ecoupon";
         } else {
           // ทั้ง transaction ถูกยกเลิก ออเดอร์ยังเป็น pending เหมือนเดิม

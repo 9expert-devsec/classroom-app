@@ -29,7 +29,8 @@ const GENERIC_ERROR = "เกิดข้อผิดพลาด กรุณ�
 
 /* ---------------- final confirm modal ---------------- */
 
-function FinalConfirmModal({ restaurant, count, total, budget, busy, error, onEdit, onConfirm }) {
+// R5-7: notice = กระดาษหมดระหว่างทาง — แจ้งก่อนออก e-coupon (กดยืนยันอีกครั้งจึงออก)
+function FinalConfirmModal({ restaurant, count, total, budget, busy, error, notice, onEdit, onConfirm }) {
   const overage = Math.max(0, total - budget);
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/40 px-4 pb-4">
@@ -51,6 +52,14 @@ function FinalConfirmModal({ restaurant, count, total, budget, busy, error, onEd
         <p className="mt-2 text-[12px] leading-relaxed text-slate-400">
           ราคาดังกล่าว ยังไม่ใช่ราคาสุทธิ ส่วนที่เกินงบ {budget} บาทชำระเองที่ร้าน
         </p>
+        {notice ? (
+          <p
+            data-testid="coupon-mode-notice"
+            className="mt-3 rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#b8720a]"
+          >
+            {notice}
+          </p>
+        ) : null}
         {error ? (
           <p className="mt-3 rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]">
             {error}
@@ -185,6 +194,8 @@ export default function SummaryClient({
   const [modalError, setModalError] = useState("");
   const [pageError, setPageError] = useState("");
   const [badLine, setBadLine] = useState(null);
+  // R5-7: server ตอบ coupon_mode_changed -> ข้อความแจ้ง (ยืนยันครั้งถัดไปไม่ส่ง expectedSource = รับ e-coupon)
+  const [modeNotice, setModeNotice] = useState("");
 
   // ตะกร้า + ชื่อเล่น
   useEffect(() => {
@@ -279,6 +290,8 @@ export default function SummaryClient({
         nickname,
         restaurantId: withId.restaurantId,
         mode: "order",
+        // R5-7: ป้ายบอกว่าได้กระดาษ -> ให้ server ถามก่อนถ้าจะออก e-coupon แทน
+        ...(restaurant?.isStock && !modeNotice ? { expectedSource: "stock" } : {}),
         lines: withId.lines.map((l) => ({
           menuId: l.menuId,
           qty: l.qty,
@@ -306,6 +319,12 @@ export default function SummaryClient({
         clearCartLines(token, readCart(token));
         leaving = true;
         router.replace(`/lunch/${token}?done=1`);
+        return;
+      }
+
+      // R5-7: กระดาษหมดระหว่างทาง (ร้านตั้ง fallback) — ยังไม่มีอะไรถูกออก แจ้งในหน้ายืนยัน รอกดยืนยันอีกครั้ง
+      if (res.status === 409 && data?.reason === "coupon_mode_changed") {
+        setModeNotice(data?.error || "คูปองกระดาษหมดแล้ว — จะได้รับ E-coupon แสดงที่ร้านแทน");
         return;
       }
 
@@ -405,7 +424,7 @@ export default function SummaryClient({
             </p>
             <p className="text-[12px] text-slate-500">ชื่อเล่น {nickname}</p>
           </div>
-          {restaurant.isStock ? (
+          {restaurant.isStock && !modeNotice ? (
             <span className="shrink-0 rounded-full bg-[#48b0ff]/15 px-2 py-0.5 text-[11px] font-medium text-[#005cff]">
               รับคูปองที่ Counter
             </span>
@@ -528,6 +547,7 @@ export default function SummaryClient({
           budget={budget}
           busy={busy}
           error={modalError}
+          notice={modeNotice}
           onEdit={() => setConfirmOpen(false)}
           onConfirm={submit}
         />

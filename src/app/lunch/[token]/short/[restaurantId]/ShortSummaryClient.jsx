@@ -53,6 +53,9 @@ export default function ShortSummaryClient({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // R5-7: กระดาษหมดระหว่างทาง -> แจ้งก่อน ยืนยันครั้งถัดไปได้ e-coupon
+  const [modeNotice, setModeNotice] = useState("");
+  const chipShop = modeNotice ? { ...restaurant, isStock: false } : restaurant;
 
   // ยังไม่ได้ยืนยันชื่อเล่น -> กลับไปกรอกที่หน้าแรกก่อน
   useEffect(() => {
@@ -70,6 +73,7 @@ export default function ShortSummaryClient({
         requestId: newRequestId(),
         nickname,
         restaurantId: restaurant.id,
+        expectedSource: restaurant.isStock && !modeNotice ? "stock" : "",
       });
 
       // สำเร็จ / replay / สั่งไปแล้ว (409 already_ordered) -> ล้างตะกร้าตอนนี้เท่านั้น
@@ -82,6 +86,10 @@ export default function ShortSummaryClient({
       if (r.next === "sold_out") {
         leaving = true;
         router.replace(`/lunch/${token}?notice=sold_out`);
+        return;
+      }
+      if (r.next === "mode_changed") {
+        setModeNotice(r.message);
         return;
       }
       if (r.next === "refresh") {
@@ -119,7 +127,7 @@ export default function ShortSummaryClient({
             <p className="text-[12px] text-[color:var(--gray)]">ชื่อเล่น {nickname}</p>
           </div>
           <div className="shrink-0">
-            <ShopTypeChip r={restaurant} />
+            <ShopTypeChip r={chipShop} />
           </div>
         </div>
       </div>
@@ -148,6 +156,15 @@ export default function ShortSummaryClient({
               className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#b8720a]"
             >
               รายการที่เลือกไว้ {cartCount} รายการจาก {cartShopName} จะถูกล้างทั้งหมด
+            </p>
+          ) : null}
+
+          {modeNotice ? (
+            <p
+              data-testid="coupon-mode-notice"
+              className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#b8720a]"
+            >
+              {modeNotice}
             </p>
           ) : null}
 

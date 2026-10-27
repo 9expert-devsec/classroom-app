@@ -79,13 +79,16 @@ export default function ClearCartSheet({ count, cartShopName, onCancel, onConfir
  *   { next: "refresh" }   -> หมดเวลา (403) ให้ด่านตรวจฝั่ง server ตัดสินใหม่
  *   { next: "error", message }
  */
-export async function postAtShop({ token, requestId, nickname, restaurantId }) {
+// R5-7: expectedSource = "stock" เมื่อป้ายร้านบอกกระดาษ — กระดาษหมดระหว่างทาง server ตอบ coupon_mode_changed
+//       (ไม่ออกอะไร) -> { next: "mode_changed", message } ให้หน้าแจ้งก่อน แล้วยืนยันอีกครั้งโดยไม่ส่ง expectedSource
+export async function postAtShop({ token, requestId, nickname, restaurantId, expectedSource = "" }) {
   const body = JSON.stringify({
     requestId,
     nickname,
     restaurantId,
     mode: "at_shop",
     lines: [],
+    ...(expectedSource ? { expectedSource } : {}),
   });
 
   // ครอบเฉพาะ fetch: "เชื่อมต่อไม่สำเร็จ" ต้องหมายถึงเน็ตมีปัญหาจริง ๆ เท่านั้น
@@ -106,6 +109,9 @@ export async function postAtShop({ token, requestId, nickname, restaurantId }) {
   }
   if (res.status === 409 && data?.reason === "sold_out") {
     return { next: "sold_out" };
+  }
+  if (res.status === 409 && data?.reason === "coupon_mode_changed") {
+    return { next: "mode_changed", message: data?.error || "คูปองกระดาษหมดแล้ว — จะได้รับ E-coupon แสดงที่ร้านแทน" };
   }
   if (res.status === 403) {
     return { next: "refresh" };

@@ -47,6 +47,19 @@ export async function getDaySet(dayYMD) {
 }
 
 /**
+ * R5-7: คูปองที่ผู้เรียนจะได้จริงถ้าสั่ง "ตอนนี้" — ตัวเดียวที่ป้ายร้าน (หน้าเลือกร้าน) ใช้
+ *   ร้านไม่ใช้ stock                      -> "ecoupon"
+ *   ร้าน stock + มีกระดาษที่ใช้ได้วันนั้น    -> "stock"     (countAvailable = เงื่อนไขเดียวกับ assignCode)
+ *   ร้าน stock + กระดาษหมด + fallback เปิด -> "ecoupon"   (submit ออก e-coupon แทน)
+ *   ร้าน stock + กระดาษหมด + fallback ปิด  -> "sold_out"
+ */
+export function couponModeOf({ usesCouponStock, stockAvailable, stockFallback }) {
+  if (!usesCouponStock) return "ecoupon";
+  if (Number(stockAvailable) > 0) return "stock";
+  return stockFallback ? "ecoupon" : "sold_out";
+}
+
+/**
  * {
  *   available, reason,
  *   couponRestaurantIds,           // เฉพาะร้านที่ "เปิดรับจริง" (ใช้ต่อได้เลย)
@@ -99,7 +112,8 @@ export async function getCouponAvailability({ classDoc, dayYMD, daySet }) {
 
       // กระดาษหมดแต่ร้านตั้ง fallback ไว้ -> ยังเปิดรับ (ออก e-coupon แทน)
       const stockFallback = usesCouponStock && !!r.stockFallbackToECoupon;
-      const open = usesCouponStock ? stockAvailable > 0 || stockFallback : true;
+      const mode = couponModeOf({ usesCouponStock, stockAvailable, stockFallback });
+      const open = mode !== "sold_out";
 
       return {
         restaurantId: String(r._id),
@@ -107,6 +121,8 @@ export async function getCouponAvailability({ classDoc, dayYMD, daySet }) {
         usesCouponStock,
         stockFallback,
         stockAvailable,
+        // R5-7: "stock" | "ecoupon" | "sold_out" — คูปองที่ออเดอร์ใหม่จะได้ตอนนี้
+        mode,
         open,
         reason: open ? null : "stock_out",
       };

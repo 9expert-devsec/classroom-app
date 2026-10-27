@@ -115,6 +115,9 @@ function NicknameStep({ value, onChange, onSubmit }) {
 
 /* ---------------- B: shop picker ---------------- */
 
+// R5-7: โลโก้ / ชื่อ (ไม่เกิน 2 บรรทัด ตัดคำได้ทุกที่เมื่อคำยาวเกินการ์ด) / ป้ายแถวของตัวเองชิดล่าง
+//   เดิมชื่อเป็น <p> กว้างตามเนื้อหาในคอลัมน์ items-center ไม่มี min-w-0 / ตัดคำ -> ชื่อยาวไม่มีช่องว่าง
+//   ล้นการ์ดออกไปทับชื่อ / ป้ายของการ์ดข้าง ๆ · การ์ดในแถวสูงเท่ากัน (grid stretch + h-full) ป้ายจึงตรงกัน
 function ShopCard({ r, onPick }) {
   const blockedText = shopBlockedText(r);
   const blocked = !!blockedText;
@@ -124,22 +127,26 @@ function ShopCard({ r, onPick }) {
       type="button"
       disabled={blocked}
       onClick={() => !blocked && onPick(r)}
+      data-testid="shop-card"
       className={[
-        "flex flex-col items-center gap-2.5 rounded-[20px] border p-4 text-center transition",
+        "flex h-full w-full min-w-0 flex-col items-center gap-2.5 rounded-[20px] border p-4 text-center transition",
         blocked
           ? "cursor-not-allowed border-black/5 bg-slate-100"
           : "border-black/5 bg-white shadow-[0_4px_16px_rgba(13,27,42,0.06)] hover:border-[color:var(--blue)] active:scale-[0.98]",
       ].join(" ")}
     >
-      <div className={blocked ? "opacity-50 grayscale" : ""}>
+      <div className={`shrink-0 ${blocked ? "opacity-50 grayscale" : ""}`}>
         <LogoTile src={r.logo} alt={r.name} size={72} />
       </div>
       <p
-        className={`text-[15px] font-semibold leading-tight ${blocked ? "text-slate-400" : "text-[color:var(--navy)]"}`}
+        title={r.name}
+        className={`line-clamp-2 w-full min-w-0 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere] ${blocked ? "text-slate-400" : "text-[color:var(--navy)]"}`}
       >
         {r.name}
       </p>
-      {blocked ? <BlockedChip text={blockedText} /> : <ShopTypeChip r={r} />}
+      <div className="mt-auto flex w-full justify-center pt-0.5">
+        {blocked ? <BlockedChip text={blockedText} /> : <ShopTypeChip r={r} />}
+      </div>
     </button>
   );
 }

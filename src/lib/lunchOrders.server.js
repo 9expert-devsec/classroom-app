@@ -24,7 +24,6 @@ import {
   getDaySet,
   getCouponAvailability,
 } from "@/lib/couponAvailability.server";
-import { countAvailable } from "@/lib/couponStock.server";
 import { getOrderCouponSource, isStockFallbackOrder } from "@/lib/lunchCouponSource";
 
 /* ---------------- token ---------------- */
@@ -184,9 +183,10 @@ export async function issueLunchOrder({
 
 /* ---------------- session DTO ---------------- */
 
-function restaurantState(entryMode, isStock, stockCount) {
+// R5-7: couponMode จาก getCouponAvailability (couponModeOf) — ไม่นับ stock ซ้ำที่นี่
+function restaurantState(entryMode, couponMode) {
   if (entryMode === "closed") return "closed";
-  if (isStock && stockCount <= 0) return "sold_out";
+  if (couponMode === "sold_out") return "sold_out";
   return "open";
 }
 
@@ -250,27 +250,31 @@ export async function getLunchSession(token, now = lunchNow()) {
       .select("name logoUrl usesCouponStock stockFallbackToECoupon")
       .lean();
 
-    restaurants = await Promise.all(
-      docs.map(async (r) => {
-        const usesStock = !!r.usesCouponStock;
-        const stockCount = usesStock ? await countAvailable(r._id, ymd) : 0;
-        // กระดาษหมด + ร้านตั้ง fallback -> ไม่ใช่ "คูปองหมด" และออเดอร์ใหม่จะได้ e-coupon
-        const fallingBack = usesStock && !!r.stockFallbackToECoupon && stockCount <= 0;
-        return {
-          id: String(r._id),
-          name: r.name || "",
-          logo: r.logoUrl || "",
-          // ชนิดคูปองที่ออเดอร์ใหม่น่าจะได้ (ป้ายร้าน) — ของจริงตัดสินตอน submit
-          isStock: usesStock && !fallingBack,
-          // ไม่ส่งจำนวนคงเหลือออกไป ให้รู้แค่ว่าหมดหรือยัง
-          state: restaurantState(
-            modeById.get(String(r._id)),
-            usesStock && !fallingBack,
-            stockCount,
-          ),
-        };
-      }),
+    // R5-7: คูปองที่ออเดอร์ใหม่จะได้ "ตอนนี้" ต่อร้าน — helper เดียวกับทุก read path (getCouponAvailability)
+    //        กระดาษที่ใช้ได้วันนั้น -> stock · หมด + fallback -> ecoupon · หมด ไม่มี fallback -> sold_out
+    //        submit ตัดสินจริงอีกครั้ง (assignCode) — ถ้าเปลี่ยนจาก stock เป็น e-coupon จะถามก่อน (coupon_mode_changed)
+    const avail = await getCouponAvailability({
+      classDoc: { disableCoupon: false },
+      dayYMD: ymd,
+      daySet,
+    });
+    const couponModeById = new Map(
+      (avail.couponRestaurants || []).map((x) => [x.restaurantId, x.mode]),
     );
+
+    restaurants = docs.map((r) => {
+      const couponMode = couponModeById.get(String(r._id)) || (r.usesCouponStock ? "sold_out" : "ecoupon");
+      return {
+        id: String(r._id),
+        name: r.name || "",
+        logo: r.logoUrl || "",
+        // ป้ายร้าน: กระดาษที่ Counter เฉพาะเมื่อออเดอร์ใหม่จะได้กระดาษจริง
+        isStock: couponMode === "stock",
+        couponMode,
+        // ไม่ส่งจำนวนคงเหลือออกไป ให้รู้แค่ว่าหมดหรือยัง
+        state: restaurantState(modeById.get(String(r._id)), couponMode),
+      };
+    });
   }
 
   const status = computeStatus(order, at);
