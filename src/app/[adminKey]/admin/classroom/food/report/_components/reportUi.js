@@ -78,13 +78,26 @@ export function useReportParams(todayYMD) {
   if (rangeDays(from, to).length > MAX_RANGE_DAYS) to = addDaysYMD(from, MAX_RANGE_DAYS - 1);
 
   const size = Number(sp.get("size"));
+  // R6-1: ประเภท set | coupon | none · สถานะคูปอง 6 ค่า · มีข้อสังเกต = ?flagged=1 (ค่าเดิมใน URL แปลงให้)
+  const rawType = sp.get("type") || "";
+  const rawStatus = sp.get("status") || "";
+  const type = pick(
+    LEGACY_TYPE[rawType] || LEGACY_STATUS_TYPE[rawStatus] || rawType,
+    Object.keys(FILTER_TYPES),
+    "",
+  );
+  const status =
+    type === "" || type === "coupon"
+      ? pick(LEGACY_STATUS[rawStatus] || rawStatus, Object.keys(COUPON_FILTER_STATUSES), "")
+      : "";
   const params = {
     from,
     to,
     tab: pick(sp.get("tab"), TABS, "overview"),
     cls: sp.get("class") || "",
-    type: pick(sp.get("type"), Object.keys(TYPE_META), ""),
-    status: pick(sp.get("status"), [...Object.keys(STATUS_META), "flagged"], ""),
+    type,
+    status,
+    flagged: sp.get("flagged") === "1" || rawStatus === "flagged",
     q: sp.get("q") || "",
     size: PAGE_SIZES.includes(size) ? size : DEFAULT_PAGE_SIZE,
     page: Math.max(1, Math.floor(Number(sp.get("page")) || 1)),
@@ -431,6 +444,71 @@ export const STATUS_META = {
 
 // columns of the shop summary / KPI order
 export const MAPPED_STATUSES = ["used", "received", "awaiting", "expired", "set"];
+
+/* ---------- R6-1: ตัวกรองแบบย่อ (ประเภท 3 ค่า / สถานะคูปอง 6 ค่า) ---------- */
+// ป้ายบนแถว / KPI / สรุปร้าน ยังใช้ TYPE_META + STATUS_META เดิม (E-coupon / Stock ยังเห็นที่ป้ายแถว)
+
+export const FILTER_TYPES = {
+  set: "Set",
+  coupon: "คูปอง",
+  none: "ไม่รับอาหาร",
+};
+
+/** ประเภทของตัวกรอง — ยังไม่เลือก / ไม่มีข้อมูล ไม่อยู่ในประเภทใด (เห็นเฉพาะ "ทั้งหมด") */
+export function filterTypeOf(o) {
+  const t = rowType(o);
+  return t in FILTER_TYPES ? t : "";
+}
+
+export const COUPON_FILTER_STATUSES = {
+  wait: "รอสั่ง",
+  ordered: "สั่งแล้ว",
+  used: "ใช้แล้ว",
+  not_used: "ไม่ได้ใช้",
+  forfeited: "ตัดสิทธิ์",
+  cancelled: "ยกเลิก",
+};
+
+/**
+ * สถานะคูปองของตัวกรอง ("" = ไม่ใช่แถวคูปอง)
+ *   รอสั่ง    : เลือกคูปอง ยังไม่สั่ง ก่อนเวลาปิด (มีหรือไม่มี QR) — pending / no_qr
+ *   สั่งแล้ว  : สั่งในแอป / ที่ร้าน ยังไม่ใช้ / ยังไม่ส่งมอบ และวันนั้นยังไม่ปิด
+ *   ใช้แล้ว   : ส่งมอบกระดาษแล้ว หรือ e-coupon ถูกใช้แล้ว
+ *   ไม่ได้ใช้ : ถึงเวลาปิดโดยยังไม่ใช้ / ไม่ได้รับกระดาษ หรือแอดมินบันทึก "ไม่มารับคูปอง" (couponNotCollectedAt)
+ *   ตัดสิทธิ์ : ไม่สั่งภายในเวลาปิด — forfeited
+ *   ยกเลิก    : ใบล่าสุดถูกยกเลิก ยังไม่มีใบใหม่ — cancelled_wait_qr
+ *   ข้อมูลเก่าที่ไม่มีขั้น (no_order): ปิดแล้ว = ตัดสิทธิ์, ยังไม่ปิด = รอสั่ง
+ */
+export function couponFilterStatusOf(o) {
+  if (rowType(o) !== "coupon") return "";
+  const st = o.couponState || "no_order";
+  if (st === "ordered" || st === "at_shop") {
+    if (o.couponNotCollectedAt) return "not_used";
+    const done =
+      o.couponSource === "stock"
+        ? !!(o.handedOutAt || o.stockCodeStatus === "handed_out")
+        : !!o.redeemedAt;
+    if (done) return "used";
+    return o.dayFinalClosed ? "not_used" : "ordered";
+  }
+  if (st === "pending" || st === "no_qr") return "wait";
+  if (st === "cancelled_wait_qr") return "cancelled";
+  if (st === "forfeited") return "forfeited";
+  return o.dayFinalClosed ? "forfeited" : "wait";
+}
+
+// URL เดิม (?type= / ?status= ก่อน R6-1) -> ตัวกรองใหม่ (ลิงก์เก่ายังเปิดได้)
+const LEGACY_TYPE = { ecoupon: "coupon", stock: "coupon" };
+const LEGACY_STATUS = {
+  received: "used",
+  awaiting: "ordered",
+  unused: "ordered",
+  expired: "not_used",
+  pending: "wait",
+  no_qr: "wait",
+  cancelled_wait_qr: "cancelled",
+};
+const LEGACY_STATUS_TYPE = { set: "set", none: "none" };
 
 /**
  * e-coupon (ordered/at_shop): redeemedAt → used; else after 15:00 of that day → expired; else unused

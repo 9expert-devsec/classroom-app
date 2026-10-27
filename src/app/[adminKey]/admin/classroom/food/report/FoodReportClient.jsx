@@ -29,8 +29,10 @@ import {
   buildExportAoa,
   cleanClassTitle,
   countRows,
+  couponFilterStatusOf,
   downloadBlob,
   emptyCounts,
+  filterTypeOf,
   matchesSearch,
   printableRows,
   rangeLabel,
@@ -40,7 +42,6 @@ import {
   setReportCloseTimes,
   shopOf,
   isUnchosen,
-  statusKeyOf,
   typeKeyOf,
   useReportParams,
 } from "./_components/reportUi";
@@ -295,13 +296,13 @@ export default function FoodReportClient({ todayYMD }) {
     () =>
       allRows.filter((o) => {
         if (params.cls && (o.classId || o.className || "unknown") !== params.cls) return false;
-        if (params.type && typeKeyOf(o) !== params.type) return false;
-        if (params.status === "flagged") {
-          if (!(o.flags || []).length) return false;
-        } else if (params.status && statusKeyOf(o) !== params.status) return false;
+        // R6-1: ประเภท 3 ค่า · สถานะคูปอง 6 ค่า (เฉพาะแถวคูปอง) · มีข้อสังเกต = checkbox แยก
+        if (params.type && filterTypeOf(o) !== params.type) return false;
+        if (params.status && couponFilterStatusOf(o) !== params.status) return false;
+        if (params.flagged && !(o.flags || []).length) return false;
         return matchesSearch(o, params.q);
       }),
-    [allRows, params.cls, params.type, params.status, params.q],
+    [allRows, params.cls, params.type, params.status, params.flagged, params.q],
   );
 
   // r2d: "รายละเอียดรายการ" แยกการ์ดตาม Class — จัดกลุ่มหลังกรอง, เรียงตาม Class เฉพาะตอนแสดง
@@ -439,7 +440,7 @@ export default function FoodReportClient({ todayYMD }) {
     todayYMD,
   };
 
-  const filtersActive = params.cls || params.type || params.status || params.q;
+  const filtersActive = params.cls || params.type || params.status || params.flagged || params.q;
   const listEmpty = !allRows.length
     ? "ไม่มีข้อมูลในช่วงวันที่ที่เลือก"
     : filtersActive
@@ -495,6 +496,7 @@ export default function FoodReportClient({ todayYMD }) {
                 params.cls,
                 params.type,
                 params.status,
+                params.flagged,
                 params.q,
                 overview ? "overview" : page,
                 params.size,

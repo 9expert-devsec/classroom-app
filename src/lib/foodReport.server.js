@@ -347,6 +347,8 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
           ? order.handedOutAt || stock?.handedOutAt || null
           : order.handedOutAt || null,
         redeemedAt: order.redeemedAt || null,
+        // R6-1: แอดมินบันทึก "ไม่มารับคูปอง" (R5-3d) — ตัวกรองสถานะนับเป็น "ไม่ได้ใช้"
+        couponNotCollectedAt: order.couponNotCollectedAt || null,
         lines: orderLines(order),
         // C5d: ใบสั่งร้าน
         orderedAt: order.submittedAt || order.createdAt || null,
@@ -372,6 +374,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         stockCodeStatus: "",
         handedOutAt: null,
         redeemedAt: null,
+        couponNotCollectedAt: null,
         lines: [],
         orderedAt: null,
         nickname: "",
@@ -416,6 +419,7 @@ export async function resolveFoodDay({ dateYMD, classId = "", q = "" }) {
         stockCodeStatus: "",
         handedOutAt: null,
         redeemedAt: null,
+        couponNotCollectedAt: null,
         lines: [],
         orderedAt: null,
         nickname: "",
