@@ -482,13 +482,14 @@ export default function LunchOrdersPage() {
             </select>
           </label>
           <label className="text-xs font-medium text-admin-text">
-            ค้นหาชื่อ
+            ค้นหา
             <span className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 mt-[3px] h-4 w-4 -translate-y-1/2 text-admin-textMuted" />
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="ชื่อ / ชื่อเล่น"
+                // R6-1: ค้นรหัสคูปองบนแถวได้ด้วย (server: /api/admin/lunch/orders)
+                placeholder="ชื่อ / ชื่อเล่น / รหัสคูปอง"
                 className={`${FIELD} pl-9`}
               />
             </span>

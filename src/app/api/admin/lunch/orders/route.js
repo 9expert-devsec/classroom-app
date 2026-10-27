@@ -12,6 +12,7 @@ import mongoose from "mongoose";
 import dbConnect from "@/lib/mongoose";
 import LunchOrder from "@/models/LunchOrder";
 import Class from "@/models/Class";
+import CouponStockCode from "@/models/CouponStockCode";
 
 import { requirePerm } from "@/lib/adminAuth.server";
 import { PERM } from "@/lib/acl";
@@ -33,6 +34,35 @@ const STATUSES = ["pending", "forfeited", "ordered", "at_shop", "cancelled"];
 
 function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// R6-1: รูปเทียบรหัสคูปอง — ตัวเล็ก ไม่มีช่องว่าง ไม่มีขีด
+function normCode(s) {
+  return String(s || "").toLowerCase().replace(/[\s\-–—]+/g, "");
+}
+
+// R6-1: รหัสที่แถวของแต่ละคนแสดง (key = classId:studentId) — ตรงกับ buildOrderRows:
+//       couponCode ของใบล่าสุด + รหัส stock ที่ awaiting_return ของใบนั้น (orderId ตรง) จากใบใดก็ได้ของวันนั้น
+async function rowCodesOf(all, latestByKey) {
+  const out = new Map();
+  const add = (k, code) => {
+    const c = normCode(code);
+    if (!c) return;
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(c);
+  };
+  for (const [k, o] of latestByKey) add(k, o.couponCode);
+  const stockIds = [...new Set(all.map((o) => o.stockCodeId).filter(Boolean).map(String))];
+  const stockDocs = stockIds.length
+    ? await CouponStockCode.find({ _id: { $in: stockIds } }).select("status orderId code").lean()
+    : [];
+  const stockById = new Map(stockDocs.map((d) => [String(d._id), d]));
+  for (const o of all) {
+    const code = o.stockCodeId ? stockById.get(String(o.stockCodeId)) : null;
+    if (!code || code.status !== "awaiting_return" || String(code.orderId || "") !== String(o._id)) continue;
+    add(`${o.classId}:${o.studentId}`, code.code || o.couponCode);
+  }
+  return out;
 }
 
 export async function GET(req) {
@@ -58,8 +88,16 @@ export async function GET(req) {
     for (const o of all) latestByKey.set(`${o.classId}:${o.studentId}`, o);
 
     const nameRe = q ? new RegExp(escapeRegExp(q), "i") : null;
+    // R6-1: ค้นรหัสคูปองที่อยู่บนแถวด้วย (กระดาษ / e-coupon) — ตัวพิมพ์เล็กใหญ่ไม่สำคัญ, บางส่วนได้,
+    //       ไม่สนช่องว่าง, ขีดใส่หรือไม่ใส่ก็ได้ ("9xpb3td" เจอ "9XP-B3TD")
+    //       รหัสบนแถว = รหัสของใบล่าสุด (แม้ถูกยกเลิก) + คูปองกระดาษที่ยังรอคืนจากใบใดก็ได้ของวันนั้น (pendingReturns)
+    const codeQ = normCode(q);
+    const rowCodesByKey = codeQ ? await rowCodesOf(all, latestByKey) : null;
     const matchName = (o) =>
-      !nameRe || nameRe.test(o.holderName || "") || nameRe.test(o.nickname || "");
+      !nameRe ||
+      nameRe.test(o.holderName || "") ||
+      nameRe.test(o.nickname || "") ||
+      (!!codeQ && (rowCodesByKey?.get(`${o.classId}:${o.studentId}`) || []).some((c) => c.includes(codeQ)));
 
     const latest = [...latestByKey.values()].filter(matchName);
 
