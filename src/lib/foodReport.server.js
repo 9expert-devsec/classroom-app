@@ -39,7 +39,7 @@ import { couponCodeStateOf } from "@/lib/lunchCodeState";
 import { computeDayIndexToday } from "@/lib/classDates";
 import { getFoodChoicesForRange, foodChoiceKey } from "@/lib/foodChoice.server";
 
-const CLASS_FIELDS = "title courseCode room roomName date startDate days dayCount duration.dayCount classKind";
+const CLASS_FIELDS = "title courseCode room roomName date startDate days dayCount duration.dayCount duration.startTime classKind";
 const STUDENT_FIELDS = "name thaiName engName company classId studentStatus type typeTimeline";
 
 /**
@@ -86,6 +86,8 @@ function classFields(cls) {
     courseCode: c.courseCode || "",
     roomName: c.roomName || c.room || "",
     classDate: c.date || c.startDate || null,
+    // R5-5: เรียงกลุ่มคลาสในใบสั่งร้าน ("HH:mm" หรือ "")
+    classStartTime: c.duration?.startTime || "",
     // R4-3: จำนวนวันเรียนทั้งหมดของคลาส (หัวข้อ "วันเรียนที่ n/N")
     classDayCount:
       Array.isArray(c.days) && c.days.length

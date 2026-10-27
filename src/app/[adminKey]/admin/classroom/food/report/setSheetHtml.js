@@ -3,7 +3,17 @@
 //   - หน้าตาเดียวกับใบสั่งร้านคูปอง (CSS + header เดียวกัน) ไม่มีราคา
 //   - แถว = Food Report rows type "set" ของร้านนั้นในวันนั้น (ไม่รับอาหาร / คูปอง ไม่อยู่ใน sheet)
 //   - สรุปครัว: ตารางเลข 1–3 นับต่อเมนู / add-on / เครื่องดื่ม ด้วยกติกาเดียวกับหน้า Summary ของ per-class print
-import { CSS, compactHeaderHtml, esc, headerHtml, summaryTableHtml } from "./orderSheetHtml";
+//   - R5-5f: หน้ารายชื่อแบ่งบล็อกต่อคลาส (groupRowsByClass + classHeadHtml + CSS ของใบสั่งร้านคูปอง)
+//            ไม่มีคอลัมน์ Class / ห้อง · เลขลำดับเริ่มใหม่ทุกคลาส · ท้ายใบ "รวมทั้งร้าน n ที่"
+import {
+  CSS,
+  classHeadHtml,
+  compactHeaderHtml,
+  esc,
+  groupRowsByClass,
+  headerHtml,
+  summaryTableHtml,
+} from "./orderSheetHtml";
 import { printableRows, rowNote } from "./_components/reportUi";
 
 function addonList(r) {
@@ -43,12 +53,12 @@ function countBy(rows, labelsOf) {
 }
 
 /**
- * @param {{ rows: object[], shopName: string, dateYMD: string, printedAt?: Date, origin?: string,
- *           classTitle: (row) => string }} args
+ * @param {{ rows: object[], shopName: string, dateYMD: string, printedAt?: Date, origin?: string }} args
  *   rows — Food Report rows of that set shop on dateYMD (type "set" only)
+ *   (R5-5f: ชื่อคลาสมาจาก groupRowsByClass — classTitle ที่ผู้เรียกยังส่งมาไม่ได้ใช้แล้ว)
  * @returns {string} html
  */
-export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Date(), origin = "", classTitle }) {
+export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Date(), origin = "" }) {
   // R4-6: ตัวกรองเดียวกับทุกทางพิมพ์/Export (ยังไม่เลือก / ไม่มีข้อมูล ไม่ออกในเอกสาร)
   const list = printableRows(rows).filter((r) => r?.type === "set");
   const shop = { name: shopName };
@@ -66,34 +76,31 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
   // set sheets: no หมายเหตุ column (# · name · จำนวนรวม)
   const summaryHtml = sections.map((s, i) => summaryTableHtml({ num: i + 1, showNote: false, ...s })).join("");
 
-  const listHtml = list.length
-    ? `
-      <table>
-        <colgroup>
-          <col style="width:5%" /><col style="width:18%" /><col style="width:19%" /><col style="width:19%" />
-          <col style="width:14%" /><col style="width:11%" /><col style="width:14%" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th class="th num">#</th>
-            <th class="th">ชื่อ-นามสกุล</th>
-            <th class="th">Class / ห้อง</th>
-            <th class="th">เมนู</th>
-            <th class="th">Add-on</th>
-            <th class="th">เครื่องดื่ม</th>
-            <th class="th">หมายเหตุ</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${list
-            .map(
-              (r, i) => `
+  // R5-5f: 1 บล็อกต่อคลาส (ลำดับ / หัวคลาส / กติกาพิมพ์เดียวกับใบสั่งร้านคูปอง)
+  //   หัวคลาส, "รายชื่อผู้เรียน (n)", ตาราง — เลขเริ่ม 1 ทุกคลาส, ไม่มียอดย่อย
+  const listTableHtml = (rs) => `
+        <table>
+          <colgroup>
+            <col style="width:5%" /><col style="width:22%" /><col style="width:25%" />
+            <col style="width:20%" /><col style="width:13%" /><col style="width:15%" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th class="th num">#</th>
+              <th class="th">ชื่อ-นามสกุล</th>
+              <th class="th">เมนู</th>
+              <th class="th">Add-on</th>
+              <th class="th">เครื่องดื่ม</th>
+              <th class="th">หมายเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rs
+              .map(
+                (r, i) => `
                 <tr>
                   <td class="td num">${i + 1}</td>
                   <td class="td">${esc(r.studentName || "-")}</td>
-                  <td class="td">${esc(classTitle(r))}${
-                    r.roomName ? `<div class="sub">ห้อง ${esc(r.roomName)}</div>` : ""
-                  }</td>
                   <td class="td">${esc(menuOf(r))}</td>
                   <td class="td lines">${
                     addonList(r)
@@ -103,16 +110,24 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
                   <td class="td">${esc(drinkOf(r) || "-")}</td>
                   <td class="td">${esc(rowNote(r) || "-")}</td>
                 </tr>`,
-            )
-            .join("")}
-        </tbody>
-      </table>`
-    : `<div class="sub">ไม่มี</div>`;
+              )
+              .join("")}
+          </tbody>
+        </table>`;
 
-  const footerHtml = `<div class="footer">รวม ${list.length} ที่</div>`;
+  const listHtml = groupRowsByClass(list)
+    .map(
+      (g) => `
+      <section class="class-block">${classHeadHtml(g)}
+        <h3>รายชื่อผู้เรียน (${g.rows.length})</h3>${listTableHtml(g.rows)}
+      </section>`,
+    )
+    .join("");
+
+  const footerHtml = `<div class="footer">รวมทั้งร้าน ${list.length} ที่</div>`;
   const hasList = list.length > 0;
 
-  // page 1: header + kitchen summary · page 2+: compact header, learner list, footer
+  // page 1: header + kitchen summary · page 2+: compact header, class blocks, footer
   const body = `
     <div class="page summary-page${hasList ? " has-list" : ""}">
       ${headerHtml({ shop, dateYMD, printedAt, afterHHMM: "", origin })}
@@ -126,7 +141,6 @@ export function buildSetSheetHtml({ rows, shopName, dateYMD, printedAt = new Dat
     <div class="page list-page">
       ${compactHeaderHtml({ shop, dateYMD })}
 
-      <h3>รายชื่อผู้เรียน (${list.length})</h3>
       ${listHtml}
       ${footerHtml}
     </div>`

@@ -1,12 +1,16 @@
 // src/app/[adminKey]/admin/classroom/food/report/orderSheetHtml.js
 // C5d: ใบสั่งร้าน (coupon orders) — สร้าง HTML สำหรับพิมพ์ ไม่มี React/DOM เพื่อ render ทดสอบได้
 //   - 1 ร้าน = 1 section (ขึ้นหน้าใหม่) : header, สรุปครัว, รายการสั่ง, สั่งที่ร้านเอง, footer
+//   - R5-5: หน้ารายการแบ่งเป็นบล็อกต่อคลาส (หัวคลาส · ห้อง) — ไม่มีคอลัมน์ห้องแล้ว
+//   - R5-5a: บล็อกคลาสมีเฉพาะรายการสั่ง · สั่งที่ร้านเอง = ตารางเดียวท้ายร้าน (มีคอลัมน์คลาส)
+//   - R5-5b/c: สั่งที่ร้านเอง อยู่ในกล่องพื้นเทา หัวข้อตัวหนา (พิมพ์ขาวดำแยกออก)
+//   - R5-5e: บล็อกคลาส = หัวคลาส · "รายการสั่ง (n)" · ตาราง (ไม่มียอดย่อย) · ยอดรวมใช้คำ "สั่งล่วงหน้า"
 //   - ไม่มีราคา, ไม่มี coupon header / เส้นตัด, ไม่แสดงโค้ดคูปองกระดาษ (stock)
 //   - ร้าน e-coupon แสดงรหัส 9XP
 //   - นับเฉพาะ ordered / at_shop (cancelled / pending / forfeited ไม่อยู่ใน sheet)
 
 import { optionGroupsOf } from "@/lib/lunchOptionGroups";
-import { printableRows } from "./_components/reportUi";
+import { cleanClassTitle, printableRows } from "./_components/reportUi";
 
 export const BRAND_LOGO_PATH = "/signature_logo_9expert2026_01-ninebule.png";
 
@@ -51,7 +55,8 @@ export const esc = (s) =>
     .replace(/'/g, "&#39;");
 
 /**
- * 1 บล็อกต่อ 1 บรรทัดที่สั่ง: "<qty>× <เมนู>" (ตัวหนา) แล้วตัวเลือก (ย่อหน้า) แล้ว "หมายเหตุ: …"
+ * 1 บล็อกต่อ 1 บรรทัดที่สั่ง: "<qty>× <เมนู>" แล้วตัวเลือก (ย่อหน้า) แล้ว "หมายเหตุ: …"
+ * R5-5a: ชื่อเมนูน้ำหนักปกติ — จำนวน "1×" กึ่งหนา (.ol-qty) ให้อ่านง่าย
  * หมายเหตุอยู่ใต้บรรทัดของตัวเอง — ร้านรู้ว่าโน้ตไหนเป็นของจานไหน
  */
 function lineBlockHtml(l) {
@@ -65,7 +70,7 @@ function lineBlockHtml(l) {
   const note = String(l?.note || "").trim();
   return `
     <div class="ol">
-      <div class="ol-item"><b>${qty}×</b> <b>${esc(l?.name || "-")}</b></div>
+      <div class="ol-item"><span class="ol-qty">${qty}×</span> ${esc(l?.name || "-")}</div>
       ${opts}
       ${note ? `<div class="ol-sub ol-note"><b>หมายเหตุ:</b> ${esc(note)}</div>` : ""}
     </div>`;
@@ -121,6 +126,51 @@ export function menuSummary(orderedRows) {
   return [...m.entries()]
     .map(([label, qty]) => ({ label, qty }))
     .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label, "th"));
+}
+
+/**
+ * R5-5: แบ่งแถวของร้านตามคลาส (classId) — เรียงตามเวลาเริ่มคลาส แล้วชื่อคลาส
+ * ลำดับแถวในกลุ่มคงตามที่ส่งเข้ามา (เวลาสั่ง)
+ * @returns [{ key, name, courseCode, room, startTime, rows }]
+ */
+export function groupRowsByClass(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    // key / ชื่อ เหมือนการ์ดคลาสในรายงาน (ClassGroupedTable) — ชื่อตัดรหัสหลักสูตรนำหน้าออก แล้วแสดงรหัสในวงเล็บ
+    const key = r.classId || r.className || "unknown";
+    let g = groups.get(key);
+    if (!g) {
+      const raw = String(r.className || r.classTitle || "").trim();
+      g = {
+        key,
+        name: raw ? cleanClassTitle(raw, r.courseCode) : "ไม่ระบุ Class",
+        courseCode: r.courseCode || "",
+        room: r.roomName || "",
+        startTime: isHHMM(r.classStartTime) ? r.classStartTime : "",
+        rows: [],
+      };
+      groups.set(key, g);
+    }
+    // คลาสไม่มีห้อง: ใช้ห้องที่ผู้เรียนเลือกตอนสั่ง
+    if (!g.room && r.orderRoomName) g.room = r.orderRoomName;
+    g.rows.push(r);
+  }
+  return [...groups.values()].sort(
+    (a, b) =>
+      // ไม่มีเวลาเริ่ม -> ไว้ท้าย
+      (a.startTime || "99:99").localeCompare(b.startTime || "99:99") ||
+      a.name.localeCompare(b.name, "th") ||
+      a.key.localeCompare(b.key),
+  );
+}
+
+/** R5-5f: หัวบล็อกคลาส "<ชื่อคลาส> (<รหัสหลักสูตร>) · ห้อง <ห้อง>" — ใช้ทั้งใบสั่งร้านคูปองและร้าน Set */
+export function classHeadHtml(g) {
+  return `
+        <div class="class-head">
+          <b>${esc(g.name)}</b>${g.courseCode ? ` <span class="class-code">(${esc(g.courseCode)})</span>` : ""}
+          · ห้อง ${esc(g.room || "-")}
+        </div>`;
 }
 
 const UTENSILS_SVG = `<svg class="sec-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`;
@@ -187,10 +237,15 @@ export const CSS = `
   }
   .page { padding: 0; margin: 0; }
   .page-break { page-break-after: always; break-after: page; height: 0; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  /* R5-5c: separate borders (not collapse) — collapse paints half of each outer border outside the
+     table box and Chrome's PDF dropped it (no line under the last row in the panel, no right edge on
+     tables touching the page edge). Here every line is inside a box: table = top + left, cell = right
+     + bottom; width -2px keeps the right edge off the page edge. */
+  table { width: calc(100% - 2px); box-sizing: border-box; border-collapse: separate; border-spacing: 0; table-layout: fixed;
+    border-top: 1px solid #111827; border-left: 1px solid #111827; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; break-inside: avoid; }
-  .th, .td { border: 1px solid #111827; padding: 4px 6px; font-size: 12px; vertical-align: top; overflow: hidden; word-break: break-word; }
+  .th, .td { border: 0; border-right: 1px solid #111827; border-bottom: 1px solid #111827; padding: 4px 6px; font-size: 12px; vertical-align: top; overflow: hidden; word-break: break-word; }
   .th { background: #f3f4f6; font-weight: 700; text-align: left; }
   .num { text-align: right; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .5px; }
@@ -208,9 +263,29 @@ export const CSS = `
   .ol-cell { break-inside: avoid; page-break-inside: avoid; }
   .ol + .ol { border-top: 1px solid #d1d5db; margin-top: 4px; padding-top: 4px; }
   .ol-item { font-size: 13px; line-height: 1.35; }
+  .ol-qty { font-weight: 600; }
   .ol-sub { font-size: 12px; line-height: 1.35; padding-left: 16px; }
   .ol-note b { font-weight: 700; }
-  .footer { margin-top: 10px; font-size: 12px; font-weight: 700; text-align: right; }
+  .code { white-space: nowrap; word-break: normal; }
+  /* R5-5: 1 บล็อกต่อคลาส — ไม่ตัดหน้ากลางบล็อก (ถ้าบล็อกยาวเกินหน้า เบราว์เซอร์ตัดเองและ thead ซ้ำหัวตาราง) */
+  .class-block { break-inside: avoid; page-break-inside: avoid; margin-top: 14px; }
+  .class-block + .class-block { border-top: 1px dashed #9ca3af; padding-top: 10px; }
+  .class-head { font-size: 14px; color: #111827; }
+  .class-head .class-code { font-weight: 400; color: #374151; }
+  .class-block h3 { margin: 8px 0 4px; }
+  /* R5-5b/c: สั่งที่ร้านเอง — แยกจากบล็อกคลาสให้ชัดแม้พิมพ์ขาวดำ:
+     ระยะห่าง ~2 เท่า + เส้นทึบ 2px, กล่องพื้นเทา, หัวข้อตัวหนา, หัวตารางเทากลาง, แถวพื้นขาว */
+  .atshop { break-inside: avoid; page-break-inside: avoid; margin-top: 28px; padding-top: 20px; border-top: 2px solid #111827; }
+  .atshop-panel, .atshop-table th, .atshop-table td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .atshop-panel { background: #f3f4f6; border: 1px solid #6b7280; border-radius: 6px; padding: 8px; }
+  /* R5-5c: หัวข้อตัวหนาธรรมดา (ไม่มีแถบดำ) ใหญ่กว่า "รายการสั่ง (n)" (13px) หนึ่งขั้น */
+  .atshop-title { font-size: 15px; font-weight: 700; color: #111827; padding: 0 2px; }
+  .atshop-note { margin: 6px 2px; font-size: 11px; color: #4b5563; }
+  .atshop-table .th { background: #d1d5db; }
+  .atshop-table .td { background: #fff; }
+  /* R5-5f: same width as the tables (100% - 2px) + inner padding — text used to end exactly on the
+     page's content edge, so the last glyph ("ที่") could be clipped there in print */
+  .footer { width: calc(100% - 2px); box-sizing: border-box; padding-right: 4px; margin-top: 10px; font-size: 12px; font-weight: 700; text-align: right; }
   .empty { margin-top: 40px; text-align: center; font-size: 14px; color: #6b7280; }
   /* page 1 of a shop = header + kitchen summary; the order list starts on the next page */
   .summary-page { break-inside: avoid; page-break-inside: avoid; }
@@ -219,7 +294,7 @@ export const CSS = `
   .sec-title { display: flex; align-items: center; gap: 6px; font-size: 14px; margin: 16px 0 8px; }
   .sec-icon { width: 16px; height: 16px; flex: none; }
   .sum-wrap { border: 1px solid #9ca3af; border-radius: 8px; overflow: hidden; }
-  .sum-table { border-collapse: collapse; }
+  .sum-table { width: 100%; border: 0; border-collapse: collapse; }
   .st-th, .st-td { padding: 7px 10px; font-size: 12px; vertical-align: top; text-align: left; word-break: break-word; }
   .st-th { background: #f3f4f6; font-weight: 700; border-bottom: 1px solid #9ca3af; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .st-td { border-top: 1px solid #e5e7eb; }
@@ -276,7 +351,7 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
     itemHeader: "เมนูอาหาร",
     items: menuSummary(ordered),
     icon: true,
-    emptyText: "ไม่มีรายการที่สั่งผ่านแอป",
+    emptyText: "ไม่มีรายการสั่งล่วงหน้า",
     // 3 คอลัมน์: # · เมนูอาหาร (ได้ความกว้างของหมายเหตุเดิม) · จำนวนรวม
     showNote: false,
   });
@@ -286,29 +361,30 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
       ? `<div class="warn">ไม่ได้เช็คอินวันนี้</div>`
       : "";
 
+  // R5-5: คอลัมน์ Code ไม่ตัดบรรทัด กว้างพอสำหรับรหัสที่ยาวที่สุดของร้านนี้ (mono: 1ch ต่อตัว + letter-spacing)
+  //       คอลัมน์ที่ไม่ระบุความกว้าง (รายการ / ชื่อ-นามสกุล) ได้พื้นที่ที่เหลือ
+  // R5-5a: + ช่องว่างเพิ่ม (~ +35% จาก R5-5 สำหรับรหัส 8 ตัว) ใช้ทั้ง 2 ตาราง
+  const codeLen = Math.max(4, ...[...ordered, ...atShop].map((r) => String(codeOf(r)).length));
+  const codeCol = showCode ? `<col style="width:calc(${codeLen}ch + ${codeLen * 0.5 + 40}px)" />` : "";
+  const codeTh = showCode ? `<th class="th code">Code</th>` : "";
+  const codeTd = (r) => (showCode ? `<td class="td mono code">${esc(codeOf(r))}</td>` : "");
 
   // "รายการ" ได้ความกว้างของคอลัมน์หมายเหตุเดิมไปด้วย (หมายเหตุย้ายเข้าไปอยู่ใต้บรรทัดของตัวเอง)
-  const orderCols = showCode
-    ? `<col style="width:5%" /><col style="width:11%" /><col style="width:18%" /><col style="width:8%" /><col style="width:41%" /><col style="width:7%" /><col style="width:10%" />`
-    : `<col style="width:5%" /><col style="width:12%" /><col style="width:20%" /><col style="width:9%" /><col style="width:46%" /><col style="width:8%" />`;
-
-  const orderListHtml = ordered.length
-    ? `
+  const orderTableHtml = (list) => `
       <table>
-        <colgroup>${orderCols}</colgroup>
+        <colgroup><col style="width:5%" /><col style="width:12%" /><col style="width:20%" /><col /><col style="width:8%" />${codeCol}</colgroup>
         <thead>
           <tr>
             <th class="th num">#</th>
             <th class="th">ชื่อเล่น</th>
             <th class="th">ชื่อ-นามสกุล</th>
-            <th class="th">ห้อง</th>
             <th class="th">รายการ</th>
             <th class="th">เวลาสั่ง</th>
-            ${showCode ? `<th class="th">Code</th>` : ""}
+            ${codeTh}
           </tr>
         </thead>
         <tbody>
-          ${ordered
+          ${list
             .map((r, i) => {
               const lines = (r.lines || []).map(lineBlockHtml).join("");
               return `
@@ -316,56 +392,86 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
                   <td class="td num">${i + 1}</td>
                   <td class="td">${esc(r.nickname || "-")}</td>
                   <td class="td">${esc(r.studentName || "-")}${noCheckin(r)}</td>
-                  <td class="td">${esc(r.orderRoomName || r.roomName || "-")}</td>
                   <td class="td ol-cell">${lines || "-"}</td>
                   <td class="td">${esc(hmBKK(r.orderedAt) || "-")}</td>
-                  ${showCode ? `<td class="td mono">${esc(codeOf(r))}</td>` : ""}
+                  ${codeTd(r)}
                 </tr>`;
             })
             .join("")}
         </tbody>
-      </table>`
-    : `<div class="sub">ไม่มี</div>`;
+      </table>`;
 
-  const atShopHtml = atShop.length
+  // R5-5e: "สั่งล่วงหน้า" = สั่งผ่านแอป (ordered)
+  const countsText = (a, b) => `สั่งล่วงหน้า ${a} · สั่งที่ร้านเอง ${b} · รวม ${a + b}`;
+
+  // ลำดับคลาสเดียวกันทั้งบล็อกรายการสั่งและตารางสั่งที่ร้านเอง
+  const classGroups = groupRowsByClass([...ordered, ...atShop]);
+
+  // R5-5 / R5-5a / R5-5e: 1 บล็อกต่อคลาส — หัวคลาส, "รายการสั่ง (n)", ตาราง (ไม่มียอดย่อย)
+  //   เฉพาะสั่งล่วงหน้า (ordered) · คลาสที่ไม่มีรายการสั่งไม่มีบล็อก
+  const classBlocksHtml = classGroups
+    .map((g) => {
+      const o = g.rows.filter((r) => r.couponState === "ordered");
+      if (!o.length) return "";
+      return `
+      <section class="class-block">${classHeadHtml(g)}
+        <h3>รายการสั่ง (${o.length})</h3>${orderTableHtml(o)}
+      </section>`;
+    })
+    .join("");
+
+  // R5-5a: "สั่งที่ร้านเอง" ตารางเดียวทั้งร้าน ต่อท้ายบล็อกคลาส — คอลัมน์ คลาส = รหัสหลักสูตร (ไม่มี -> ชื่อคลาส)
+  //        เรียงตามลำดับคลาสแล้วเวลาสั่ง · เลข 1..n ต่อเนื่องทั้งตาราง
+  const atShopRows = classGroups.flatMap((g) =>
+    g.rows.filter((r) => r.couponState === "at_shop").map((r) => ({ r, cls: g.courseCode || g.name })),
+  );
+  // ความกว้างคอลัมน์คลาสตามป้ายที่ยาวที่สุด (สูงสุด 24 ตัว — ชื่อคลาสยาวกว่านั้นตัดบรรทัดได้)
+  // ×1.3: ตัวพิมพ์ใหญ่ละตินกว้างกว่า 1ch · ป้ายไม่เกิน 24 ตัว (รหัสหลักสูตร) ไม่ตัดบรรทัด
+  const CLS_MAX = 24;
+  const clsLen = Math.min(CLS_MAX, Math.max(4, ...atShopRows.map((x) => x.cls.length)));
+  const clsTd = (cls) =>
+    `<td class="td${cls.length <= CLS_MAX ? " code" : ""}">${esc(cls)}</td>`;
+  const atShopHtml = atShopRows.length
     ? `
-      <table>
-        <colgroup>${
-          showCode
-            ? `<col style="width:5%" /><col style="width:18%" /><col style="width:37%" /><col style="width:20%" /><col style="width:20%" />`
-            : `<col style="width:5%" /><col style="width:22%" /><col style="width:48%" /><col style="width:25%" />`
-        }</colgroup>
-        <thead>
-          <tr>
-            <th class="th num">#</th>
-            <th class="th">ชื่อเล่น</th>
-            <th class="th">ชื่อ-นามสกุล</th>
-            <th class="th">ห้อง</th>
-            ${showCode ? `<th class="th">Code</th>` : ""}
-          </tr>
-        </thead>
-        <tbody>
-          ${atShop
-            .map(
-              (r, i) => `
+      <section class="atshop">
+       <div class="atshop-panel">
+        <div class="atshop-title">สั่งที่ร้านเอง · ${atShopRows.length} คน</div>
+        <div class="atshop-note">ลูกค้าสั่งอาหารที่ร้านเอง — ตรวจ Code ตอนชำระเงิน</div>
+        <table class="atshop-table">
+          <colgroup><col style="width:5%" /><col style="width:calc(${Math.ceil(clsLen * 1.3)}ch + 16px)" /><col style="width:18%" /><col />${codeCol}</colgroup>
+          <thead>
+            <tr>
+              <th class="th num">#</th>
+              <th class="th">คลาส</th>
+              <th class="th">ชื่อเล่น</th>
+              <th class="th">ชื่อ-นามสกุล</th>
+              ${codeTh}
+            </tr>
+          </thead>
+          <tbody>
+            ${atShopRows
+              .map(
+                ({ r, cls }, i) => `
                 <tr>
                   <td class="td num">${i + 1}</td>
+                  ${clsTd(cls)}
                   <td class="td">${esc(r.nickname || "-")}</td>
                   <td class="td">${esc(r.studentName || "-")}${noCheckin(r)}</td>
-                  <td class="td">${esc(r.orderRoomName || r.roomName || "-")}</td>
-                  ${showCode ? `<td class="td mono">${esc(codeOf(r))}</td>` : ""}
+                  ${codeTd(r)}
                 </tr>`,
-            )
-            .join("")}
-        </tbody>
-      </table>`
-    : `<div class="sub">ไม่มี</div>`;
+              )
+              .join("")}
+          </tbody>
+        </table>
+       </div>
+      </section>`
+    : "";
 
   const placed = [...ordered, ...atShop];
   const paperCount = placed.filter((r) => !isECouponRow(r)).length;
   const footerHtml = `
       <div class="footer">
-        สั่งผ่านแอป ${ordered.length} · สั่งที่ร้านเอง ${atShop.length} · รวม ${ordered.length + atShop.length}${
+        รวมทั้งร้าน ${countsText(ordered.length, atShop.length)}${
           shop.source === "stock" ? ` (คูปองกระดาษ ${paperCount} · e-coupon ${placed.length - paperCount})` : ""
         }
       </div>`;
@@ -385,11 +491,7 @@ function shopSectionHtml({ shop, rows, dateYMD, printedAt, afterHHMM, origin }) 
         ? `
     <div class="page list-page">
       ${compactHeaderHtml({ shop, dateYMD, afterHHMM })}
-
-      <h3>รายการสั่ง (${ordered.length})</h3>
-      ${orderListHtml}
-
-      <h3>สั่งที่ร้านเอง (${atShop.length})</h3>
+      ${classBlocksHtml}
       ${atShopHtml}
       ${footerHtml}
     </div>`
