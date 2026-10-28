@@ -29,15 +29,16 @@ const TH = "px-3 py-2.5 text-left text-xs font-medium text-admin-textMuted";
 
 // R6-2: ความกว้างคอลัมน์ชุดเดียวของทุกการ์ดคลาส (table-fixed) -> คอลัมน์ตรงกันทุกการ์ด
 // width: null = คอลัมน์ที่รับพื้นที่เหลือบนจอกว้าง (ขั้นต่ำ = minWidth)
-// จัดการ 196 = ปุ่ม RowActionsCell (w-[168px]) + padding ของช่อง (pl-3 pr-4)
+// R6-2b: รวม 920 = พื้นที่การ์ดที่ 1280 เมื่อเมนูซ้ายกางอยู่ -> ไม่ต้องเลื่อนแนวนอน
 export const TRACKING_COLUMNS = [
-  { key: "check", width: 48, selectOnly: true },
-  { key: "learner", width: 200 },
-  { key: "status", width: 220 },
-  { key: "detail", width: null, minWidth: 280 },
-  { key: "amount", width: 140 },
-  { key: "time", width: 240 },
-  { key: "actions", width: 196 },
+  { key: "check", width: 40, selectOnly: true },
+  { key: "learner", width: 150 },
+  { key: "status", width: 150 },
+  { key: "detail", width: null, minWidth: 144 },
+  { key: "amount", width: 100 },
+  { key: "time", width: 160 },
+  // ปุ่มหลักแบบมีข้อความ (ยาวสุด "ยืนยันส่งมอบ" ~108px) + ปุ่ม ⋯ 32 + gap 6 + padding pl-3 pr-4
+  { key: "actions", width: 176 },
 ];
 
 function trackingColumns(selectable) {

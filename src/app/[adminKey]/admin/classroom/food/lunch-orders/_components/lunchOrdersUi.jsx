@@ -170,6 +170,8 @@ export const ACTION_META = {
   viewQr: {
     label: "ดู QR",
     Icon: QrCode,
+    // R6-2b: ปุ่มมี title / aria-label = ชื่อปุ่ม
+    labelAttrs: true,
     cls: `${OUTLINE} border-admin-border text-admin-text hover:bg-admin-surfaceMuted`,
   },
   handout: {
@@ -301,7 +303,8 @@ function ActionButton({ item, busy, onAction, row, full }) {
         type="button"
         data-testid={`action-${item.key}`}
         disabled={busy || !item.allowed}
-        title={item.reason || undefined}
+        title={item.reason || (item.labelAttrs ? item.label : undefined)}
+        aria-label={item.labelAttrs ? item.label : undefined}
         onClick={stop(() => runItem(item, row, onAction))}
         className={`${base} ${item.cls}`}
       >
@@ -327,7 +330,8 @@ export function RowActionsCell({ row, busy, onAction }) {
   const rest = items.filter((it) => it !== primary);
 
   return (
-    <div className="flex w-[168px] items-start justify-end gap-1.5">
+    // R6-2b: กว้างเต็มช่อง (คอลัมน์ 176 - padding) แทน w-[168px] เดิม
+    <div className="flex w-full min-w-0 items-start justify-end gap-1.5">
       {primary ? (
         <div className="min-w-0 flex-1">
           <ActionButton item={primary} busy={busy} onAction={onAction} row={row} />
