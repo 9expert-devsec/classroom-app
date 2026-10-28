@@ -8,11 +8,30 @@
 //   การ์ดมูลค่า (โลโก้ร้าน) -> การ์ดผู้เรียน -> หมายเหตุสั่งที่ร้านเอง
 // หน้าสแกนซ้ำยังใช้ CounterCard เดิม (CouponCards.jsx)
 import Image from "next/image";
-import { CalendarDays, Check, ConciergeBell, DoorOpen, Info, Smile, User } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  CircleCheck,
+  ConciergeBell,
+  DoorOpen,
+  Info,
+  Smile,
+  User,
+} from "lucide-react";
 
 import { LOGO, LOGO_W, LOGO_H } from "./Shell";
 import CollapsibleOrder from "./CollapsibleOrder";
 import useCouponStatus from "./useCouponStatus";
+
+function hmsBkk(d) {
+  return new Date(d).toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+}
 
 // โลโก้ร้าน 52px มุม 14
 export function ShopTile({ src, alt }) {
@@ -51,7 +70,7 @@ function RawCode({ code, className, longClassName }) {
   );
 }
 
-function CounterStepBlock({ order }) {
+function CounterStepBlock({ order, updatedLabel }) {
   return (
     <div data-testid="counter-step" className="rounded-[20px] border-2 border-amber-300 bg-amber-50 p-4">
       <span className="inline-block rounded-full bg-amber-200 px-3 py-1 text-[13px] font-bold text-amber-900">
@@ -71,6 +90,35 @@ function CounterStepBlock({ order }) {
           code={order.couponCode}
           className="mt-1.5 text-[clamp(22px,8vw,32px)] leading-snug"
           longClassName="mt-1.5 text-[clamp(17px,5.4vw,24px)] leading-snug"
+        />
+      </div>
+      {updatedLabel ? (
+        <p data-testid="coupon-updated-line" className="mt-2 text-center text-[12px] text-amber-800">
+          อัปเดตล่าสุด {updatedLabel}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// CC1: Counter ส่งมอบแล้ว — บล็อกเดิมเปลี่ยนเป็นสีเขียว รหัสยังแสดงแต่เล็กลง
+function ReceivedBlock({ order }) {
+  return (
+    <div data-testid="counter-received" className="rounded-[20px] border-2 border-emerald-300 bg-emerald-50 p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/70 text-emerald-700">
+          <CircleCheck aria-hidden="true" className="h-7 w-7" strokeWidth={2} />
+        </div>
+        <h2 className="min-w-0 break-words text-[20px] font-bold leading-snug text-emerald-900">
+          รับคูปองแล้ว · ใช้ที่ร้านได้เลย
+        </h2>
+      </div>
+      <div className="mt-4 rounded-2xl border border-emerald-200 bg-white px-3 py-3">
+        <p className="text-center text-[13px] font-semibold text-emerald-900">รหัสคูปอง</p>
+        <RawCode
+          code={order.couponCode}
+          className="mt-1 text-[20px] leading-snug"
+          longClassName="mt-1 text-[clamp(15px,4.6vw,20px)] leading-snug"
         />
       </div>
     </div>
@@ -120,26 +168,47 @@ function LearnerCard({ order, dateLabel }) {
 export default function StockThankYouView({ order, dateLabel, token, notice = null }) {
   const atShop = order.mode === "at_shop";
   // R3: poll เพื่อให้หน้าที่เปิดค้างไว้ไปคูปองใบใหม่เมื่อถูกโยกร้าน/ยกเลิก
-  useCouponStatus(token, { state: "watch" });
+  // CC1: + รู้ว่า Counter ส่งมอบแล้ว (หยุด poll เมื่อส่งมอบ)
+  const live = useCouponStatus(token, { state: "watch", handedOut: order.handedOut });
+  const received = live.handedOut;
+  const updatedLabel = live.polling && live.lastUpdated ? hmsBkk(live.lastUpdated) : "";
 
   return (
     <div className="flex flex-col gap-4 px-4 py-6" data-testid="thank-you">
       {notice}
-      <div className="text-center">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--blue)] text-white">
-          <Check aria-hidden="true" className="h-5 w-5" strokeWidth={3} />
+      {received ? (
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-600 text-white">
+              <Check aria-hidden="true" className="h-6 w-6" strokeWidth={3} />
+            </div>
+          </div>
+          <h1 className="mt-3 text-[21px] font-bold text-[color:var(--navy)]">รับคูปองแล้ว</h1>
+          <p className="mt-1 text-[15px] text-[color:var(--navy)]">
+            นำคูปองกระดาษไปใช้ที่ร้าน {order.restaurantName} ได้เลย
+          </p>
         </div>
-        <h1 className="mt-2 text-[19px] font-bold text-[color:var(--navy)]">บันทึกรายการเรียบร้อยแล้ว</h1>
-        <p data-testid="counter-pending-line" className="mt-1 text-[15px] font-semibold text-amber-800">
-          ยังไม่เสร็จ ต้องรับคูปองที่ Counter ก่อน
-        </p>
-      </div>
+      ) : (
+        <div className="text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[color:var(--blue)] text-white">
+            <Check aria-hidden="true" className="h-5 w-5" strokeWidth={3} />
+          </div>
+          <h1 className="mt-2 text-[19px] font-bold text-[color:var(--navy)]">บันทึกรายการเรียบร้อยแล้ว</h1>
+          <p data-testid="counter-pending-line" className="mt-1 text-[15px] font-semibold text-amber-800">
+            ยังไม่เสร็จ ต้องรับคูปองที่ Counter ก่อน
+          </p>
+        </div>
+      )}
 
       <div className="flex justify-center">
         <Image src={LOGO} alt="9Expert" width={LOGO_W} height={LOGO_H} className="h-6 w-auto" />
       </div>
 
-      <CounterStepBlock order={order} />
+      {received ? (
+        <ReceivedBlock order={order} />
+      ) : (
+        <CounterStepBlock order={order} updatedLabel={updatedLabel} />
+      )}
       <ValueCard order={order} />
       <LearnerCard order={order} dateLabel={dateLabel} />
 

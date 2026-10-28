@@ -298,6 +298,8 @@ export async function getLunchSession(token, now = lunchNow()) {
       isStock: getOrderCouponSource(order) === "stock",
       // ร้าน stock แต่ได้ e-coupon แทน -> หน้าคูปองบอกว่าไม่ต้องไปรับกระดาษที่ Counter
       stockFallback: isStockFallbackOrder(order),
+      // CC1: Counter ส่งมอบคูปองกระดาษแล้ว -> หน้าขอบคุณ stock แสดง "รับคูปองแล้ว"
+      handedOut: !!order.handedOutAt,
 
       lines: (order.lines || []).map((l) => ({
         menuId: l.menuId ? String(l.menuId) : null,

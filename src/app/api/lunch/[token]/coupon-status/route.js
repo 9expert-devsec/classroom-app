@@ -2,7 +2,8 @@
 //
 // C2: สถานะคูปอง e-coupon แบบเบา ให้หน้าขอบคุณ/สแกนซ้ำ poll ทุก ~4 วินาที
 //   200 { state: "unused" | "used" | "expired", usedAt?, showBarcode, serverTime }
-//   200 { state: "watch" } — R3: คูปองกระดาษที่สั่งแล้ว (poll แค่เพื่อรู้ว่าถูกยกเลิก / โยกร้าน)
+//   200 { state: "watch", handedOut } — R3: คูปองกระดาษที่สั่งแล้ว (poll เพื่อรู้ว่าถูกยกเลิก / โยกร้าน)
+//        CC1: handedOut = Counter ส่งมอบคูปองกระดาษแล้ว (order.handedOutAt) -> หน้าเปลี่ยนเป็น "รับคูปองแล้ว"
 //   404 invalid / 410 replaced / 409 not_ecoupon (ร้าน stock หรือยังไม่มีคูปอง)
 //
 // findOne ครั้งเดียวด้วย token (unique index) + projection เล็ก ๆ
@@ -26,7 +27,7 @@ export async function GET(_req, { params }) {
 
     await dbConnect();
     const order = await LunchOrder.findOne({ token })
-      .select("status activeKey dayYMD restaurantId couponSource couponCode stockCodeId redeemedAt")
+      .select("status activeKey dayYMD restaurantId couponSource couponCode stockCodeId redeemedAt handedOutAt")
       .lean();
 
     if (!order) {
@@ -40,7 +41,7 @@ export async function GET(_req, { params }) {
     if (!isECouponOrder(order) && (order.status === "ordered" || order.status === "at_shop")) {
       const st = couponStateOf(order, lunchNow());
       return NextResponse.json(
-        { state: st.state === "expired" ? "expired" : "watch" },
+        { state: st.state === "expired" ? "expired" : "watch", handedOut: !!order.handedOutAt },
         { headers: NO_STORE },
       );
     }

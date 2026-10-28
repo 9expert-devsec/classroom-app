@@ -10,6 +10,8 @@
 //   - ไม่ใช้ WebSocket / SSE
 //   - R3: initial.state "watch" (คูปองกระดาษ) = poll เพื่อรู้ว่าถูกยกเลิก/โยกร้านเท่านั้น
 //         410 -> router.refresh() -> ด่านตรวจพาไปคูปองใบใหม่
+//   - CC1: คูปองกระดาษ — handedOut (Counter ส่งมอบแล้ว) -> หยุดถาวร หน้าเปลี่ยนเป็น "รับคูปองแล้ว"
+//         initial.handedOut = ส่งมอบแล้วตั้งแต่ server render -> ไม่ poll เลย
 // ค่าเริ่มต้นมาจาก server render จึงถูกตั้งแต่ paint แรกโดยไม่ต้องรอ poll
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -25,17 +27,20 @@ function backoffFor(fails) {
 export default function useCouponStatus(token, initial) {
   const router = useRouter();
   const initialState = initial?.state || "";
+  const initialHandedOut = !!initial?.handedOut;
   const [status, setStatus] = useState(() => ({
     state: initialState,
     usedAt: initial?.usedAt || null,
     // null = ยังไม่ได้ poll ให้ผู้เรียกใช้ค่าจาก server render
     showBarcode: null,
+    handedOut: initialHandedOut,
   }));
   const [lastUpdated, setLastUpdated] = useState(null);
 
   useEffect(() => {
-    // poll เฉพาะคูปองที่ยังไม่ใช้ — used / expired เป็นสถานะสุดท้าย
+    // poll เฉพาะคูปองที่ยังไม่ใช้ — used / expired / ส่งมอบกระดาษแล้ว เป็นสถานะสุดท้าย
     if (!token || (initialState !== "unused" && initialState !== "watch")) return undefined;
+    if (initialHandedOut) return undefined;
 
     let timer = null;
     let stopped = false;
@@ -80,16 +85,22 @@ export default function useCouponStatus(token, initial) {
         const data = await res.json();
         fails = 0;
         setLastUpdated(new Date());
-        // R3: คูปองกระดาษยังใช้งานอยู่ — ไม่มีอะไรเปลี่ยนบนหน้า poll ต่อ
+        // R3: คูปองกระดาษยังใช้งานอยู่ — poll ต่อจนกว่า Counter จะส่งมอบ (CC1)
         if (data.state === "watch") {
+          if (data.handedOut) {
+            stopped = true;
+            setStatus((s) => ({ ...s, handedOut: true }));
+            return;
+          }
           schedule(POLL_MS);
           return;
         }
-        setStatus({
+        setStatus((s) => ({
+          ...s,
           state: data.state,
           usedAt: data.usedAt || null,
           showBarcode: typeof data.showBarcode === "boolean" ? data.showBarcode : null,
-        });
+        }));
 
         if (data.state === "used") {
           stopped = true;
@@ -129,13 +140,14 @@ export default function useCouponStatus(token, initial) {
       if (inflight) inflight.abort();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [token, initialState, router]);
+  }, [token, initialState, initialHandedOut, router]);
 
   return {
     state: status.state,
     usedAt: status.usedAt,
     showBarcode: status.showBarcode,
+    handedOut: status.handedOut,
     lastUpdated,
-    polling: status.state === "unused",
+    polling: status.state === "unused" || (status.state === "watch" && !status.handedOut),
   };
 }
