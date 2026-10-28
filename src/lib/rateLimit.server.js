@@ -10,6 +10,7 @@
 // DB ล่ม -> ปล่อยผ่าน (fail-open) แล้ว log — rate limit ห้ามทำให้ระบบหลักล้ม
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
+import { clientIpFrom } from "@/lib/clientIp.server";
 
 const COLLECTION = "ratelimits";
 let indexReady = null;
@@ -30,11 +31,12 @@ function ensureIndex() {
   return indexReady;
 }
 
-/** IP ของผู้เรียก (Vercel ใส่ x-forwarded-for ให้) */
+/**
+ * IP ของผู้เรียก — PIN-P2a: ใช้แหล่งที่เชื่อถือได้ (clientIp.server.js)
+ * ไม่ใช่ x-forwarded-for ตัวแรก ซึ่งบน Vercel ผู้เรียกปลอมได้เอง
+ */
 export function clientIp(req) {
-  const fwd = String(req?.headers?.get?.("x-forwarded-for") || "");
-  const first = fwd.split(",")[0].trim();
-  return first || String(req?.headers?.get?.("x-real-ip") || "").trim() || "unknown";
+  return clientIpFrom(req) || "unknown";
 }
 
 /**

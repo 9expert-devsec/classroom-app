@@ -1,4 +1,5 @@
 import AuditLog from "@/models/AuditLog";
+import { clientIpFrom } from "@/lib/clientIp.server";
 
 function safeStr(x) {
   return String(x ?? "").trim();
@@ -109,10 +110,8 @@ export async function writeAuditLog({
 
   const diffs = buildDiffs(before, after, { ignorePaths, maxItems: 80 });
 
-  const ip =
-    safeStr(req?.headers?.get?.("x-forwarded-for")) ||
-    safeStr(req?.headers?.get?.("x-real-ip")) ||
-    "";
+  // PIN-P2a: trusted IP only (raw x-forwarded-for is caller-controlled on Vercel)
+  const ip = clientIpFrom(req);
   const userAgent = safeStr(req?.headers?.get?.("user-agent")) || "";
 
   await AuditLog.create({
