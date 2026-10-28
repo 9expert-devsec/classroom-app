@@ -52,6 +52,9 @@ const AuditLogSchema = new mongoose.Schema(
         "kiosk.pin_regenerate",
         "kiosk.pin_reveal",
         "kiosk.pin_clear",
+        // ✅ PIN-P2b: PIN ผิดที่ kiosk / ล็อกหลังผิดครบ
+        "kiosk.pin_fail",
+        "kiosk.pin_lockout",
         // ✅ C3: Merchant กดใช้ e-coupon
         "lunch.redeem",
         // ✅ R2a: ออก QR / ผู้เรียนยืนยัน / action ใหม่ของแอดมิน

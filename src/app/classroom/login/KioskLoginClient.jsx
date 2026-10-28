@@ -1,9 +1,13 @@
 "use client";
 
 // src/app/classroom/login/KioskLoginClient.jsx
-// Device label + admin username/password -> POST /api/kiosk/open -> `next`.
+// Device label + (PIN | admin username/password) -> `next`.
+//   PIN       -> POST /api/kiosk/open-pin   (PIN-P2b, default tab every time)
+//   User/Pass -> POST /api/kiosk/open       (unchanged)
+//   one tap   -> POST /api/kiosk/open with the admin cookie (unchanged)
 // `next` has already been validated on the server (safeKioskNext).
 import { useEffect, useState } from "react";
+import { AuthTabs, PIN_LENGTH, PinInput, pinErrorText } from "../KioskPinField";
 
 const LABEL_MAX = 40;
 const LABEL_STORE_KEY = "kiosk_label";
@@ -14,12 +18,16 @@ const ERRORS = {
   forbidden: "บัญชีนี้ไม่มีสิทธิ์เปิด kiosk หน้างาน",
   admin_required: "เซสชันแอดมินหมดอายุ กรุณากรอก Username และ Password",
   missing_credentials: "กรอก Username และ Password ให้ครบ",
+  missing_pin: `กรอก PIN ${PIN_LENGTH} หลัก`,
   network: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่",
   unknown: "เปิด kiosk ไม่สำเร็จ กรุณาลองใหม่",
 };
 
 export default function KioskLoginClient({ next, adminName }) {
   const [label, setLabel] = useState("");
+  const [tab, setTab] = useState("pin");
+  const [pin, setPin] = useState("");
+  const [pinFocus, setPinFocus] = useState(0);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +43,8 @@ export default function KioskLoginClient({ next, adminName }) {
     }
   }, []);
 
-  async function open({ useAdminSession }) {
+  // mode: "pin" | "password" | "admin"
+  async function open(mode, pinValue = pin) {
     if (busy) return;
     setError("");
 
@@ -45,8 +54,16 @@ export default function KioskLoginClient({ next, adminName }) {
       return;
     }
 
+    let url = "/api/kiosk/open";
     const body = { label: l };
-    if (!useAdminSession) {
+    if (mode === "pin") {
+      if (pinValue.length !== PIN_LENGTH) {
+        setError(ERRORS.missing_pin);
+        return;
+      }
+      url = "/api/kiosk/open-pin";
+      body.pin = pinValue;
+    } else if (mode === "password") {
       const u = username.trim();
       if (!u || !password) {
         setError(ERRORS.missing_credentials);
@@ -60,7 +77,7 @@ export default function KioskLoginClient({ next, adminName }) {
     let res;
     let data = null;
     try {
-      res = await fetch("/api/kiosk/open", {
+      res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -75,7 +92,9 @@ export default function KioskLoginClient({ next, adminName }) {
     if (!res.ok || !data?.ok) {
       setBusy(false);
       setPassword("");
-      setError(ERRORS[data?.reason] || ERRORS.unknown);
+      setPin("");
+      setPinFocus((n) => n + 1);
+      setError(pinErrorText(data) || ERRORS[data?.reason] || ERRORS.unknown);
       return;
     }
 
@@ -90,7 +109,14 @@ export default function KioskLoginClient({ next, adminName }) {
 
   function onSubmit(e) {
     e.preventDefault();
-    open({ useAdminSession: false });
+    open(tab === "pin" ? "pin" : "password");
+  }
+
+  function switchTab(t) {
+    setTab(t);
+    setError("");
+    setPin("");
+    setPassword("");
   }
 
   const inputCls =
@@ -120,7 +146,7 @@ export default function KioskLoginClient({ next, adminName }) {
         <div className="flex flex-col gap-3 rounded-2xl border border-admin-border bg-admin-surfaceMuted/60 p-4">
           <button
             type="button"
-            onClick={() => open({ useAdminSession: true })}
+            onClick={() => open("admin")}
             disabled={busy}
             className="w-full rounded-2xl bg-brand-primary px-4 py-3 text-base font-semibold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60"
           >
@@ -132,31 +158,51 @@ export default function KioskLoginClient({ next, adminName }) {
         </div>
       ) : null}
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-semibold">Username</span>
-        <input
-          className={inputCls}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          disabled={busy}
-        />
-      </label>
+      <AuthTabs tab={tab} onChange={switchTab} disabled={busy} />
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-semibold">Password</span>
-        <input
-          className={inputCls}
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          disabled={busy}
-        />
-      </label>
+      {tab === "pin" ? (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-semibold">PIN เจ้าหน้าที่ ({PIN_LENGTH} หลัก)</span>
+          <PinInput
+            value={pin}
+            onChange={setPin}
+            onComplete={(p) => open("pin", p)}
+            disabled={busy}
+            focusKey={pinFocus}
+          />
+          <span className="text-xs text-front-textMuted">
+            ดู PIN ของตัวเองได้ที่หน้า My Account ในระบบแอดมิน
+          </span>
+        </label>
+      ) : (
+        <>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-semibold">Username</span>
+            <input
+              className={inputCls}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={busy}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-semibold">Password</span>
+            <input
+              className={inputCls}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              disabled={busy}
+            />
+          </label>
+        </>
+      )}
 
       {error ? (
         <div
@@ -172,7 +218,7 @@ export default function KioskLoginClient({ next, adminName }) {
         disabled={busy}
         className="w-full rounded-2xl border border-admin-border bg-white px-4 py-3 text-base font-semibold text-admin-text shadow-sm transition hover:bg-admin-surfaceMuted disabled:opacity-60"
       >
-        {busy ? "กำลังเปิด…" : "เปิด kiosk"}
+        {busy ? "กำลังเปิด…" : tab === "pin" ? "เปิด kiosk ด้วย PIN" : "เปิด kiosk"}
       </button>
     </form>
   );

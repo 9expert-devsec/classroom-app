@@ -10,11 +10,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Lock, ShieldCheck } from "lucide-react";
 import { kioskFetch, KIOSK_STAFF_LOCKED_EVENT } from "@/lib/kioskFetch";
+import { AuthTabs, PIN_LENGTH, PinInput, pinErrorText } from "./KioskPinField";
 
 const ERRORS = {
   bad_credentials: "Username หรือ Password ไม่ถูกต้อง",
   admin_required: "บัญชีนี้ไม่มีสิทธิ์ใช้โหมดเจ้าหน้าที่",
   missing: "กรอก Username และ Password ให้ครบ",
+  missingPin: "กรอก PIN 6 หลัก",
   network: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่",
   unknown: "ปลดล็อกไม่สำเร็จ กรุณาลองใหม่",
 };
@@ -146,30 +148,24 @@ export default function StaffGate({ children, fill = false }) {
 }
 
 function UnlockPanel({ onUnlocked }) {
+  // PIN-P2b: PIN is the default tab every time the panel shows
+  const [tab, setTab] = useState("pin");
+  const [pin, setPin] = useState("");
+  const [pinFocus, setPinFocus] = useState(0);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function submit(e) {
-    e.preventDefault();
-    if (busy) return;
-    setError("");
-
-    const u = username.trim();
-    if (!u || !password) {
-      setError(ERRORS.missing);
-      return;
-    }
-
+  async function send(url, body) {
     setBusy(true);
     let res;
     let data = null;
     try {
-      res = await kioskFetch("/api/kiosk/unlock", {
+      res = await kioskFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: u, password }),
+        body: JSON.stringify(body),
       });
       data = await res.json().catch(() => null);
     } catch {
@@ -180,11 +176,48 @@ function UnlockPanel({ onUnlocked }) {
 
     setBusy(false);
     setPassword("");
+    setPin("");
     if (!res.ok || !data?.ok) {
-      setError(ERRORS[data?.reason] || ERRORS.unknown);
+      setPinFocus((n) => n + 1);
+      setError(pinErrorText(data) || ERRORS[data?.reason] || ERRORS.unknown);
       return;
     }
     onUnlocked(data);
+  }
+
+  function submitPin(value = pin) {
+    if (busy) return;
+    setError("");
+    if (value.length !== PIN_LENGTH) {
+      setError(ERRORS.missingPin);
+      return;
+    }
+    send("/api/kiosk/unlock-pin", { pin: value });
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (busy) return;
+    setError("");
+
+    if (tab === "pin") {
+      submitPin();
+      return;
+    }
+
+    const u = username.trim();
+    if (!u || !password) {
+      setError(ERRORS.missing);
+      return;
+    }
+    send("/api/kiosk/unlock", { username: u, password });
+  }
+
+  function switchTab(t) {
+    setTab(t);
+    setError("");
+    setPin("");
+    setPassword("");
   }
 
   const inputCls =
@@ -212,30 +245,47 @@ function UnlockPanel({ onUnlocked }) {
       </div>
 
       <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-semibold">Username</span>
-          <input
-            className={inputCls}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            disabled={busy}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-semibold">Password</span>
-          <input
-            className={inputCls}
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="off"
-            disabled={busy}
-          />
-        </label>
+        <AuthTabs tab={tab} onChange={switchTab} disabled={busy} />
+
+        {tab === "pin" ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-semibold">PIN เจ้าหน้าที่ ({PIN_LENGTH} หลัก)</span>
+            <PinInput
+              value={pin}
+              onChange={setPin}
+              onComplete={(p) => submitPin(p)}
+              disabled={busy}
+              focusKey={pinFocus}
+            />
+          </label>
+        ) : (
+          <>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold">Username</span>
+              <input
+                className={inputCls}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={busy}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold">Password</span>
+              <input
+                className={inputCls}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="off"
+                disabled={busy}
+              />
+            </label>
+          </>
+        )}
 
         {error ? (
           <div

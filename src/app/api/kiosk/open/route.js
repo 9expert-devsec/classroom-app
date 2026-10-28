@@ -7,22 +7,14 @@
 // Either way the admin needs CLASSROOM_OPERATE.
 //
 // Never echo or log the request body - it may carry a password.
-import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import dbConnect from "@/lib/mongoose";
-import KioskSession from "@/models/KioskSession";
 import {
   requireAdmin,
   verifyAdminCredentials,
 } from "@/lib/adminAuth.server";
-import { buildPermSet, PERM } from "@/lib/acl";
-import { writeAuditLog } from "@/lib/auditLog.server";
-import { kioskExpiryFor } from "@/lib/kioskAuth.server";
-import {
-  KIOSK_COOKIE_NAME,
-  kioskCookieOptions,
-  signKioskToken,
-} from "@/lib/kioskToken";
+import { PERM } from "@/lib/acl";
+import { adminFromUser, openKioskSession } from "@/lib/kioskOpen.server";
+import { KIOSK_COOKIE_NAME, kioskCookieOptions } from "@/lib/kioskToken";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,15 +48,7 @@ export async function POST(req) {
   if (username || password) {
     const user = await verifyAdminCredentials(username, password);
     if (!user) return fail("bad_credentials", 401);
-    const roleCode = String(user.roleCode || "OPS").toUpperCase();
-    admin = {
-      id: String(user._id),
-      username: user.username,
-      name: user.name || "",
-      avatarUrl: user.avatar?.url || "",
-      roleCode,
-      permSet: buildPermSet(roleCode, user.extraPerms || []),
-    };
+    admin = adminFromUser(user);
   } else {
     try {
       const ctx = await requireAdmin();
@@ -76,53 +60,12 @@ export async function POST(req) {
 
   if (!admin.permSet.has(PERM.CLASSROOM_OPERATE)) return fail("forbidden", 403);
 
-  await dbConnect();
-
-  const now = new Date();
-  const expiresAt = kioskExpiryFor(now);
-  const openedByName = admin.name || admin.username;
-
-  const session = await KioskSession.create({
-    sid: randomBytes(32).toString("base64url"),
+  const { token, expiresAt, openedByName } = await openKioskSession({
+    admin,
     label,
-    openedBy: admin.id,
-    openedByName,
-    openedAt: now,
-    expiresAt,
-    lastSeenAt: now,
-    ip:
-      clean(req.headers.get("x-forwarded-for")) ||
-      clean(req.headers.get("x-real-ip")),
-    userAgent: clean(req.headers.get("user-agent")),
+    req,
+    via: username || password ? "credentials" : "admin_session",
   });
-
-  const token = await signKioskToken(session.sid, expiresAt);
-
-  try {
-    await writeAuditLog({
-      ctx: {
-        user: {
-          id: admin.id,
-          username: admin.username,
-          name: admin.name,
-          avatarUrl: admin.avatarUrl,
-        },
-        roleCode: admin.roleCode,
-      },
-      req,
-      action: "kiosk.open",
-      entityType: "kiosk",
-      entityId: String(session._id),
-      entityLabel: label,
-      meta: {
-        label,
-        expiresAt,
-        via: username || password ? "credentials" : "admin_session",
-      },
-    });
-  } catch (e) {
-    console.warn("[kiosk] open audit failed:", e?.message || e);
-  }
 
   const res = NextResponse.json({
     ok: true,

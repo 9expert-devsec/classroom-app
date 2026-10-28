@@ -6,15 +6,10 @@
 //
 // Never echo or log the request body - it carries a password.
 import { NextResponse } from "next/server";
-import KioskSession from "@/models/KioskSession";
 import { verifyAdminCredentials } from "@/lib/adminAuth.server";
-import { buildPermSet, PERM } from "@/lib/acl";
-import { writeAuditLog } from "@/lib/auditLog.server";
-import {
-  authErrorResponse,
-  requireKiosk,
-  STAFF_UNLOCK_MS,
-} from "@/lib/kioskAuth.server";
+import { PERM } from "@/lib/acl";
+import { authErrorResponse, requireKiosk } from "@/lib/kioskAuth.server";
+import { adminFromUser, unlockKioskStaff } from "@/lib/kioskOpen.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,43 +36,10 @@ export async function POST(req) {
   const user = await verifyAdminCredentials(body.username, body.password);
   if (!user) return fail("bad_credentials", 401);
 
-  const roleCode = String(user.roleCode || "OPS").toUpperCase();
-  const permSet = buildPermSet(roleCode, user.extraPerms || []);
-  if (!permSet.has(PERM.CLASSROOM_OPERATE)) return fail("admin_required", 403);
+  const admin = adminFromUser(user);
+  if (!admin.permSet.has(PERM.CLASSROOM_OPERATE)) return fail("admin_required", 403);
 
-  const name = user.name || user.username;
-  const until = new Date(Date.now() + STAFF_UNLOCK_MS);
-
-  await KioskSession.updateOne(
-    { _id: session._id },
-    {
-      staffUnlockBy: user._id,
-      staffUnlockByName: name,
-      staffUnlockUntil: until,
-    },
-  );
-
-  try {
-    await writeAuditLog({
-      ctx: {
-        user: {
-          id: String(user._id),
-          username: user.username,
-          name: user.name || "",
-          avatarUrl: user.avatar?.url || "",
-        },
-        roleCode,
-      },
-      req,
-      action: "kiosk.staff_unlock",
-      entityType: "kiosk",
-      entityId: String(session._id),
-      entityLabel: session.label,
-      meta: { label: session.label, until },
-    });
-  } catch (e) {
-    console.warn("[kiosk] unlock audit failed:", e?.message || e);
-  }
+  const { name, until } = await unlockKioskStaff({ session, admin, req });
 
   return NextResponse.json({
     ok: true,
