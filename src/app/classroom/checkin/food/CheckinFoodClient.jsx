@@ -15,6 +15,7 @@ import { Ban } from "lucide-react";
 import { kioskFetch } from "@/lib/kioskFetch";
 import { isAutoNote } from "@/lib/foodNotes";
 import EditSavedScreen from "./EditSavedScreen";
+import { isFoodEditMode } from "./editMode";
 
 // K1: ฟิลด์ที่เทียบเพื่อบอกว่า "อะไรเปลี่ยน" บนหน้ายืนยัน (ป้ายไทยเท่านั้น ไม่แสดงค่า)
 const EDIT_FIELDS = [
@@ -309,10 +310,7 @@ export default function CheckinFoodClient({ searchParams = {} }) {
     pick(searchParams, "classId") || pick(searchParams, "classid");
   const day = Number(pick(searchParams, "day") || 1);
 
-  const isEdit =
-    String(pick(searchParams, "edit") || "") === "1" ||
-    String(pick(searchParams, "mode") || "") === "edit" ||
-    String(pick(searchParams, "from") || "") === "edit-user";
+  const isEdit = isFoodEditMode(searchParams);
 
   const returnToDefault = `/classroom/edit-user?day=${day}`;
   const returnTo = safeReturnTo(
@@ -704,7 +702,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
       const res = await kioskFetch("/api/checkin/food", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        // K1b: edit saves need the staff unlock on the server
+        body: JSON.stringify(isEdit ? { ...payload, edit: true } : payload),
       });
 
       if (!res.ok) {

@@ -8,9 +8,12 @@ import FoodAddon from "@/models/FoodAddon";
 import FoodDrink from "@/models/FoodDrink";
 
 import { PERM } from "@/lib/acl";
+import mongoose from "mongoose";
+import Checkin from "@/models/Checkin";
 import {
   authErrorResponse,
   requireKioskOrAdmin,
+  requireKioskStaff,
   kioskAuditCtx,
 } from "@/lib/kioskAuth.server";
 
@@ -124,6 +127,35 @@ async function todayDayOfClass(classId) {
 }
 
 // ✅ Masterclass ไม่มีขั้นตอนอาหาร (best-effort: ถ้าเช็คไม่ได้ = ถือว่าเป็นคลาสปกติ)
+// K1b: แก้ไขตัวเลือกอาหารจากแท็บเล็ต (edit-user) ต้องเปิดโหมดเจ้าหน้าที่อยู่
+//   - client ส่ง edit: true มา (หน้าแก้ไข), หรือ
+//   - ผู้เรียนเช็คอินของวันนั้นแล้ว — flow เช็คอินปกติไปไม่ถึงคนที่เช็คอินแล้ว
+//     (/api/checkin/search ตัดออก) จึงเป็นการแก้ไขเสมอ ไม่ว่า client จะส่ง flag ไหม
+// เช็คอินปกติ (ก่อนเซ็นชื่อ) และแอดมิน (Food Report) เหมือนเดิม
+const STAFF_EDIT_MESSAGE = "หมดเวลาโหมดเจ้าหน้าที่ กรุณาปลดล็อกอีกครั้งก่อนบันทึกการแก้ไข";
+
+async function staffForEdit(req) {
+  try {
+    await requireKioskStaff(req); // also slides the unlock window
+    return null;
+  } catch (e) {
+    if (e?.body?.reason === "staff_unlock_required") {
+      return NextResponse.json(
+        { ...e.body, error: STAFF_EDIT_MESSAGE },
+        { status: 403 },
+      );
+    }
+    return authErrorResponse(e);
+  }
+}
+
+async function isCheckedInFor(studentId, classId, day) {
+  if (!mongoose.isValidObjectId(classId) || !Number.isFinite(Number(day))) {
+    return false;
+  }
+  return !!(await Checkin.exists({ studentId, classId, day: Number(day) }));
+}
+
 async function isMasterclassClass(classId) {
   try {
     if (!isObjectId(classId)) return false;
@@ -183,7 +215,15 @@ export async function POST(req) {
     // selections by id
     addonIds = [],
     drinkId = "",
+
+    // K1b: หน้าแก้ไข (edit-user) ส่ง true
+    edit = false,
   } = body || {};
+
+  if (auth.kind === "kiosk" && edit === true) {
+    const denied = await staffForEdit(req);
+    if (denied) return denied;
+  }
 
   if (!studentId) {
     return NextResponse.json(
@@ -210,6 +250,16 @@ export async function POST(req) {
     day !== undefined && day !== null && day !== "" && Number.isFinite(Number(day));
   const todayDay = await todayDayOfClass(safeClassId);
   const safeDay = hasDay ? Number(day) : todayDay;
+
+  // K1b: เช็คอินแล้ว = การแก้ไข แม้ไม่ได้ส่ง edit มา
+  if (
+    auth.kind === "kiosk" &&
+    edit !== true &&
+    (await isCheckedInFor(student._id, safeClassId, safeDay))
+  ) {
+    const denied = await staffForEdit(req);
+    if (denied) return denied;
+  }
 
   // ✅ Masterclass: ปฏิเสธก่อนแตะ student.food ใด ๆ
   // (ไม่ save, ไม่ writeFoodEditLog, ไม่ writeFoodAuditLog)
