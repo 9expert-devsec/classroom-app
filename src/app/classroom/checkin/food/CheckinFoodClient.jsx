@@ -14,6 +14,40 @@ import MenuCard from "./MenuCard";
 import { Ban } from "lucide-react";
 import { kioskFetch } from "@/lib/kioskFetch";
 import { isAutoNote } from "@/lib/foodNotes";
+import EditSavedScreen from "./EditSavedScreen";
+
+// K1: ฟิลด์ที่เทียบเพื่อบอกว่า "อะไรเปลี่ยน" บนหน้ายืนยัน (ป้ายไทยเท่านั้น ไม่แสดงค่า)
+const EDIT_FIELDS = [
+  { key: "choice", label: "ตัวเลือกอาหาร" },
+  { key: "restaurantId", label: "ร้านอาหาร" },
+  { key: "menuId", label: "เมนู" },
+  { key: "addonIds", label: "ตัวเลือกเพิ่มเติม" },
+  { key: "drinkId", label: "เครื่องดื่ม" },
+  { key: "note", label: "หมายเหตุเพิ่มเติม" },
+];
+
+/** currentFood (from /api/food/today) or a save payload -> comparable shape */
+function foodSnapshot(f) {
+  const x = f || {};
+  return {
+    choice: String(x.choiceType || "") || (x.noFood ? "noFood" : ""),
+    restaurantId: String(x.restaurantId || ""),
+    menuId: String(x.menuId || ""),
+    addonIds: (Array.isArray(x.addonIds) ? x.addonIds : [])
+      .map(String)
+      .filter(Boolean)
+      .sort()
+      .join(","),
+    drinkId: String(x.drinkId || ""),
+    note: isAutoNote(x.note) ? "" : String(x.note || "").trim(),
+  };
+}
+
+function changedFieldLabels(before, after) {
+  const a = foodSnapshot(before);
+  const b = foodSnapshot(after);
+  return EDIT_FIELDS.filter((f) => a[f.key] !== b[f.key]).map((f) => f.label);
+}
 
 function pick(sp, key) {
   const v = sp?.[key];
@@ -322,6 +356,11 @@ export default function CheckinFoodClient({ searchParams = {} }) {
   // กัน prefill ซ้ำแล้วไปทับการแก้ของ user
   const didPrefillRef = useRef(false);
 
+  // K1: edit mode — ค่าเดิมจาก server (ไว้เทียบหลังบันทึก) + ชื่อผู้เรียน + หน้ายืนยัน
+  const originalFoodRef = useRef(null);
+  const [learnerName, setLearnerName] = useState("");
+  const [saved, setSaved] = useState(null); // { changedLabels }
+
   function resetFoodSelection() {
     setRestaurant(null);
     setMenu(null);
@@ -531,6 +570,8 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         // ✅ POLICY:
         // - เช็คอินวันใหม่ = ไม่ prefill ค่าเก่า
         // - prefill เฉพาะ isEdit เท่านั้น
+        if (isEdit) originalFoodRef.current = data?.currentFood || null;
+
         if (shouldPrefill && !didPrefillRef.current && data?.currentFood) {
           didPrefillRef.current = true;
           applyPrefill(data.currentFood, data.items || [], couponAllowed);
@@ -544,6 +585,26 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
     loadFood();
   }, [studentId, classId, day, isEdit, shouldPrefill]);
+
+  // K1: ชื่อผู้เรียนสำหรับหน้ายืนยัน (read-only, endpoint เดิมของหน้าเซ็นชื่อ)
+  useEffect(() => {
+    if (!isEdit || !studentId) return undefined;
+    let alive = true;
+    const params = new URLSearchParams();
+    params.set("studentId", studentId);
+    if (classId) params.set("classId", classId);
+    params.set("day", String(day));
+    kioskFetch(`/api/checkin/preview?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const n = data?.user?.studentName;
+        if (alive && n) setLearnerName(String(n));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [isEdit, studentId, classId, day]);
 
   // ✅ ทำ map จาก master list ต่อร้าน
   const addonById = useMemo(() => {
@@ -660,9 +721,11 @@ export default function CheckinFoodClient({ searchParams = {} }) {
         throw err;
       }
 
-      // ✅ edit mode: กลับหน้า edit-user
+      // K1: edit mode -> หน้ายืนยัน (แทนฟอร์ม, URL เดิม)
       if (isEdit) {
-        router.push(returnTo);
+        setSaved({
+          changedLabels: changedFieldLabels(originalFoodRef.current, payload),
+        });
       } else {
         router.push(
           `/classroom/checkin/sign?studentId=${studentId}&classId=${classId}&day=${day}`,
@@ -682,6 +745,16 @@ export default function CheckinFoodClient({ searchParams = {} }) {
 
   const backHref = isEdit ? returnTo : `/classroom/checkin?day=${day}`;
   const primaryLabel = isEdit ? "บันทึกเมนู" : "ไปต่อ → เซ็นชื่อ";
+
+  if (saved) {
+    return (
+      <EditSavedScreen
+        name={learnerName}
+        changedLabels={saved.changedLabels}
+        nextHref={returnTo}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
