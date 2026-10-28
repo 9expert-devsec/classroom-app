@@ -8,7 +8,7 @@
 // authority - the client timer only decides when to ask /api/kiosk/me again.
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, Lock, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Lock } from "lucide-react";
 import { kioskFetch, KIOSK_STAFF_LOCKED_EVENT } from "@/lib/kioskFetch";
 import { AuthTabs, PIN_LENGTH, PinInput, pinErrorText } from "./KioskPinField";
 
@@ -26,17 +26,14 @@ const RECHECK_GRACE_MS = 1000;
 
 export default function StaffGate({ children, fill = false }) {
   const [state, setState] = useState("loading"); // loading | locked | unlocked
-  const [name, setName] = useState("");
   const [until, setUntil] = useState(null);
   const timerRef = useRef(null);
 
   const applyMe = useCallback((data) => {
     if (data?.staffUnlocked && data?.staffUnlockUntil) {
-      setName(data.staffUnlockByName || "");
       setUntil(new Date(data.staffUnlockUntil).getTime());
       setState("unlocked");
     } else {
-      setName("");
       setUntil(null);
       setState("locked");
     }
@@ -120,25 +117,16 @@ export default function StaffGate({ children, fill = false }) {
 
   return (
     <div className={rootCls}>
-      {/* L2c: clamped to its container; the name line truncates on its own,
-          the idle note wraps (shorter text on phones), the button never shrinks */}
-      <div className="flex w-full min-w-0 max-w-full shrink-0 items-center gap-3 overflow-hidden border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-        <ShieldCheck className="h-4 w-4 shrink-0" />
-        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="min-w-0 max-w-full truncate font-semibold">
-            โหมดเจ้าหน้าที่ · {name || "-"}
-          </span>
-          <span className="hidden text-amber-800/80 sm:inline">
-            ล็อกอัตโนมัติเมื่อไม่ใช้งาน 5 นาที
-          </span>
-          <span className="text-amber-800/80 sm:hidden">ล็อกเองใน 5 นาที</span>
-        </div>
+      {/* K1c: only the lock pill, top-right (no text strip); 40px tall for tablets */}
+      <div className="flex w-full min-w-0 shrink-0 justify-end px-4 pt-3">
         <button
           type="button"
           onClick={lockNow}
-          className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold text-amber-900 hover:bg-amber-100"
+          aria-label="ล็อกโหมดเจ้าหน้าที่"
+          data-testid="staff-lock"
+          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 shadow-sm hover:bg-amber-100"
         >
-          <Lock className="h-3.5 w-3.5" />
+          <Lock className="h-4 w-4" />
           ล็อก
         </button>
       </div>

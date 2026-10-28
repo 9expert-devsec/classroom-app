@@ -2,20 +2,22 @@
 "use client";
 
 // K1: หน้ายืนยันหลังบันทึกการแก้ไข (edit-user -> แก้ไขเมนูอาหาร)
-// แสดงเฉพาะ "ชื่อฟิลด์" ที่เปลี่ยน ไม่แสดงค่าเก่า/ใหม่ (จอ kiosk มีคนอื่นเห็น)
-// นับถอยหลัง 10 วินาทีแล้วกลับหน้าหลัก · แตะตรงไหนก็ได้ = เริ่มนับใหม่
+// K1c: เหลือแค่ไอคอน + หัวข้อ + ชื่อผู้เรียน · ไปต่อ = หน้าค้นหา edit-user (โหมดเจ้าหน้าที่ยังเปิดอยู่)
+// นับถอยหลัง 10 วินาทีแล้วกลับหน้าค้นหา · แตะตรงไหนก็ได้ = เริ่มนับใหม่
+// "กลับเมนูหลัก" = /classroom (เมนูล็อกโหมดเจ้าหน้าที่เองเหมือนเดิม)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import UserButton from "@/components/ui/UserButton";
 import AnimatedCheck from "@/components/icons/check-success";
 import { KioskScroll } from "../../KioskCardBody";
 
-const AUTO_HOME_SEC = 10;
+const AUTO_NEXT_SEC = 10;
 const HOME_HREF = "/classroom";
 
-export default function EditSavedScreen({ name, changedLabels = [], nextHref }) {
+export default function EditSavedScreen({ name, nextHref }) {
   const router = useRouter();
-  const [left, setLeft] = useState(AUTO_HOME_SEC);
+  const searchHref = nextHref || "/classroom/edit-user";
+  const [left, setLeft] = useState(AUTO_NEXT_SEC);
   const deadlineRef = useRef(0);
   const leavingRef = useRef(false);
 
@@ -29,24 +31,24 @@ export default function EditSavedScreen({ name, changedLabels = [], nextHref }) 
   );
 
   const restart = useCallback(() => {
-    deadlineRef.current = Date.now() + AUTO_HOME_SEC * 1000;
-    setLeft(AUTO_HOME_SEC);
+    deadlineRef.current = Date.now() + AUTO_NEXT_SEC * 1000;
+    setLeft(AUTO_NEXT_SEC);
   }, []);
 
   useEffect(() => {
-    deadlineRef.current = Date.now() + AUTO_HOME_SEC * 1000;
+    deadlineRef.current = Date.now() + AUTO_NEXT_SEC * 1000;
     const t = setInterval(() => {
       const sec = Math.ceil((deadlineRef.current - Date.now()) / 1000);
       if (sec <= 0) {
         clearInterval(t);
         setLeft(0);
-        go(HOME_HREF);
+        go(searchHref);
         return;
       }
       setLeft(sec);
     }, 250);
     return () => clearInterval(t);
-  }, [go]);
+  }, [go, searchHref]);
 
   return (
     <div
@@ -68,50 +70,23 @@ export default function EditSavedScreen({ name, changedLabels = [], nextHref }) 
             {name || "-"}
           </p>
 
-          <div className="mt-5 rounded-2xl border border-brand-border bg-front-bgSoft px-5 py-4 text-left">
-            {changedLabels.length > 0 ? (
-              <>
-                <div className="sm:text-base lg:text-sm text-front-textMuted">
-                  ข้อมูลที่เปลี่ยนแปลง
-                </div>
-                <ul className="mt-2 flex flex-wrap gap-2" data-testid="edit-saved-fields">
-                  {changedLabels.map((l) => (
-                    <li
-                      key={l}
-                      className="rounded-xl border border-brand-border bg-white px-3 py-1.5 sm:text-lg lg:text-sm font-medium text-front-text"
-                    >
-                      {l}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <div
-                className="text-center sm:text-lg lg:text-sm text-front-textMuted"
-                data-testid="edit-saved-fields"
-              >
-                ไม่มีข้อมูลที่เปลี่ยนแปลง
-              </div>
-            )}
-          </div>
-
           <p className="mt-6 sm:text-base lg:text-sm text-front-textMuted">
-            กลับหน้าหลักอัตโนมัติใน {left} วินาที (แตะหน้าจอเพื่อเริ่มนับใหม่)
+            กลับหน้าค้นหาอัตโนมัติใน {left} วินาที (แตะหน้าจอเพื่อเริ่มนับใหม่)
           </p>
         </div>
 
-        <div className="flex w-full max-w-md flex-col gap-3 sm:flex-row">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3">
+          {/* UserButton appends className without a space */}
+          <UserButton className=" min-h-14 w-full" onClick={() => go(searchHref)}>
+            แก้ไขคนถัดไป
+          </UserButton>
           <button
             type="button"
-            onClick={() => go(nextHref || "/classroom/edit-user")}
-            className="min-h-14 flex-1 rounded-xl border border-brand-border bg-white px-4 py-2 sm:text-2xl lg:text-base text-front-text shadow-sm hover:bg-front-bgSoft"
+            onClick={() => go(HOME_HREF)}
+            className="min-h-11 px-4 sm:text-lg lg:text-sm text-front-textMuted underline underline-offset-4 hover:text-front-text"
           >
-            แก้ไขคนถัดไป
+            กลับเมนูหลัก
           </button>
-          {/* UserButton appends className without a space */}
-          <UserButton className=" min-h-14 flex-1" onClick={() => go(HOME_HREF)}>
-            กลับหน้าหลัก
-          </UserButton>
         </div>
       </KioskScroll>
     </div>
