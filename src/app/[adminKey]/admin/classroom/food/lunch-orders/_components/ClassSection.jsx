@@ -12,16 +12,52 @@ import {
   sourceLabel,
 } from "./lunchOrdersUi";
 
-function IconLine({ Icon, children }) {
+// wrap: ข้อความยาวขึ้นบรรทัดใหม่ในช่อง (ไม่ตัด …) · code: รหัสคูปองห้ามหักกลางรหัส
+function IconLine({ Icon, children, wrap = false, code = false }) {
+  const text = code ? "min-w-0 break-normal" : wrap ? "min-w-0 break-words" : "min-w-0 truncate";
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <Icon className="h-3.5 w-3.5 shrink-0 text-admin-textMuted" />
-      <div className="min-w-0 truncate">{children}</div>
+    <div className={`flex min-w-0 gap-2 ${wrap || code ? "items-start" : "items-center"}`}>
+      <Icon
+        className={`h-3.5 w-3.5 shrink-0 text-admin-textMuted ${wrap || code ? "mt-px" : ""}`}
+      />
+      <div className={text}>{children}</div>
     </div>
   );
 }
 
 const TH = "px-3 py-2.5 text-left text-xs font-medium text-admin-textMuted";
+
+// R6-2: ความกว้างคอลัมน์ชุดเดียวของทุกการ์ดคลาส (table-fixed) -> คอลัมน์ตรงกันทุกการ์ด
+// width: null = คอลัมน์ที่รับพื้นที่เหลือบนจอกว้าง (ขั้นต่ำ = minWidth)
+// จัดการ 196 = ปุ่ม RowActionsCell (w-[168px]) + padding ของช่อง (pl-3 pr-4)
+export const TRACKING_COLUMNS = [
+  { key: "check", width: 48, selectOnly: true },
+  { key: "learner", width: 200 },
+  { key: "status", width: 220 },
+  { key: "detail", width: null, minWidth: 280 },
+  { key: "amount", width: 140 },
+  { key: "time", width: 240 },
+  { key: "actions", width: 196 },
+];
+
+function trackingColumns(selectable) {
+  return TRACKING_COLUMNS.filter((c) => selectable || !c.selectOnly);
+}
+
+/** ความกว้างรวมขั้นต่ำ — จอแคบกว่านี้เลื่อนแนวนอนแทนการบีบคอลัมน์ */
+export function trackingTableMinWidth(selectable) {
+  return trackingColumns(selectable).reduce((sum, c) => sum + (c.width ?? c.minWidth), 0);
+}
+
+export function TrackingColGroup({ selectable }) {
+  return (
+    <colgroup>
+      {trackingColumns(selectable).map((c) => (
+        <col key={c.key} style={c.width ? { width: c.width } : undefined} />
+      ))}
+    </colgroup>
+  );
+}
 
 export default function ClassSection({
   group,
@@ -73,11 +109,15 @@ export default function ClassSection({
 
       {open ? (
         <div className="overflow-x-auto border-t border-admin-border">
-          <table className="w-full min-w-[880px] text-sm">
+          <table
+            className="w-full table-fixed text-sm"
+            style={{ minWidth: trackingTableMinWidth(selectable) }}
+          >
+            <TrackingColGroup selectable={selectable} />
             <thead className="bg-admin-surfaceMuted/60">
               <tr>
                 {selectable ? (
-                  <th className="w-10 py-2.5 pl-4">
+                  <th className="py-2.5 pl-4 text-left">
                     <input
                       type="checkbox"
                       aria-label="เลือกทุกคนที่โยกได้ในคลาสนี้"
@@ -108,7 +148,7 @@ export default function ClassSection({
                     }`}
                   >
                     {selectable ? (
-                      <td className="w-10 py-3 pl-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3 pl-4" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           data-testid="reassign-check"
@@ -121,27 +161,31 @@ export default function ClassSection({
                       </td>
                     ) : null}
                     <td className={`py-3 pr-3 ${selectable ? "pl-3" : "pl-4"}`}>
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-admin-text">{r.name || "-"}</div>
-                        <div className="truncate text-xs text-admin-textMuted">{r.nickname || "-"}</div>
+                      <div className="min-w-0 break-words">
+                        <div className="font-medium text-admin-text">{r.name || "-"}</div>
+                        <div className="text-xs text-admin-textMuted">{r.nickname || "-"}</div>
                       </div>
                     </td>
                     <td className="px-3 py-3">
                       <StatusWithNote row={r} />
                     </td>
-                    <td className="max-w-[220px] px-3 py-3 text-xs text-admin-text">
-                      <div className="flex flex-col gap-1">
-                        <IconLine Icon={Store}>{r.restaurantName || "-"}</IconLine>
-                        <IconLine Icon={Tag}>
+                    <td className="px-3 py-3 text-xs text-admin-text">
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <IconLine Icon={Store} wrap>
+                          {r.restaurantName || "-"}
+                        </IconLine>
+                        <IconLine Icon={Tag} code>
                           <CodeCell row={r} />
                         </IconLine>
-                        <IconLine Icon={Layers}>{sourceLabel(r) || "-"}</IconLine>
+                        <IconLine Icon={Layers} wrap>
+                          {sourceLabel(r) || "-"}
+                        </IconLine>
                         {/* R3-1: คูปองกระดาษจากใบก่อนหน้าของวันนั้นที่ยังต้องรับคืน */}
                         {(r.pendingReturns || []).map((pr) => (
                           <div
                             key={pr.codeId}
                             data-testid="pending-return"
-                            className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+                            className="break-words rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
                           >
                             ต้องรับคูปองกระดาษคืน: {pr.code}
                             {pr.restaurantName ? ` (${pr.restaurantName})` : ""}
@@ -161,8 +205,8 @@ export default function ClassSection({
                         </div>
                       ) : null}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-xs text-admin-text">
-                      <div className="flex flex-col gap-1">
+                    <td className="px-3 py-3 text-xs text-admin-text">
+                      <div className="flex min-w-0 flex-col gap-1">
                         <IconLine Icon={Clock}>
                           ส่งก่อน <span className="tabular-nums">{r.deadlineHM || "-"}</span>
                           {r.reopenCount > 0 ? (
@@ -182,7 +226,9 @@ export default function ClassSection({
                             )}
                           </IconLine>
                           {r.handedOutHM && r.handedOutBy ? (
-                            <div className="pl-[22px] text-admin-textMuted">โดย {r.handedOutBy}</div>
+                            <div className="break-words pl-[22px] text-admin-textMuted">
+                              โดย {r.handedOutBy}
+                            </div>
                           ) : null}
                         </div>
                       </div>
