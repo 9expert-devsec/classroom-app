@@ -8,6 +8,7 @@ import { ArrowRightLeft, Check, ImageOff, Info, Lock } from "lucide-react";
 
 import { LogoTile, LOGO, LOGO_W, LOGO_H } from "./Shell";
 import CouponCard from "./CouponCards";
+import StockThankYouView, { ShopTile } from "./StockThankYou";
 import CollapsibleOrder from "./CollapsibleOrder";
 import OptionLines, { groupsFromOrderLine } from "./OptionLines";
 
@@ -17,20 +18,6 @@ function SuccessIcon() {
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:var(--blue)] text-white">
         <Check aria-hidden="true" className="h-6 w-6" strokeWidth={3} />
       </div>
-    </div>
-  );
-}
-
-// โลโก้ร้าน 52px มุม 14 (หัวหน้าขอบคุณ R4a)
-function ShopTile({ src, alt }) {
-  return (
-    <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[#dce3ee] bg-white">
-      {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt} className="h-full w-full object-cover" />
-      ) : (
-        <span className="text-2xl text-[color:var(--gray-light)]">?</span>
-      )}
     </div>
   );
 }
@@ -98,6 +85,17 @@ function ReassignedNotice({ order }) {
 /* ---------------- thank-you ---------------- */
 
 export function ThankYouView({ order, dateLabel, token }) {
+  // CC1: คูปองกระดาษ = หน้าเฉพาะที่เน้นขั้นตอนไปรับคูปองที่ Counter
+  if (order.isStock) {
+    return (
+      <StockThankYouView
+        order={order}
+        dateLabel={dateLabel}
+        token={token}
+        notice={<ReassignedNotice order={order} />}
+      />
+    );
+  }
   const atShop = order.mode === "at_shop";
 
   return (
