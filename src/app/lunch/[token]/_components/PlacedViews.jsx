@@ -124,6 +124,17 @@ export function ThankYouView({ order, dateLabel, token }) {
 /* ---------------- re-scan (read-only) ---------------- */
 
 export function RescanView({ order, dateLabel, token }) {
+  // CC3b: คูปองกระดาษ = หน้าเดียวกับหน้าขอบคุณ (รอรับที่ Counter / รับคูปองแล้ว + poll)
+  if (order.isStock) {
+    return (
+      <StockThankYouView
+        order={order}
+        dateLabel={dateLabel}
+        token={token}
+        notice={<ReassignedNotice order={order} />}
+      />
+    );
+  }
   const atShop = order.mode === "at_shop";
 
   return (

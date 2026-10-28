@@ -7,7 +7,8 @@ import { ChevronDown } from "lucide-react";
 
 import OptionLines, { groupsFromOrderLine } from "./OptionLines";
 
-export default function CollapsibleOrder({ order }) {
+// CC4: className เพิ่มสไตล์กรอบ (เช่นเงาให้เข้ากับการ์ดหน้าคูปองกระดาษ) — ไม่ส่ง = หน้าตาเดิม
+export default function CollapsibleOrder({ order, className = "" }) {
   const [open, setOpen] = useState(false);
   const lines = order.lines || [];
   const count = lines.reduce((s, l) => s + (l.qty || 0), 0);
@@ -15,7 +16,7 @@ export default function CollapsibleOrder({ order }) {
 
   return (
     <div
-      className="overflow-hidden rounded-2xl border border-[#dce3ee] bg-white"
+      className={`overflow-hidden rounded-2xl border border-[#dce3ee] bg-white ${className}`}
       data-testid="collapsible-order"
     >
       <button

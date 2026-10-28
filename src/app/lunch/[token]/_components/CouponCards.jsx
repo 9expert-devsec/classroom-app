@@ -3,8 +3,8 @@
 // src/app/lunch/[token]/_components/CouponCards.jsx
 //
 // การ์ดคูปองหลังยืนยัน — ใช้ทั้งหน้าขอบคุณและหน้าสแกนซ้ำ
-//   ร้าน stock   -> CounterCard (ไปรับคูปองกระดาษที่ Counter) — R3: poll แค่เพื่อรู้ว่าถูกยกเลิก/โยกร้าน
-//   ร้านอื่น      -> ECouponCard (แสดง QR + รหัสที่ร้าน)
+//   ร้านอื่น (e-coupon) -> ECouponCard (แสดง QR + รหัสที่ร้าน)
+//   CC3b: ร้าน stock ไม่ผ่านไฟล์นี้แล้ว — ทั้งสองหน้าใช้ StockThankYou.jsx
 // ข้อมูลทั้งหมดมาจาก session.order — ไม่มีชื่อสำรอง
 //
 // C2: ECouponCard มี QR ของ "รหัสเปล่า ๆ" (ไม่ใช่ token/URL) + poll สถานะ
@@ -12,7 +12,6 @@
 //     ร้านกดใช้แล้ว -> QR จาง + ตราประทับ "ใช้แล้ว" + บรรทัด "ใช้แล้ว เวลา hh:mm"
 // R4a: หน้าตาตาม CI — การ์ดขาวขอบ #DCE3EE, หัว navy (ป้าย lime ซ้าย / คำอธิบายขวา),
 //      เส้นปรุคั่นส่วนรหัสกับแถวรายละเอียด (ชื่อ / ชื่อเล่น / ห้อง / วันที่)
-import { Ticket } from "lucide-react";
 import CouponCode from "./CouponCode";
 import useCouponStatus from "./useCouponStatus";
 import ScanPanel from "./ScanPanel";
@@ -133,38 +132,7 @@ function ECouponCard({ order, dateLabel, token }) {
   );
 }
 
-function CounterCard({ order, dateLabel, token }) {
-  // R3: ไม่มีสถานะให้แสดง — poll เพื่อให้หน้าที่เปิดค้างไว้ไปคูปองใบใหม่เมื่อถูกโยกร้าน/ยกเลิก
-  useCouponStatus(token, { state: "watch" });
-  return (
-    <CardShell testId="counter-card" label="COUPON" caption="รับคูปองกระดาษที่ Counter">
-      <div className="flex flex-col gap-4 p-4">
-        <div
-          data-testid="counter-instruction"
-          className="flex gap-3 rounded-[14px] bg-[color:var(--blue-tint)] px-4 py-3.5"
-        >
-          <Ticket aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--blue-deep)]" />
-          <p className="min-w-0 text-[15px] font-semibold leading-snug text-[color:var(--navy)]">
-            รับคูปองร้าน {order.restaurantName} ได้ที่เจ้าหน้าที่ ที่ Counter
-          </p>
-        </div>
-        <div className="text-center">
-          <p className="text-[13px] text-[color:var(--gray)]">รหัสคูปองของท่าน</p>
-          <div className="mt-1">
-            <CouponCode code={order.couponCode} />
-          </div>
-        </div>
-      </div>
-      <DashedDivider />
-      <DetailRows order={order} dateLabel={dateLabel} testId="counter-name" />
-    </CardShell>
-  );
-}
-
+// CC3b: เรียกเฉพาะ e-coupon — ร้าน stock ไปที่ StockThankYou ก่อนถึงตรงนี้ (PlacedViews)
 export default function CouponCard({ order, dateLabel, token }) {
-  return order.isStock ? (
-    <CounterCard order={order} dateLabel={dateLabel} token={token} />
-  ) : (
-    <ECouponCard order={order} dateLabel={dateLabel} token={token} />
-  );
+  return <ECouponCard order={order} dateLabel={dateLabel} token={token} />;
 }
