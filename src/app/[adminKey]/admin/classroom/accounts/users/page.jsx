@@ -1,7 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { centerCropToSquare } from "@/lib/imageCrop.client";
+import { ConfirmModal } from "@/components/admin/lunch/LunchModals";
+
+// PIN-P1: ยืนยันก่อนสร้าง PIN ใหม่ / ลบ PIN ของบัญชีอื่น
+const PIN_CONFIRM = {
+  regenerate: {
+    title: "สร้าง PIN ใหม่",
+    confirmLabel: "สร้าง PIN ใหม่",
+    body: "PIN เดิมของบัญชีนี้ (ถ้ามี) จะใช้ไม่ได้ทันที เจ้าของบัญชีดู PIN ใหม่ได้ที่หน้า My Account ของตัวเอง",
+  },
+  clear: {
+    title: "ลบ PIN",
+    confirmLabel: "ลบ PIN",
+    body: "บัญชีนี้จะใช้ PIN เข้าแท็บเล็ตไม่ได้จนกว่าจะสร้าง PIN ใหม่",
+  },
+};
+
+function pinDate(d) {
+  return d
+    ? new Date(d).toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" })
+    : "";
+}
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -55,12 +77,22 @@ export default function UsersPage() {
     password: "",
   });
 
+  // PIN-P1: บัญชีที่ล็อกอินอยู่ (ซ่อนปุ่ม PIN ของแถวตัวเอง) + กล่องยืนยัน
+  const [meId, setMeId] = useState("");
+  const [pinConfirm, setPinConfirm] = useState(null); // { kind, it }
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinErr, setPinErr] = useState("");
+
   async function load() {
     try {
       setErr("");
       setLoading(true);
-      const data = await apiJson("/api/admin/users", { cache: "no-store" });
+      const [data, me] = await Promise.all([
+        apiJson("/api/admin/users", { cache: "no-store" }),
+        apiJson("/api/admin/me", { cache: "no-store" }).catch(() => null),
+      ]);
       setItems(data.items || []);
+      if (me?.user?.id) setMeId(me.user.id);
     } catch (e) {
       setErr(e.message || "Load failed");
     } finally {
@@ -166,6 +198,27 @@ export default function UsersPage() {
     }
   }
 
+  async function runPinAction() {
+    if (!pinConfirm) return;
+    const { kind, it } = pinConfirm;
+    try {
+      setPinBusy(true);
+      setPinErr("");
+      await apiJson(`/api/admin/users/${it.id}/kiosk-pin`, {
+        method: kind === "clear" ? "DELETE" : "POST",
+      });
+      setPinConfirm(null);
+      const who = it.name || it.username;
+      if (kind === "clear") toast.success(`ลบ PIN ของ ${who} แล้ว`);
+      else toast.success(`สร้าง PIN ใหม่ให้ ${who} แล้ว — เจ้าของบัญชีดู PIN ได้ที่หน้า My Account ของตัวเอง`);
+      await load();
+    } catch (e) {
+      setPinErr(e.message || "ทำรายการไม่สำเร็จ");
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
   const rows = useMemo(() => items || [], [items]);
 
   return (
@@ -254,6 +307,7 @@ export default function UsersPage() {
                   <th className="py-2 pr-3">Role</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2 pr-3">Last login</th>
+                  <th className="py-2 pr-3">PIN</th>
                   <th className="py-2 pr-0 text-right">Actions</th>
                 </tr>
               </thead>
@@ -307,6 +361,14 @@ export default function UsersPage() {
                         : "-"}
                     </td>
 
+                    <td className="py-3 pr-3 text-xs" data-testid="pin-cell">
+                      {it.hasKioskPin ? (
+                        <span className="text-emerald-700">มี · {pinDate(it.kioskPinSetAt)}</span>
+                      ) : (
+                        <span className="text-admin-text/40">—</span>
+                      )}
+                    </td>
+
                     <td className="py-3 pr-0">
                       <div className="flex items-center justify-end gap-2">
                         <label className={cx("cursor-pointer", UI.btnGhost)}>
@@ -330,6 +392,34 @@ export default function UsersPage() {
                         >
                           Reset PW
                         </button>
+
+                        {/* PIN-P1: แถวของตัวเองจัดการที่หน้า My Account */}
+                        {it.id !== meId ? (
+                          <>
+                            <button
+                              data-testid="pin-regenerate"
+                              onClick={() => {
+                                setPinErr("");
+                                setPinConfirm({ kind: "regenerate", it });
+                              }}
+                              className={UI.btnGhost}
+                            >
+                              สร้าง PIN ใหม่
+                            </button>
+                            {it.hasKioskPin ? (
+                              <button
+                                data-testid="pin-clear"
+                                onClick={() => {
+                                  setPinErr("");
+                                  setPinConfirm({ kind: "clear", it });
+                                }}
+                                className={UI.btnGhost}
+                              >
+                                ลบ PIN
+                              </button>
+                            ) : null}
+                          </>
+                        ) : null}
 
                         <button
                           onClick={() => toggleActive(it)}
@@ -358,6 +448,21 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {pinConfirm ? (
+        <ConfirmModal
+          testId="pin-confirm"
+          title={`${PIN_CONFIRM[pinConfirm.kind].title} · ${pinConfirm.it.name || pinConfirm.it.username}`}
+          confirmLabel={PIN_CONFIRM[pinConfirm.kind].confirmLabel}
+          busyLabel="กำลังทำรายการ…"
+          busy={pinBusy}
+          error={pinErr}
+          onClose={() => setPinConfirm(null)}
+          onConfirm={runPinAction}
+        >
+          <p className="text-sm text-admin-text/80">{PIN_CONFIRM[pinConfirm.kind].body}</p>
+        </ConfirmModal>
+      ) : null}
     </div>
   );
 }

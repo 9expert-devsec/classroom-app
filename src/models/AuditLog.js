@@ -48,6 +48,10 @@ const AuditLogSchema = new mongoose.Schema(
         "kiosk.staff_unlock",
         "kiosk.staff_lock",
         "kiosk.revoke",
+        // ✅ PIN-P1: kiosk PIN (สร้าง/สร้างใหม่ · ดู PIN ตัวเอง · ลบ)
+        "kiosk.pin_regenerate",
+        "kiosk.pin_reveal",
+        "kiosk.pin_clear",
         // ✅ C3: Merchant กดใช้ e-coupon
         "lunch.redeem",
         // ✅ R2a: ออก QR / ผู้เรียนยืนยัน / action ใหม่ของแอดมิน

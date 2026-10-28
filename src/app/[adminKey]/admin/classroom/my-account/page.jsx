@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { centerCropToSquare } from "@/lib/imageCrop.client";
+import KioskPinCard from "./KioskPinCard";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -126,6 +127,7 @@ export default function MyAccountPage() {
       {!me ? (
         <div className="text-sm text-admin-text/60">Loading...</div>
       ) : (
+        <>
         <div className={UI.card}>
           <div className="flex items-center gap-4">
             <div className="h-14 w-14 rounded-full bg-black/5 overflow-hidden border border-admin-border/20">
@@ -216,6 +218,9 @@ export default function MyAccountPage() {
             </div>
           </div>
         </div>
+
+        <KioskPinCard ui={UI} />
+        </>
       )}
     </div>
   );

@@ -33,6 +33,8 @@ export async function GET() {
         avatarUrl: u.avatar?.url || "",
         isActive: !!u.isActive,
         lastLoginAt: u.lastLoginAt || null,
+        hasKioskPin: !!u.kioskPinSetAt,
+        kioskPinSetAt: u.kioskPinSetAt || null,
         createdAt: u.createdAt,
         updatedAt: u.updatedAt,
       })),

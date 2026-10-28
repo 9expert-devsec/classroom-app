@@ -34,8 +34,23 @@ const AdminUserSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true, index: true },
 
     lastLoginAt: { type: Date, default: null },
+
+    // PIN-P1: kiosk PIN (src/lib/kioskPin.server.js) — never in toPublic / lists / audits
+    kioskPinHmac: { type: String, default: null, select: false },
+    kioskPinEnc: { type: String, default: null, select: false },
+    kioskPinSetAt: { type: Date, default: null },
+    kioskPinSetBy: { type: mongoose.Schema.Types.ObjectId, ref: "AdminUser", default: null },
   },
   { timestamps: true },
+);
+
+AdminUserSchema.index(
+  { kioskPinHmac: 1 },
+  {
+    unique: true,
+    name: "kioskPinHmac_unique",
+    partialFilterExpression: { kioskPinHmac: { $type: "string" } },
+  },
 );
 
 AdminUserSchema.methods.toPublic = function toPublic() {
@@ -47,6 +62,8 @@ AdminUserSchema.methods.toPublic = function toPublic() {
     avatarUrl: this.avatar?.url || "",
     isActive: !!this.isActive,
     lastLoginAt: this.lastLoginAt,
+    hasKioskPin: !!this.kioskPinSetAt,
+    kioskPinSetAt: this.kioskPinSetAt || null,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   };
