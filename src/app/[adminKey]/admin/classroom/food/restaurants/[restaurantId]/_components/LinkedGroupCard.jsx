@@ -1,14 +1,16 @@
 "use client";
 
-// OS-3: การ์ดกลุ่มที่ผูกชุดตัวเลือก + ปุ่ม "เพิ่มจากชุดตัวเลือก" ในฟอร์มเมนู
-import { ChevronDown, ChevronUp, MoreVertical, Plus } from "lucide-react";
+// OS-3: การ์ดกลุ่มที่ผูกชุดตัวเลือกในฟอร์มเมนู (OS-3b: แถบหัวย่อ/เปิดได้)
+import { useState } from "react";
+import { ChevronDown, ChevronUp, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { priceOverridden } from "./linkedGroupModel";
+import { effectiveOf, priceOverridden } from "./linkedGroupModel";
+import { setChips } from "./option-sets/optionSetUi";
 
 const numCls =
   "w-16 rounded-lg border border-admin-border bg-white px-2 py-1 text-xs outline-none focus:border-brand-primary";
@@ -40,25 +42,109 @@ function MoveButtons({ canUp, canDown, onMove }) {
   );
 }
 
-export function LinkedGroupCard({ group: g, onChange, onDetach, onRemove, canUp, canDown, onMove, error }) {
+/** price 0 without an override reads "ฟรี" until clicked; then the normal input */
+function PriceField({ choice: c, over, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const free = !over && Number(c.priceDelta) === 0;
+  if (free && !editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        aria-label={`ราคาเพิ่มของ ${c.name}: ฟรี (กดเพื่อปรับ)`}
+        className="w-20 rounded-lg border border-admin-border bg-white px-2 py-1 text-left text-xs text-admin-textMuted hover:border-brand-primary"
+      >
+        ฟรี
+      </button>
+    );
+  }
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      min={0}
+      value={c.priceDelta}
+      autoFocus={editing}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={() => setEditing(false)}
+      aria-label={`ราคาเพิ่มของ ${c.name}`}
+      className={`w-20 rounded-lg border px-2 py-1 text-xs outline-none focus:border-brand-primary ${
+        over ? "border-amber-400 bg-amber-50" : "border-admin-border bg-white"
+      }`}
+    />
+  );
+}
+
+export function LinkedGroupCard({
+  group: g,
+  onChange,
+  onDetach,
+  onRemove,
+  canUp,
+  canDown,
+  onMove,
+  error,
+  open = true,
+  onToggle,
+}) {
   const multi = g.selectType === "multi";
+  const eff = effectiveOf(g);
+  const summary = setChips({ selectType: g.selectType, required: eff.required, maxSelect: eff.maxSelect }).join(" · ");
   const patchChoice = (key, p) =>
     onChange({ choices: g.choices.map((c) => (c._uiKey === key ? { ...c, ...p } : c)) });
 
   return (
-    <div className="rounded-xl border border-admin-border bg-white p-3">
-      <div className="flex items-start gap-2">
+    <div className="overflow-hidden rounded-xl border border-admin-border bg-white">
+      {/* header band */}
+      <div className="flex items-center gap-2 bg-admin-surfaceMuted/50 px-3 py-2">
         <MoveButtons canUp={canUp} canDown={canDown} onMove={onMove} />
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-sm font-semibold text-admin-text" title={g.name}>
-              {g.name}
-            </span>
-            <span className="flex-shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
-              จากชุด
-            </span>
-            <span className="flex-shrink-0 text-[11px] text-admin-textMuted">{multi ? "หลายอย่าง" : "เลือก 1"}</span>
-          </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="truncate text-sm font-semibold text-admin-text" title={g.name}>
+            {g.name}
+          </span>
+          <span className="flex-shrink-0 rounded-md bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">
+            จากชุด
+          </span>
+          <span className="flex-shrink-0 text-xs text-admin-textMuted">{summary}</span>
+        </div>
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className="flex-shrink-0 text-xs font-medium text-brand-primaryDark hover:underline"
+          >
+            {open ? "ย่อ ▴" : "เปิด ▾"}
+          </button>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`จัดการกลุ่ม ${g.name}`}
+              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-admin-textMuted hover:bg-admin-surfaceMuted"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            sideOffset={6}
+            className="w-44 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+          >
+            <DropdownMenuItem onSelect={onDetach}>แยกเป็นของเมนูนี้</DropdownMenuItem>
+            <DropdownMenuItem className="text-red-600 focus:text-red-600" onSelect={onRemove}>
+              เอาออกจากเมนู
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* collapsed: an error still shows so it is never hidden */}
+      {!open && error && <p className="px-3 pb-2 pt-1 text-xs text-red-600">{error}</p>}
+
+      {open && (
+        <div className="p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <label className="flex items-center gap-1 text-admin-textMuted">
               บังคับ
@@ -92,83 +178,59 @@ export function LinkedGroupCard({ group: g, onChange, onDetach, onRemove, canUp,
                   />
                 </label>
               ))}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={`จัดการกลุ่ม ${g.name}`}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-admin-textMuted hover:bg-admin-surfaceMuted"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                sideOffset={6}
-                className="w-44 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
-              >
-                <DropdownMenuItem onSelect={onDetach}>แยกเป็นของเมนูนี้</DropdownMenuItem>
-                <DropdownMenuItem className="text-red-600 focus:text-red-600" onSelect={onRemove}>
-                  เอาออกจากเมนู
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
-        </div>
-      </div>
 
-      <div className="mt-3 space-y-1.5 border-t border-admin-border/60 pt-3">
-        {g.choices.map((c) => {
-          const over = priceOverridden(c);
-          return (
-            <div key={c._uiKey} className="flex flex-wrap items-center gap-2 text-sm">
-              <span className={`min-w-0 flex-1 truncate ${c.setActive ? "" : "text-admin-textMuted line-through"}`} title={c.name}>
-                {c.name}
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="text-xs text-admin-textMuted">+</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  value={c.priceDelta}
-                  onChange={(e) => patchChoice(c._uiKey, { priceDelta: e.target.value })}
-                  aria-label={`ราคาเพิ่มของ ${c.name}`}
-                  className={`w-20 rounded-lg border px-2 py-1 text-xs outline-none focus:border-brand-primary ${
-                    over ? "border-amber-400 bg-amber-50" : "border-admin-border bg-white"
-                  }`}
-                />
-                {over && c.defaultPrice !== null ? (
-                  <button
-                    type="button"
-                    onClick={() => patchChoice(c._uiKey, { priceDelta: String(c.defaultPrice) })}
-                    className="text-[11px] text-amber-700 underline-offset-2 hover:underline"
+          <div className="mt-3 space-y-1.5 border-t border-admin-border/60 pt-3">
+            {g.choices.map((c) => {
+              const over = priceOverridden(c);
+              return (
+                <div key={c._uiKey} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span
+                    className={`min-w-0 flex-1 truncate ${c.setActive ? "" : "text-admin-textMuted line-through"}`}
+                    title={c.name}
                   >
-                    คืนค่า (+{c.defaultPrice})
-                  </button>
-                ) : (
-                  <span className="text-[11px] text-admin-textMuted">{over ? "ปรับเฉพาะเมนู" : "ตามชุด"}</span>
-                )}
-              </span>
-              <label className="flex items-center gap-1 text-xs text-admin-text">
-                <input
-                  type="checkbox"
-                  checked={c.setActive && !c.hidden}
-                  disabled={!c.setActive}
-                  onChange={(e) => patchChoice(c._uiKey, { hidden: !e.target.checked })}
-                  className="h-4 w-4 accent-[#0099CC]"
-                />
-                {c.setActive ? "แสดง" : "ปิดที่ชุด"}
-              </label>
-            </div>
-          );
-        })}
-      </div>
+                    {c.name}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-xs text-admin-textMuted">+</span>
+                    <PriceField
+                      choice={c}
+                      over={over}
+                      onChange={(v) => patchChoice(c._uiKey, { priceDelta: v })}
+                    />
+                    {over && c.defaultPrice !== null ? (
+                      <button
+                        type="button"
+                        onClick={() => patchChoice(c._uiKey, { priceDelta: String(c.defaultPrice) })}
+                        className="text-[11px] text-amber-700 underline-offset-2 hover:underline"
+                      >
+                        คืนค่า (+{c.defaultPrice})
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-admin-textMuted">{over ? "ปรับเฉพาะเมนู" : "ตามชุด"}</span>
+                    )}
+                  </span>
+                  <label className="flex items-center gap-1 text-xs text-admin-text">
+                    <input
+                      type="checkbox"
+                      checked={c.setActive && !c.hidden}
+                      disabled={!c.setActive}
+                      onChange={(e) => patchChoice(c._uiKey, { hidden: !e.target.checked })}
+                      className="h-4 w-4 accent-[#0099CC]"
+                    />
+                    {c.setActive ? "แสดง" : "ปิดที่ชุด"}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
 
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <p className="mt-2 text-[11px] text-admin-textMuted">
-        ชื่อและรายการตัวเลือกแก้ที่แท็บ “ชุดตัวเลือก” ของร้าน
-      </p>
+          {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+          <p className="mt-2 text-[11px] text-admin-textMuted">
+            กดที่ราคาเพื่อปรับเฉพาะเมนูนี้ · ชื่อตัวเลือกแก้ที่แท็บชุดตัวเลือก
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -206,58 +268,5 @@ export function DetachPendingCard({ group: g, onUndo, canUp, canDown, onMove }) 
         </button>
       </div>
     </div>
-  );
-}
-
-/** "+ เพิ่มจากชุดตัวเลือก ▾" */
-export function AddFromSetButton({ optionSets, linkedSetIds, onPick, onGoToOptionSets }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-lg border border-brand-primary/60 bg-white px-2 py-1 text-[11px] font-medium text-brand-primaryDark hover:bg-brand-primary/10"
-        >
-          <Plus className="h-3 w-3" /> เพิ่มจากชุดตัวเลือก
-          <ChevronDown className="h-3 w-3" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        sideOffset={6}
-        className="max-h-72 w-64 overflow-y-auto rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
-      >
-        {optionSets.length === 0 ? (
-          <div className="space-y-1 px-3 py-2 text-admin-textMuted">
-            <p>ร้านนี้ยังไม่มีชุดตัวเลือก</p>
-            {onGoToOptionSets && (
-              <DropdownMenuItem onSelect={onGoToOptionSets} className="px-0 text-brand-primaryDark">
-                ไปที่แท็บชุดตัวเลือก →
-              </DropdownMenuItem>
-            )}
-          </div>
-        ) : (
-          optionSets.map((s) => {
-            const linked = linkedSetIds.has(String(s._id));
-            const n = (s.choices || []).length;
-            return (
-              <DropdownMenuItem
-                key={String(s._id)}
-                disabled={linked}
-                onSelect={() => onPick(s)}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className="min-w-0 truncate">{s.name}</span>
-                {linked ? (
-                  <span className="flex-shrink-0 rounded bg-slate-200 px-1.5 text-[10px] text-slate-600">ผูกแล้ว</span>
-                ) : (
-                  <span className="flex-shrink-0 text-[10px] text-admin-textMuted">{n} ตัวเลือก</span>
-                )}
-              </DropdownMenuItem>
-            );
-          })
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }

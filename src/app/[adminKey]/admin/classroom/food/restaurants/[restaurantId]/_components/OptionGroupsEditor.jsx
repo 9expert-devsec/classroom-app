@@ -2,18 +2,25 @@
 
 import { useState } from "react";
 import TextInput from "@/components/ui/TextInput";
-import { ChevronDown, ChevronUp, Loader2, Plus, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, MoreVertical, Plus, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { groupLimitsError, normalizeLimit } from "@/lib/optionGroupRules";
 import Toggle from "./Toggle";
-import { AddFromSetButton, DetachPendingCard, LinkedGroupCard } from "./LinkedGroupCard";
+import { DetachPendingCard, LinkedGroupCard } from "./LinkedGroupCard";
 import {
   linkedFromMenuGroup,
   linkedFromSet,
   linkedGroupError,
+  linkedHasCustomization,
   linkedToMenuOnly,
   linkedToPayload,
 } from "./linkedGroupModel";
-import { sameGroupName } from "./option-sets/optionSetUi";
+import { choicePreview, sameGroupName, setChips } from "./option-sets/optionSetUi";
 
 // ใช้แยกแถวบน UI เท่านั้น ไม่ได้ส่งไป server
 // (_id จริงของกลุ่ม/ตัวเลือกเดิมจะถูกส่งกลับไปเพื่อให้ server คงไว้)
@@ -167,6 +174,8 @@ function PromoteForm({ group, onPromote }) {
  *   menuId           = saved menu id ("" = new menu: "บันทึกเป็นชุด" stays disabled)
  *   savedKeys        = Map(groupId -> menuOnlyKey) of the saved menu (unsaved-change check)
  *   onPromote(g, name) -> { error? }   ·   onGoToOptionSets()
+ * OS-3b: fromNames = [{ label: "Add-on", names, selectType }] of the Add-on / Drink picked on
+ *   this menu (empty names = no link) — the old "สร้างกลุ่มจากรายการที่เลือก" box
  */
 export default function OptionGroupsEditor({
   value = [],
@@ -176,11 +185,14 @@ export default function OptionGroupsEditor({
   savedKeys = new Map(),
   onPromote,
   onGoToOptionSets,
+  fromNames = [],
 }) {
   const groups = Array.isArray(value) ? value : [];
   // set picked whose name clashes with a menu-only group: { set, index }
   const [clash, setClash] = useState(null);
   const [promotingKey, setPromotingKey] = useState("");
+  // OS-3b: expand/collapse per card (UI only) — unset = the default for that group
+  const [openByKey, setOpenByKey] = useState({});
 
   function setGroups(next) {
     onChange?.(next);
@@ -249,62 +261,126 @@ export default function OptionGroupsEditor({
     setGroups(next);
   }
 
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm text-admin-text">
-          ตัวเลือกเพิ่มเติม (Option)
-          <span className="ml-2 text-[11px] text-admin-textMuted">
-            {groups.length} กลุ่ม
-          </span>
+  // OS-3b: default open state — linked: menu-level change or just added (no _id yet)
+  //        menu-only: new (no _id) or has a validation error
+  function isOpen(g) {
+    if (Object.prototype.hasOwnProperty.call(openByKey, g._uiKey)) return openByKey[g._uiKey];
+    if (g.linked) return !g._id || linkedHasCustomization(g);
+    return !g._id || !!groupError(g);
+  }
+  const toggleOpen = (g) => setOpenByKey((p) => ({ ...p, [g._uiKey]: !isOpen(g) }));
+
+  const addGroup = () => setGroups([...groups, emptyGroup()]);
+  const addFromNames = (f) => setGroups([...groups, makeGroupFromNames(f.label, f.names, f.selectType)]);
+  const nameLinks = fromNames.filter((f) => (f.names || []).length > 0);
+
+  const clashBar = (set) =>
+    clash && String(clash.set._id) === String(set._id) ? (
+      <ClashBar
+        name={groups[clash.index]?.name}
+        onReplace={() => resolveClash("replace")}
+        onAdd={() => resolveClash("add")}
+        onCancel={() => setClash(null)}
+      />
+    ) : null;
+
+  const manageLink = onGoToOptionSets ? (
+    <button
+      type="button"
+      onClick={onGoToOptionSets}
+      className="text-xs font-medium text-brand-primaryDark hover:underline"
+    >
+      จัดการชุดตัวเลือก
+    </button>
+  ) : null;
+
+  /* ---------------- State A: no groups yet ---------------- */
+  if (groups.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-base font-bold text-admin-text">เมนูนี้ยังไม่มีตัวเลือก</h3>
+          <p className="mt-0.5 text-xs text-admin-textMuted">
+            ตัวเลือกคือสิ่งที่ผู้เรียนเลือกเพิ่มตอนสั่ง เช่น ระดับความหวาน หรือ À la carte / Set
+            ถ้าไม่ใส่ ผู้เรียนสั่งได้เลย
+          </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <AddFromSetButton
-            optionSets={optionSets}
-            linkedSetIds={linkedSetIds}
-            onPick={pickSet}
-            onGoToOptionSets={onGoToOptionSets}
-          />
+
+        <section className="rounded-[14px] border border-admin-border bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-semibold text-admin-text">1. ใช้ชุดตัวเลือกของร้าน</h4>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">แนะนำ</span>
+            </div>
+            {manageLink}
+          </div>
+          <p className="mt-1 text-xs text-admin-textMuted">
+            กด “เพิ่ม” ได้เลย แก้ที่ชุดครั้งเดียว ทุกเมนูที่ใช้ชุดนี้อัปเดตตาม
+          </p>
+          {optionSets.length === 0 ? (
+            <p className="mt-3 text-xs text-admin-textMuted">ร้านนี้ยังไม่มีชุดตัวเลือก</p>
+          ) : (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {optionSets.map((s) => (
+                <div key={String(s._id)} className="rounded-xl border border-admin-border p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-admin-text" title={s.name}>
+                        {s.name}
+                      </div>
+                      <div className="text-xs text-admin-textMuted">{setChips(s).join(" · ")}</div>
+                      <div className="truncate text-xs text-admin-textMuted" title={choicePreview(s, 99)}>
+                        {choicePreview(s)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => pickSet(s)}
+                      className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg bg-brand-primaryDark px-2.5 py-1.5 text-xs font-semibold text-white hover:brightness-110"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> เพิ่ม
+                    </button>
+                  </div>
+                  {clashBar(s)}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="flex flex-wrap items-start justify-between gap-3 rounded-[14px] border border-dashed border-admin-border bg-white p-4">
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-semibold text-admin-text">2. สร้างกลุ่มใหม่เฉพาะเมนูนี้</h4>
+            <p className="mt-0.5 text-xs text-admin-textMuted">
+              สำหรับตัวเลือกที่มีแค่เมนูนี้ บันทึกเป็นชุดทีหลังได้
+            </p>
+            {nameLinks.map((f) => (
+              <button
+                key={f.label}
+                type="button"
+                onClick={() => addFromNames(f)}
+                className="mt-1 block text-xs text-brand-primaryDark hover:underline"
+              >
+                หรือสร้างจาก {f.label} ที่เลือกไว้ ({f.names.length})
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            onClick={() => setGroups([...groups, emptyGroup()])}
-            className="inline-flex items-center gap-1 rounded-lg border border-admin-border bg-white px-2 py-1 text-[11px] font-medium text-admin-text hover:bg-admin-surfaceMuted"
+            onClick={addGroup}
+            className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-brand-primary/60 bg-white px-3 py-1.5 text-xs font-medium text-brand-primaryDark hover:bg-brand-primary/10"
           >
-            <Plus className="h-3 w-3" /> เพิ่มกลุ่มตัวเลือก
+            <Plus className="h-3.5 w-3.5" /> สร้างกลุ่มใหม่
           </button>
-        </div>
+        </section>
       </div>
+    );
+  }
 
-      {clash && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
-          <span className="min-w-0 flex-1">
-            มีกลุ่ม “{groups[clash.index]?.name}” ของเมนูนี้อยู่แล้ว
-          </span>
-          <button
-            type="button"
-            autoFocus
-            onClick={() => resolveClash("replace")}
-            className="rounded-lg bg-brand-primaryDark px-2.5 py-1 font-semibold text-white"
-          >
-            แทนที่กลุ่มเดิม
-          </button>
-          <button
-            type="button"
-            onClick={() => resolveClash("add")}
-            className="rounded-lg border border-admin-border bg-white px-2.5 py-1"
-          >
-            เพิ่มเป็นอีกกลุ่ม
-          </button>
-          <button type="button" onClick={() => setClash(null)} className="px-1 text-admin-textMuted hover:underline">
-            ยกเลิก
-          </button>
-        </div>
-      )}
-
-      <p className="mb-2 text-[11px] text-admin-textMuted">
-        ใช้กับร้านคูปองที่ให้ผู้เรียนสั่งอาหารเอง เช่น ระดับความเผ็ด
-        หรือท็อปปิ้งเพิ่ม (ราคาเพิ่มจะถูกบวกเข้ากับราคาเมนู)
-      </p>
+  /* ---------------- State B: the menu has groups ---------------- */
+  return (
+    <div className="space-y-3">
+      <h3 className="text-base font-bold text-admin-text">ตัวเลือกของเมนูนี้</h3>
 
       <div className="space-y-3">
         {groups.map((g, gi) => {
@@ -329,6 +405,8 @@ export default function OptionGroupsEditor({
                 key={g._uiKey}
                 group={g}
                 {...move}
+                open={isOpen(g)}
+                onToggle={() => toggleOpen(g)}
                 error={groupError(g)}
                 onChange={(patch) => updateGroup(gi, patch)}
                 onDetach={() => detach(gi)}
@@ -339,19 +417,27 @@ export default function OptionGroupsEditor({
           const limitsError = groupError(g);
           const unchanged = !!g._id && savedKeys.get(g._id) === menuOnlyKey(g);
           const canPromote = !!menuId && !!onPromote && unchanged;
+          const open = isOpen(g);
+          const summary = [
+            ...setChips({ selectType: g.selectType, required: g.required, maxSelect: menuOnlyLimits(g).maxSelect }),
+            (g.choices || []).map((c) => c.name).filter(Boolean).join(", "),
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
           <div
             key={g._uiKey || g._id || gi}
             className="rounded-xl border border-dashed border-admin-border bg-white p-3"
           >
-            <div className="flex items-start gap-2">
-              <div className="flex flex-col pt-1">
+            {/* header row: always visible */}
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col">
                 <button
                   type="button"
                   disabled={gi === 0}
                   onClick={() => moveGroup(gi, -1)}
                   className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
-                  title="เลื่อนกลุ่มขึ้น"
+                  aria-label="เลื่อนกลุ่มขึ้น"
                 >
                   <ChevronUp className="h-3.5 w-3.5" />
                 </button>
@@ -360,188 +446,285 @@ export default function OptionGroupsEditor({
                   disabled={gi === groups.length - 1}
                   onClick={() => moveGroup(gi, 1)}
                   className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
-                  title="เลื่อนกลุ่มลง"
+                  aria-label="เลื่อนกลุ่มลง"
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
               </div>
-
-              <div className="min-w-0 flex-1 space-y-2">
-                <span className="inline-block rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[11px] text-admin-textMuted">
-                  เฉพาะเมนูนี้
-                </span>
-                <TextInput
-                  value={g.name}
-                  onChange={(e) => updateGroup(gi, { name: e.target.value })}
-                  placeholder="ชื่อกลุ่ม เช่น ระดับความเผ็ด"
-                />
-
-                <div className="flex flex-wrap items-center gap-4">
-                  <label className="flex items-center gap-2 text-xs text-admin-text">
-                    <Toggle
-                      checked={!!g.required}
-                      label="บังคับเลือก"
-                      onChange={(v) => updateGroup(gi, { required: v })}
-                    />
-                    บังคับเลือก
-                  </label>
-
-                  <div className="flex items-center gap-2 text-xs text-admin-text">
-                    <span className="text-admin-textMuted">เลือกได้</span>
-                    <select
-                      value={g.selectType}
-                      onChange={(e) =>
-                        updateGroup(gi, { selectType: e.target.value })
-                      }
-                      className="rounded-lg border border-admin-border bg-white px-2 py-1 text-xs outline-none focus:border-brand-primary"
-                    >
-                      <option value="single">ข้อเดียว</option>
-                      <option value="multi">หลายข้อ</option>
-                    </select>
-                  </div>
-
-                  {/* OS-3: min/max เฉพาะหลายข้อ · ว่าง = ไม่จำกัด */}
-                  {g.selectType === "multi" &&
-                    [
-                      ["minSelect", "ต่ำสุด", 0],
-                      ["maxSelect", "สูงสุด", 1],
-                    ].map(([k, label, min]) => (
-                      <label key={k} className="flex items-center gap-1 text-xs text-admin-textMuted">
-                        {label}
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={min}
-                          step={1}
-                          value={g[k] ?? ""}
-                          onChange={(e) => updateGroup(gi, { [k]: e.target.value })}
-                          placeholder="ไม่จำกัด"
-                          className={`w-20 rounded-lg border bg-white px-2 py-1 text-xs text-admin-text outline-none focus:border-brand-primary ${
-                            limitsError ? "border-red-400" : "border-admin-border"
-                          }`}
-                        />
-                      </label>
-                    ))}
-
-                  <button
-                    type="button"
-                    disabled={!canPromote}
-                    onClick={() => setPromotingKey(promotingKey === g._uiKey ? "" : g._uiKey)}
-                    title={canPromote ? "สร้างชุดตัวเลือกจากกลุ่มนี้" : "บันทึกเมนูก่อน"}
-                    className="rounded-lg border border-brand-primary/60 bg-white px-2 py-1 text-[11px] text-brand-primaryDark hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    บันทึกเป็นชุด
-                  </button>
-                  {!canPromote && <span className="text-[11px] text-admin-textMuted">บันทึกเมนูก่อน</span>}
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-admin-text">
+                    {String(g.name || "").trim() || "กลุ่มใหม่"}
+                  </span>
+                  <span className="flex-shrink-0 rounded-md bg-admin-surfaceMuted px-1.5 py-0.5 text-[11px] text-admin-textMuted">
+                    เฉพาะเมนูนี้
+                  </span>
                 </div>
-                {limitsError && <p className="text-xs text-red-600">{limitsError}</p>}
-                {canPromote && promotingKey === g._uiKey && <PromoteForm group={g} onPromote={onPromote} />}
+                {!open && (
+                  <div className="truncate text-xs text-admin-textMuted" title={summary}>
+                    {summary}
+                  </div>
+                )}
               </div>
-
               <button
                 type="button"
-                onClick={() => setGroups(groups.filter((_, i) => i !== gi))}
-                className="rounded-full bg-red-50 p-1.5 text-red-500 hover:bg-red-100"
-                title="ลบกลุ่มนี้"
+                onClick={() => toggleOpen(g)}
+                aria-expanded={open}
+                className="flex-shrink-0 text-xs font-medium text-brand-primaryDark hover:underline"
               >
-                <X className="h-3.5 w-3.5" />
+                {open ? "ย่อ ▴" : "แก้ไข ▾"}
               </button>
+              <GroupMenu
+                name={g.name}
+                onRemove={() => setGroups(groups.filter((_, i) => i !== gi))}
+              />
             </div>
 
-            {/* choices */}
-            <div className="mt-3 space-y-2 border-t border-admin-border/60 pt-3">
-              {(g.choices || []).map((c, ci) => (
-                <div
-                  key={c._uiKey || c._id || ci}
-                  className="flex items-center gap-2"
-                >
-                  <div className="flex flex-col">
-                    <button
-                      type="button"
-                      disabled={ci === 0}
-                      onClick={() => moveChoice(gi, ci, -1)}
-                      className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
-                      title="เลื่อนขึ้น"
-                    >
-                      <ChevronUp className="h-3 w-3" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={ci === (g.choices || []).length - 1}
-                      onClick={() => moveChoice(gi, ci, 1)}
-                      className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
-                      title="เลื่อนลง"
-                    >
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <TextInput
-                      value={c.name}
-                      onChange={(e) =>
-                        updateChoice(gi, ci, { name: e.target.value })
-                      }
-                      placeholder="ชื่อตัวเลือก เช่น เผ็ดน้อย"
-                    />
-                  </div>
-
-                  <div className="w-28 flex-shrink-0">
-                    <TextInput
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={c.priceDelta}
-                      onChange={(e) =>
-                        updateChoice(gi, ci, { priceDelta: e.target.value })
-                      }
-                      placeholder="ราคาเพิ่ม"
-                    />
-                  </div>
-
-                  <Toggle
-                    checked={c.isActive !== false}
-                    label={`เปิดใช้งาน ${c.name || "ตัวเลือก"}`}
-                    onChange={(v) => updateChoice(gi, ci, { isActive: v })}
+            {open && (
+              <>
+                <div className="mt-3 space-y-2">
+                  <TextInput
+                    value={g.name}
+                    onChange={(e) => updateGroup(gi, { name: e.target.value })}
+                    placeholder="ชื่อกลุ่ม เช่น ระดับความเผ็ด"
                   />
 
+                  <div className="flex flex-wrap items-center gap-4">
+                    <label className="flex items-center gap-2 text-xs text-admin-text">
+                      <Toggle
+                        checked={!!g.required}
+                        label="บังคับเลือก"
+                        onChange={(v) => updateGroup(gi, { required: v })}
+                      />
+                      บังคับเลือก
+                    </label>
+
+                    <div className="flex items-center gap-2 text-xs text-admin-text">
+                      <span className="text-admin-textMuted">เลือกได้</span>
+                      <select
+                        value={g.selectType}
+                        onChange={(e) => updateGroup(gi, { selectType: e.target.value })}
+                        className="rounded-lg border border-admin-border bg-white px-2 py-1 text-xs outline-none focus:border-brand-primary"
+                      >
+                        <option value="single">ข้อเดียว</option>
+                        <option value="multi">หลายข้อ</option>
+                      </select>
+                    </div>
+
+                    {/* OS-3: min/max เฉพาะหลายข้อ · ว่าง = ไม่จำกัด */}
+                    {g.selectType === "multi" &&
+                      [
+                        ["minSelect", "ต่ำสุด", 0],
+                        ["maxSelect", "สูงสุด", 1],
+                      ].map(([k, label, min]) => (
+                        <label key={k} className="flex items-center gap-1 text-xs text-admin-textMuted">
+                          {label}
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={min}
+                            step={1}
+                            value={g[k] ?? ""}
+                            onChange={(e) => updateGroup(gi, { [k]: e.target.value })}
+                            placeholder="ไม่จำกัด"
+                            className={`w-20 rounded-lg border bg-white px-2 py-1 text-xs text-admin-text outline-none focus:border-brand-primary ${
+                              limitsError ? "border-red-400" : "border-admin-border"
+                            }`}
+                          />
+                        </label>
+                      ))}
+
+                    <button
+                      type="button"
+                      disabled={!canPromote}
+                      onClick={() => setPromotingKey(promotingKey === g._uiKey ? "" : g._uiKey)}
+                      title={canPromote ? "สร้างชุดตัวเลือกจากกลุ่มนี้" : "บันทึกเมนูก่อน"}
+                      className="rounded-lg border border-brand-primary/60 bg-white px-2 py-1 text-[11px] text-brand-primaryDark hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      บันทึกเป็นชุด
+                    </button>
+                    {!canPromote && <span className="text-[11px] text-admin-textMuted">บันทึกเมนูก่อน</span>}
+                  </div>
+                  {limitsError && <p className="text-xs text-red-600">{limitsError}</p>}
+                  {canPromote && promotingKey === g._uiKey && <PromoteForm group={g} onPromote={onPromote} />}
+                </div>
+
+                {/* choices */}
+                <div className="mt-3 space-y-2 border-t border-admin-border/60 pt-3">
+                  {(g.choices || []).map((c, ci) => (
+                    <div key={c._uiKey || c._id || ci} className="flex items-center gap-2">
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          disabled={ci === 0}
+                          onClick={() => moveChoice(gi, ci, -1)}
+                          className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
+                          aria-label="เลื่อนขึ้น"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={ci === (g.choices || []).length - 1}
+                          onClick={() => moveChoice(gi, ci, 1)}
+                          className="rounded p-0.5 text-admin-textMuted hover:bg-admin-surfaceMuted disabled:opacity-30"
+                          aria-label="เลื่อนลง"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <TextInput
+                          value={c.name}
+                          onChange={(e) => updateChoice(gi, ci, { name: e.target.value })}
+                          placeholder="ชื่อตัวเลือก เช่น เผ็ดน้อย"
+                        />
+                      </div>
+
+                      <div className="w-28 flex-shrink-0">
+                        <TextInput
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={c.priceDelta}
+                          onChange={(e) => updateChoice(gi, ci, { priceDelta: e.target.value })}
+                          placeholder="ราคาเพิ่ม"
+                        />
+                      </div>
+
+                      <Toggle
+                        checked={c.isActive !== false}
+                        label={`เปิดใช้งาน ${c.name || "ตัวเลือก"}`}
+                        onChange={(v) => updateChoice(gi, ci, { isActive: v })}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateGroup(gi, { choices: (g.choices || []).filter((_, i) => i !== ci) })
+                        }
+                        className="rounded-full bg-red-50 p-1.5 text-red-500 hover:bg-red-100"
+                        aria-label={`ลบตัวเลือก ${c.name || ""}`.trim()}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+
                   <button
                     type="button"
-                    onClick={() =>
-                      updateGroup(gi, {
-                        choices: (g.choices || []).filter((_, i) => i !== ci),
-                      })
-                    }
-                    className="rounded-full bg-red-50 p-1.5 text-red-500 hover:bg-red-100"
-                    title="ลบตัวเลือกนี้"
+                    onClick={() => updateGroup(gi, { choices: [...(g.choices || []), emptyChoice()] })}
+                    className="inline-flex items-center gap-1 rounded-lg border border-dashed border-admin-border px-2 py-1 text-[11px] text-admin-textMuted hover:bg-admin-surfaceMuted"
                   >
-                    <X className="h-3 w-3" />
+                    <Plus className="h-3 w-3" /> เพิ่มตัวเลือก
                   </button>
                 </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={() =>
-                  updateGroup(gi, {
-                    choices: [...(g.choices || []), emptyChoice()],
-                  })
-                }
-                className="inline-flex items-center gap-1 rounded-lg border border-dashed border-admin-border px-2 py-1 text-[11px] text-admin-textMuted hover:bg-admin-surfaceMuted"
-              >
-                <Plus className="h-3 w-3" /> เพิ่มตัวเลือก
-              </button>
-            </div>
+              </>
+            )}
           </div>
           );
         })}
-
-        {groups.length === 0 && (
-          <p className="text-[11px] text-admin-textMuted">
-            ยังไม่มีกลุ่มตัวเลือก (เมนูนี้จะสั่งได้เลยโดยไม่ต้องเลือกอะไรเพิ่ม)
-          </p>
-        )}
       </div>
+
+      {/* เพิ่มตัวเลือก */}
+      <section className="space-y-2 rounded-[14px] bg-admin-surfaceMuted/60 px-4 py-3.5">
+        <h4 className="text-sm font-semibold text-admin-text">เพิ่มตัวเลือก</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-admin-textMuted">ชุดของร้าน:</span>
+          {optionSets.length === 0
+            ? manageLink || <span className="text-xs text-admin-textMuted">ยังไม่มีชุดตัวเลือก</span>
+            : optionSets.map((s) =>
+                linkedSetIds.has(String(s._id)) ? (
+                  <span
+                    key={String(s._id)}
+                    className="rounded-full bg-admin-surfaceMuted px-2.5 py-1 text-xs text-admin-textMuted"
+                  >
+                    ✓ {s.name}
+                  </span>
+                ) : (
+                  <button
+                    key={String(s._id)}
+                    type="button"
+                    onClick={() => pickSet(s)}
+                    className="rounded-full border border-brand-primary/60 bg-white px-2.5 py-1 text-xs font-medium text-brand-primaryDark hover:bg-brand-primary/10"
+                  >
+                    + {s.name}
+                  </button>
+                ),
+              )}
+        </div>
+        {/* clash bar right under the pills (the clicked pill is in this row) */}
+        {clash && clashBar(clash.set)}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-admin-textMuted">หรือ:</span>
+          <button
+            type="button"
+            onClick={addGroup}
+            className="inline-flex items-center gap-1 rounded-lg border border-admin-border bg-white px-2.5 py-1 text-xs font-medium text-admin-text hover:bg-admin-surfaceMuted"
+          >
+            <Plus className="h-3 w-3" /> สร้างกลุ่มใหม่เฉพาะเมนูนี้
+          </button>
+          {nameLinks.map((f) => (
+            <button
+              key={f.label}
+              type="button"
+              onClick={() => addFromNames(f)}
+              className="text-xs text-brand-primaryDark hover:underline"
+            >
+              จาก {f.label} ที่เลือกไว้ ({f.names.length})
+            </button>
+          ))}
+        </div>
+      </section>
     </div>
+  );
+}
+
+function ClashBar({ name, onReplace, onAdd, onCancel }) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+      <span className="min-w-0 flex-1">มีกลุ่ม “{name}” ของเมนูนี้อยู่แล้ว</span>
+      <button
+        type="button"
+        autoFocus
+        onClick={onReplace}
+        className="rounded-lg bg-brand-primaryDark px-2.5 py-1 font-semibold text-white"
+      >
+        แทนที่กลุ่มเดิม
+      </button>
+      <button type="button" onClick={onAdd} className="rounded-lg border border-admin-border bg-white px-2.5 py-1">
+        เพิ่มเป็นอีกกลุ่ม
+      </button>
+      <button type="button" onClick={onCancel} className="px-1 text-admin-textMuted hover:underline">
+        ยกเลิก
+      </button>
+    </div>
+  );
+}
+
+/** ⋮ on a menu-only card — the delete that was the red ✕ */
+function GroupMenu({ name, onRemove }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`จัดการกลุ่ม ${name || ""}`.trim()}
+          className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-admin-textMuted hover:bg-admin-surfaceMuted"
+        >
+          <MoreVertical className="h-4 w-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={6}
+        className="w-36 rounded-xl bg-white py-1 text-xs shadow-lg ring-1 ring-black/5"
+      >
+        <DropdownMenuItem className="text-red-600 focus:text-red-600" onSelect={onRemove}>
+          ลบกลุ่มนี้
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

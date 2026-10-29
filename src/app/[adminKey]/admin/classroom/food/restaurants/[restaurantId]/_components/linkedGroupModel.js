@@ -101,6 +101,16 @@ export function priceOverridden(c) {
   return String(c.priceDelta).trim() !== "" && Number(c.priceDelta) !== c.defaultPrice;
 }
 
+/** OS-3b: menu-level change (override or hidden choice) — the card starts expanded */
+export function linkedHasCustomization(lg) {
+  return (
+    lg.required !== "" ||
+    lg.minSelect !== "" ||
+    lg.maxSelect !== "" ||
+    lg.choices.some((c) => c.hidden || priceOverridden(c))
+  );
+}
+
 /** first problem with a linked group, or "" */
 export function linkedGroupError(lg) {
   if (lg.detachFromSet) return "";

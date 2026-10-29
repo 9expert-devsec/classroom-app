@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Info, Search, Sparkles, X } from "lucide-react";
-import OptionGroupsEditor, { makeGroupFromNames } from "../OptionGroupsEditor";
+import { Info, Search, X } from "lucide-react";
+import OptionGroupsEditor from "../OptionGroupsEditor";
 
 function Thumb({ item, size = 32 }) {
   return (
@@ -113,10 +113,6 @@ export default function StepOptions({ form, set, addons, drinks, error, groupsPr
     ["options", `ตัวเลือก (${form.optionGroups.length} กลุ่ม)`],
   ];
 
-  function addGroup(name, names, selectType) {
-    set({ optionGroups: [...form.optionGroups, makeGroupFromNames(name, names, selectType)] });
-  }
-
   return (
     <div className="space-y-4">
       <p className="text-sm text-admin-textMuted">เลือก Add-on หรือ Drink ที่เกี่ยวข้องกับเมนูนี้</p>
@@ -157,36 +153,17 @@ export default function StepOptions({ form, set, addons, drinks, error, groupsPr
         />
       )}
       {tab === "options" && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-admin-border p-3 text-sm">
-            <Sparkles className="h-4 w-4 text-brand-primaryDark" />
-            <span className="text-admin-text">สร้างกลุ่มจากรายการที่เลือก</span>
-            <button
-              type="button"
-              disabled={addonNames.length === 0}
-              onClick={() => addGroup("Add-on", addonNames, "multi")}
-              className="rounded-lg border border-brand-primary/60 bg-white px-2.5 py-1 text-xs text-brand-primaryDark hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              จาก Add-on ({addonNames.length})
-            </button>
-            <button
-              type="button"
-              disabled={drinkNames.length === 0}
-              onClick={() => addGroup("Drink", drinkNames, "single")}
-              className="rounded-lg border border-brand-primary/60 bg-white px-2.5 py-1 text-xs text-brand-primaryDark hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              จาก Drink ({drinkNames.length})
-            </button>
-            <span className="w-full text-xs text-admin-textMuted">
-              สร้างกลุ่มใหม่ที่มีตัวเลือกเป็นรายการที่เลือกไว้ ราคาเริ่มต้น 0 บาท — แก้ราคาได้ในกลุ่มด้านล่าง
-            </span>
-          </div>
-          <OptionGroupsEditor
-            value={form.optionGroups}
-            onChange={(optionGroups) => set({ optionGroups })}
-            {...groupsProps}
-          />
-        </div>
+        // OS-3b: "สร้างกลุ่มจากรายการที่เลือก" lives in the editor's create-new area now
+        // (same makeGroupFromNames path: Add-on = multi, Drink = single, prices start at 0)
+        <OptionGroupsEditor
+          value={form.optionGroups}
+          onChange={(optionGroups) => set({ optionGroups })}
+          fromNames={[
+            { label: "Add-on", names: addonNames, selectType: "multi" },
+            { label: "Drink", names: drinkNames, selectType: "single" },
+          ]}
+          {...groupsProps}
+        />
       )}
 
       <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-900">
