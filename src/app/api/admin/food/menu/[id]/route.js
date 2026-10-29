@@ -17,6 +17,7 @@ import {
   resolveCategoryIds,
 } from "@/lib/foodMenuOptions.server";
 import { resolveMenuOptionGroups } from "@/lib/foodOptionSets.server";
+import { auditMenuOptionSetChanges } from "@/lib/foodOptionSetsAudit.server";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +151,10 @@ export async function PUT(req, { params }) {
       },
       meta: { restaurantId: String(item?.restaurant || "") },
     });
+    // OS-3: attach / detach / remove ชุดตัวเลือกที่เกิดจากการบันทึกนี้
+    if (body?.optionGroups !== undefined) {
+      await auditMenuOptionSetChanges({ ctx, req, menu: item, beforeGroups: before.optionGroups });
+    }
 
     return NextResponse.json({ ok: true, item });
   } catch (e) {

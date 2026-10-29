@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { selectionCountError } from "@/lib/optionGroupRules";
 
 // src/lib/lunchCart.client.js
 //
@@ -327,6 +328,28 @@ export function cartTotals(state, menus) {
     total += unitPriceOf(l, m) * (l.qty || 0);
   }
   return { count, total };
+}
+
+/**
+ * OS-3: ตัวเลือกของบรรทัดยังใช้กับเมนู DTO ปัจจุบันได้ไหม (กติกาเดียวกับ submit)
+ * คืนข้อความ error ของกลุ่มแรกที่ไม่ผ่าน หรือ "" ถ้าผ่าน
+ *   ตัวเลือกที่หายไป/ถูกซ่อน · บังคับแต่ไม่ได้เลือก · เลือกข้อเดียวแต่มีหลายข้อ · min/max
+ */
+export function lineOptionError(line, menu) {
+  if (!menu) return "";
+  const picked = new Map(
+    (line?.choices || []).map((g) => [String(g.groupId), (g.choiceIds || []).map(String)]),
+  );
+  for (const group of menu.optionGroups || []) {
+    const ids = picked.get(String(group.id)) || [];
+    const known = new Set((group.choices || []).map((c) => String(c.id)));
+    if (ids.some((id) => !known.has(id))) return `ตัวเลือกใน "${group.name}" มีการเปลี่ยนแปลง กรุณาเลือกใหม่`;
+    if (group.required && ids.length < 1) return `กรุณาเลือก "${group.name}"`;
+    if (group.selectType !== "multi" && ids.length > 1) return `"${group.name}" เลือกได้ข้อเดียว`;
+    const err = selectionCountError(group, ids.length);
+    if (err) return err.message;
+  }
+  return "";
 }
 
 /** เมนูนี้กด "+" เพิ่มเลยได้ไหม (ไม่มีกลุ่มตัวเลือกที่บังคับ) */

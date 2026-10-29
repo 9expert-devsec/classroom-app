@@ -48,6 +48,9 @@ export async function loadRestaurantMenu({ daySet, restaurantId }) {
         name: g.name || "",
         required: !!g.required,
         selectType: g.selectType === "multi" ? "multi" : "single",
+        // OS-3: ค่าที่มีผลจริง (null = ไม่จำกัด) — หน้าผู้เรียนใช้กติกาเดียวกับ submit
+        minSelect: g.minSelect ?? null,
+        maxSelect: g.maxSelect ?? null,
         choices: (g.choices || [])
           .filter((c) => c?.isActive !== false)
           .map((c) => ({

@@ -1,5 +1,5 @@
 // form state, validation and payload for the add/edit menu wizard (pure)
-import { toEditorGroups, toPayloadGroups } from "../OptionGroupsEditor";
+import { groupError, menuOnlyKey, toEditorGroups, toPayloadGroups } from "../OptionGroupsEditor";
 import { idOf, menuCategoryIds } from "../menuUi";
 
 export const NAME_MAX = 50;
@@ -10,7 +10,8 @@ function uniq(list) {
   return [...new Set(list.map(String).filter(Boolean))];
 }
 
-export function initialForm(menu, nextSortOrder) {
+// setsById (OS-3): the restaurant's option sets, for linked groups' "ตามชุด" values
+export function initialForm(menu, nextSortOrder, setsById = new Map()) {
   if (!menu) {
     return {
       name: "",
@@ -33,8 +34,15 @@ export function initialForm(menu, nextSortOrder) {
     description: menu.description || "",
     addonIds: uniq((menu.addonIds || []).map(idOf)),
     drinkIds: uniq((menu.drinkIds || []).map(idOf)),
-    optionGroups: toEditorGroups(menu.optionGroups),
+    optionGroups: toEditorGroups(menu.optionGroups, setsById),
   };
+}
+
+/** OS-3: saved menu-only groups by _id -> comparable key ("บันทึกเป็นชุด" needs no unsaved change) */
+export function savedGroupKeys(form) {
+  return new Map(
+    form.optionGroups.filter((g) => !g.linked && g._id).map((g) => [g._id, menuOnlyKey(g)]),
+  );
 }
 
 /**
@@ -73,6 +81,10 @@ export function infoErrors(form, { activeCategoryIds, needsCategory, priceRequir
 /** step 2: the same option-group checks the old form ran before saving */
 export function optionsError(form) {
   for (const g of form.optionGroups) {
+    // OS-3: linked groups (and min/max of menu-only groups) use the shared rules
+    const ge = groupError(g);
+    if (ge) return ge;
+    if (g.linked) continue;
     if (!String(g.name || "").trim()) return "กรุณากรอกชื่อกลุ่มตัวเลือกให้ครบ";
     if (!(g.choices || []).length) {
       return `กลุ่ม "${g.name}" ต้องมีตัวเลือกอย่างน้อย 1 รายการ`;

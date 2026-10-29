@@ -606,7 +606,13 @@ export async function promoteGroupToSet(menuId, groupId, name) {
       const optionGroups = menu.optionGroups.map((g) => (sameId(g._id, group._id) ? linked : g));
       await FoodMenu.updateOne({ _id: menu._id }, { $set: { optionGroups } }, { session });
 
-      return { item: set, menu: { id: String(menu._id), name: menu.name || "" }, groupId: String(group._id) };
+      // group (OS-3): the menu's group as now stored, so the wizard can show it as linked
+      return {
+        item: set,
+        menu: { id: String(menu._id), name: menu.name || "" },
+        groupId: String(group._id),
+        group: linked,
+      };
     });
   } catch (e) {
     if (isDuplicateKey(e)) throw new OptionSetError("มีชุดตัวเลือกชื่อนี้ในร้านนี้แล้ว", 409);
@@ -648,6 +654,40 @@ export async function deleteOptionSet(setId, mode = "remove") {
 
 /* ---------------- menu POST / PUT ---------------- */
 
+// group override keys equal to the set's own value are dropped (undefined when none left)
+function sameAsSet(set, ov) {
+  if (!ov) return undefined;
+  const out = { ...ov };
+  if (has(out, "required") && !!out.required === !!set.required) delete out.required;
+  if (has(out, "minSelect") && (out.minSelect ?? null) === (set.minSelect ?? null)) delete out.minSelect;
+  if (has(out, "maxSelect") && (out.maxSelect ?? null) === (set.maxSelect ?? null)) delete out.maxSelect;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * OS-3: what a menu save did to linked groups (for the audit log)
+ *   attached = linked group that was not linked before · detached = same _id, now menu-only
+ *   removed = linked group no longer in the menu
+ */
+export function linkedGroupChanges(beforeGroups, afterGroups) {
+  const before = new Map(
+    (beforeGroups || []).filter((g) => g?.sourceSetId).map((g) => [String(g._id), g]),
+  );
+  const afterById = new Map((afterGroups || []).map((g) => [String(g._id), g]));
+  const row = (g, setId) => ({ groupId: String(g._id), setId: String(setId), name: g.name || "" });
+  const attached = (afterGroups || [])
+    .filter((g) => g?.sourceSetId && !before.has(String(g._id)))
+    .map((g) => row(g, g.sourceSetId));
+  const detached = [];
+  const removed = [];
+  for (const [id, g] of before) {
+    const now = afterById.get(id);
+    if (!now) removed.push(row(g, g.sourceSetId));
+    else if (!now.sourceSetId) detached.push(row(g, g.sourceSetId));
+  }
+  return { attached, detached, removed };
+}
+
 /**
  * optionGroups จาก client ของ POST/PUT เมนู
  *   กลุ่มของเมนูเอง: normalizeOptionGroup แบบเดิม (+ minSelect/maxSelect)
@@ -677,7 +717,12 @@ export async function resolveMenuOptionGroups({ raw, restaurantId, existingGroup
 
   const used = new Set();
   return plan.map(({ g, prev, setId }, gi) => {
-    if (!setId) return normalizeOptionGroup(g, gi);
+    // OS-3: detachFromSet = แยกเป็นของเมนูนี้ (ผลเดียวกับ route detach) — ค่าอื่นของกลุ่มนี้ใน payload ไม่ใช้รอบนี้
+    if (g?.detachFromSet && prev) {
+      const sortOrder = Number(g?.sortOrder);
+      return { ...detachGroup(prev), sortOrder: Number.isFinite(sortOrder) ? sortOrder : gi };
+    }
+    if (!setId || g?.detachFromSet) return normalizeOptionGroup(g, gi);
 
     const set = setById.get(setId);
     if (!set) throw new FoodMenuFieldError(`ไม่พบชุดตัวเลือกของกลุ่มลำดับที่ ${gi + 1}`);
@@ -692,22 +737,31 @@ export async function resolveMenuOptionGroups({ raw, restaurantId, existingGroup
     const bySource = new Map(
       (prev?.choices || []).filter((c) => c.sourceChoiceId).map((c) => [String(c.sourceChoiceId), { ...c }]),
     );
-    const setChoiceIds = new Set((set.choices || []).map((c) => String(c._id)));
+    const setChoiceById = new Map((set.choices || []).map((c) => [String(c._id), c]));
     for (const rc of Array.isArray(g?.choices) ? g.choices : []) {
       const hit = byEmbeddedId.get(clean(rc?._id));
       const src = hit?.sourceChoiceId ? String(hit.sourceChoiceId) : clean(rc?.sourceChoiceId);
-      if (!src || !setChoiceIds.has(src)) continue;
+      if (!src || !setChoiceById.has(src)) continue;
       const cur = bySource.get(src) || { sourceChoiceId: src };
       if (has(rc, "hidden")) cur.hidden = !!rc.hidden;
       if (has(rc, "overrides")) cur.overrides = sanitizeChoiceOverrides(rc.overrides);
       bySource.set(src, cur);
     }
+    // OS-3: override ที่เท่ากับค่าของชุด = ไม่ override (ตามชุดต่อไปเมื่อชุดเปลี่ยน)
+    for (const [src, cur] of bySource) {
+      const def = Number(setChoiceById.get(src)?.priceDelta) || 0;
+      if (cur.overrides && Number(cur.overrides.priceDelta) === def) cur.overrides = undefined;
+    }
+    const groupOverrides = sameAsSet(
+      set,
+      has(g, "overrides") ? sanitizeGroupOverrides(g.overrides) : sanitizeGroupOverrides(prev?.overrides),
+    );
 
     const sortOrder = Number(g?.sortOrder);
     const next = materializeGroup(set, {
       _id: prev?._id,
       sortOrder: Number.isFinite(sortOrder) ? sortOrder : gi,
-      overrides: has(g, "overrides") ? sanitizeGroupOverrides(g.overrides) : prev?.overrides,
+      overrides: groupOverrides,
       choices: [...bySource.values()],
     });
     const err = materializedError(next);

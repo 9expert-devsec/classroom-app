@@ -8,7 +8,8 @@ import { safeJson } from "../menuUi";
 import StepInfo from "./StepInfo";
 import StepOptions from "./StepOptions";
 import StepReview from "./StepReview";
-import { buildPayload, infoErrors, initialForm, optionsError, snapshot } from "./wizardModel";
+import { buildPayload, infoErrors, initialForm, optionsError, savedGroupKeys, snapshot } from "./wizardModel";
+import { linkedFromMenuGroup } from "../linkedGroupModel";
 
 const STEPS = ["ข้อมูลเมนู", "ตัวเลือกเพิ่มเติม", "ตรวจสอบและยืนยัน"];
 
@@ -85,9 +86,15 @@ export default function MenuWizard({
   uploadImage,
   onClose,
   onSaved,
+  // OS-3: the restaurant's option sets + refresh after "บันทึกเป็นชุด" + jump to the ชุดตัวเลือก tab
+  optionSets = [],
+  onOptionSetsChanged,
+  onGoToOptionSets,
 }) {
   const isEdit = !!menu;
-  const [initial] = useState(() => initialForm(menu, nextSortOrder));
+  const setsById = useMemo(() => new Map(optionSets.map((s) => [String(s._id), s])), [optionSets]);
+  // initial is state only so "บันทึกเป็นชุด" (already saved on the server) can update it too
+  const [initial, setInitial] = useState(() => initialForm(menu, nextSortOrder, setsById));
   const [form, setForm] = useState(initial);
   const [step, setStep] = useState(1);
   const [maxStep, setMaxStep] = useState(isEdit ? 3 : 1);
@@ -157,6 +164,50 @@ export default function MenuWizard({
     if (dirty && !confirm("ปิดหน้าต่างนี้? การเปลี่ยนแปลงที่ยังไม่ได้บันทึกจะหายไป")) return;
     onClose();
   }
+
+  /* ---- OS-3: option sets ---- */
+  const savedKeys = useMemo(() => savedGroupKeys(initial), [initial]);
+
+  // promote a saved, unchanged menu-only group; the server links it in place (same _id)
+  async function promoteGroup(g, name) {
+    try {
+      const res = await fetch(`/api/admin/food/menu/${menu._id}/option-groups/${g._id}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const out = await safeJson(res);
+      if (!res.ok) return { error: out.error || "บันทึกเป็นชุดไม่สำเร็จ" };
+      const swap = (f) => ({
+        ...f,
+        optionGroups: f.optionGroups.map((x) =>
+          x._id === g._id ? linkedFromMenuGroup(out.group, out.item) : x,
+        ),
+      });
+      setForm(swap);
+      setInitial(swap);
+      toast.success(`สร้างชุด “${out.item?.name || name}” แล้ว`);
+      onOptionSetsChanged?.();
+      return {};
+    } catch (err) {
+      console.error(err);
+      return { error: "บันทึกเป็นชุดไม่สำเร็จ" };
+    }
+  }
+
+  function goToOptionSets() {
+    if (saving) return;
+    if (dirty && !confirm("ออกจากหน้าต่างนี้? การเปลี่ยนแปลงที่ยังไม่ได้บันทึกจะหายไป")) return;
+    onGoToOptionSets?.();
+  }
+
+  const groupsProps = {
+    optionSets,
+    menuId: isEdit ? String(menu._id) : "",
+    savedKeys,
+    onPromote: isEdit ? promoteGroup : undefined,
+    onGoToOptionSets: onGoToOptionSets ? goToOptionSets : undefined,
+  };
 
   async function save(isActive) {
     if (savingRef.current) return;
@@ -259,7 +310,14 @@ export default function MenuWizard({
               />
             )}
             {step === 2 && (
-              <StepOptions form={form} set={set} addons={addons} drinks={drinks} error={optError} />
+              <StepOptions
+                form={form}
+                set={set}
+                addons={addons}
+                drinks={drinks}
+                error={optError}
+                groupsProps={groupsProps}
+              />
             )}
             {step === 3 && (
               <StepReview

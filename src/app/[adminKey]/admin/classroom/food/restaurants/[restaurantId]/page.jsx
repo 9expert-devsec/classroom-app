@@ -869,6 +869,12 @@ function RestaurantDetail({ params }) {
           uploadImage={uploadImage}
           onClose={() => setWizard(null)}
           onSaved={handleWizardSaved}
+          optionSets={optionSets}
+          onOptionSetsChanged={fetchOptionSets}
+          onGoToOptionSets={() => {
+            setWizard(null);
+            setListParams({ tab: "optionsets", q: "", cat: "", status: "", sort: "" });
+          }}
         />
       )}
 

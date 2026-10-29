@@ -96,7 +96,8 @@ function LinkPicker({ label, items, value, onChange }) {
   );
 }
 
-export default function StepOptions({ form, set, addons, drinks, error }) {
+// OS-3: groupsProps = option-set props passed straight to OptionGroupsEditor
+export default function StepOptions({ form, set, addons, drinks, error, groupsProps = {} }) {
   const [tab, setTab] = useState("addons");
 
   const nameOf = (items, ids) => {
@@ -183,6 +184,7 @@ export default function StepOptions({ form, set, addons, drinks, error }) {
           <OptionGroupsEditor
             value={form.optionGroups}
             onChange={(optionGroups) => set({ optionGroups })}
+            {...groupsProps}
           />
         </div>
       )}

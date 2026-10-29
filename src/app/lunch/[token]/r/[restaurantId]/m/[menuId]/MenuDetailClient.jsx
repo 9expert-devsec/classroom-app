@@ -20,6 +20,7 @@ import {
   MAX_QTY,
 } from "@/lib/lunchCart.client";
 import { menuHeroSrc } from "@/lib/menuImage";
+import { selectionCountError } from "@/lib/optionGroupRules";
 import { StickyBottom } from "../../../../_components/Shell";
 import ShellScroll from "../../../../_components/ShellScroll";
 import BudgetBar from "../../../../_components/BudgetBar";
@@ -30,9 +31,24 @@ import { SwitchConfirmSheet } from "../../../../_components/ChangeShopSheet";
 
 /* ---------------- option rows ---------------- */
 
+// OS-3: "เลือก 1" / "เลือกได้สูงสุด N" / "เลือกอย่างน้อย N" / "เลือก N–M" + จำเป็น | ไม่บังคับ
+function selectHint(group) {
+  const min = group.minSelect ?? null;
+  const max = group.maxSelect ?? null;
+  let how = "เลือก 1";
+  if (group.selectType === "multi") {
+    if (min !== null && max !== null) how = min === max ? `เลือก ${min}` : `เลือก ${min}–${max}`;
+    else if (max !== null) how = `เลือกได้สูงสุด ${max}`;
+    else if (min !== null) how = `เลือกอย่างน้อย ${min}`;
+    else how = "เลือกได้หลายอย่าง";
+  }
+  return `${how} · ${group.required ? "จำเป็น" : "ไม่บังคับ"}`;
+}
+
 // กลุ่มที่บังคับ = ดอกจันแดงต่อท้ายชื่อ (กลุ่มไม่บังคับไม่มีอะไรเพิ่ม)
 // flagged = กดเพิ่มลงตะกร้าตอนที่กลุ่มนี้ยังไม่ได้เลือก -> บอกใต้หัวข้อ
-function GroupHeader({ group, id, flagged }) {
+// countError = OS-3 ยังเลือกไม่ถึงขั้นต่ำ (ข้อความจาก selectionCountError) — ปุ่มเพิ่มถูกปิดไว้
+function GroupHeader({ group, id, flagged, countError }) {
   return (
     <div className="mb-2">
       <p id={id} className="text-[15px] font-semibold text-[#0d1b2a]">
@@ -42,23 +58,27 @@ function GroupHeader({ group, id, flagged }) {
             *
           </span>
         ) : null}
+        <span className="ml-2 text-[12px] font-normal text-slate-500">{selectHint(group)}</span>
       </p>
       {flagged ? (
         <p role="alert" className="mt-0.5 text-[13px] text-[#d92d20]">
           กรุณาเลือก 1 รายการ
         </p>
+      ) : countError ? (
+        <p className="mt-0.5 text-[13px] text-[#b8720a]">{countError}</p>
       ) : null}
     </div>
   );
 }
 
-function ChoiceRow({ group, choice, on, onToggle }) {
+function ChoiceRow({ group, choice, on, onToggle, disabled = false }) {
   const multi = group.selectType === "multi";
   return (
     <label
       className={[
-        "flex h-12 cursor-pointer items-center gap-3 rounded-xl border px-3.5 text-[14px] transition",
+        "flex h-12 items-center gap-3 rounded-xl border px-3.5 text-[14px] transition",
         on ? "border-[#2486ff] bg-[#2486ff]/5" : "border-black/10 bg-white",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
       ].join(" ")}
     >
       {multi ? (
@@ -85,6 +105,7 @@ function ChoiceRow({ group, choice, on, onToggle }) {
         name={`g-${group.id}`}
         className="sr-only"
         checked={on}
+        disabled={disabled}
         onChange={onToggle}
       />
       <span className="flex-1 text-[#0d1b2a]">{choice.name}</span>
@@ -291,6 +312,11 @@ export default function MenuDetailClient({
   );
 
   const missing = groups.find((g) => g.required && !(picked[g.id] || []).length);
+  // OS-3: min/max (กติกาเดียวกับ submit) — ยังไม่ถึงขั้นต่ำ = ปิดปุ่มเพิ่ม + บอกใต้กลุ่ม
+  const countErrorOf = (g) => selectionCountError(g, (picked[g.id] || []).length)?.message || "";
+  const belowMin = groups.some((g) => countErrorOf(g));
+  const maxReached = (g) =>
+    g.selectType === "multi" && g.maxSelect != null && (picked[g.id] || []).length >= g.maxSelect;
 
   // กดปุ่มหลักตอนกลุ่มบังคับยังว่าง -> กลุ่มที่ยังว่างทุกกลุ่มขึ้นสีแดง
   // (กลุ่มไหนเลือกแล้วก็หายแดงเอง เพราะคิดจาก picked ทุกครั้ง)
@@ -427,22 +453,32 @@ export default function MenuDetailClient({
                 aria-required={g.required ? "true" : undefined}
                 aria-invalid={isFlagged(g) ? "true" : undefined}
               >
-                <GroupHeader group={g} id={`g-${g.id}-label`} flagged={isFlagged(g)} />
+                <GroupHeader
+                  group={g}
+                  id={`g-${g.id}-label`}
+                  flagged={isFlagged(g)}
+                  countError={countErrorOf(g)}
+                />
                 <div
                   className={[
                     "flex flex-col gap-2",
                     isFlagged(g) ? "rounded-2xl border-2 border-[#d92d20] p-2" : "",
                   ].join(" ")}
                 >
-                  {g.choices.map((c) => (
-                    <ChoiceRow
-                      key={c.id}
-                      group={g}
-                      choice={c}
-                      on={(picked[g.id] || []).includes(c.id)}
-                      onToggle={() => toggle(g, c.id)}
-                    />
-                  ))}
+                  {g.choices.map((c) => {
+                    const on = (picked[g.id] || []).includes(c.id);
+                    return (
+                      <ChoiceRow
+                        key={c.id}
+                        group={g}
+                        choice={c}
+                        on={on}
+                        // ครบจำนวนสูงสุดแล้ว: ตัวที่ยังไม่เลือกกดไม่ได้จนกว่าจะเอาออก 1 ตัว
+                        disabled={!on && maxReached(g)}
+                        onToggle={() => toggle(g, c.id)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -502,10 +538,10 @@ export default function MenuDetailClient({
             type="button"
             data-testid="detail-add"
             onClick={commit}
-            disabled={conflict}
+            disabled={conflict || belowMin}
             className={[
               "h-12 w-full rounded-xl text-[15px] font-semibold text-white shadow-sm transition",
-              !conflict
+              !conflict && !belowMin
                 ? "bg-[#2486ff] hover:bg-[#005cff] active:scale-[0.99]"
                 : "cursor-not-allowed bg-slate-300",
             ].join(" ")}

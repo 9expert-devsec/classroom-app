@@ -15,6 +15,7 @@ import {
   ensureRequestId,
   clearCartLines,
   switchRestaurant,
+  lineOptionError,
   MIN_QTY,
   MAX_QTY,
 } from "@/lib/lunchCart.client";
@@ -265,6 +266,17 @@ export default function SummaryClient({
     [cart, menus],
   );
   const overage = Math.max(0, total - budget);
+  // OS-3: บรรทัดที่ตัวเลือกไม่ผ่านกติกาของเมนูปัจจุบัน (เช่น ร้านเปลี่ยนจำนวนที่เลือกได้)
+  // ขึ้นกรอบแดง + ข้อความ และยังยืนยันไม่ได้จนกว่าจะแก้ — ไม่ต้องรอ 422 จาก server
+  const staleLines = useMemo(() => {
+    const out = new Map();
+    (cart?.lines || []).forEach((l, i) => {
+      const m = menuById.get(String(l.menuId));
+      const err = lineOptionError(l, m);
+      if (err) out.set(i, `${m?.name || ""}: ${err}`);
+    });
+    return out;
+  }, [cart, menuById]);
 
   function persist(next) {
     setCart(next);
@@ -442,6 +454,14 @@ export default function SummaryClient({
               {pageError}
             </p>
           ) : null}
+          {!pageError && staleLines.size > 0 ? (
+            <p
+              data-testid="stale-lines"
+              className="rounded-xl bg-[#c2453e]/10 px-3.5 py-2.5 text-[13px] font-medium text-[#c2453e]"
+            >
+              {[...staleLines.values()][0]} — แตะรายการเพื่อแก้ไขก่อนยืนยัน
+            </p>
+          ) : null}
           {removedNotice > 0 ? (
             <p className="rounded-xl bg-[#d98a13]/10 px-3.5 py-2.5 text-[13px] text-[#b8720a]">
               มีบางรายการถูกนำออกเพราะไม่พร้อมจำหน่าย
@@ -474,7 +494,7 @@ export default function SummaryClient({
                     key={l.lineKey}
                     line={l}
                     menu={m}
-                    bad={badLine === i}
+                    bad={badLine === i || staleLines.has(i)}
                     onQty={(q) => persist(setLineQty(cart, l.lineKey, q))}
                     onRemove={() => persist(removeLine(cart, l.lineKey))}
                     onEdit={() =>
@@ -528,7 +548,7 @@ export default function SummaryClient({
         </button>
         <button
           type="button"
-          disabled={!menus || count === 0}
+          disabled={!menus || count === 0 || staleLines.size > 0}
           onClick={() => {
             setModalError("");
             setConfirmOpen(true);

@@ -17,6 +17,7 @@ import {
   resolveCategoryIds,
 } from "@/lib/foodMenuOptions.server";
 import { resolveMenuOptionGroups } from "@/lib/foodOptionSets.server";
+import { auditMenuOptionSetChanges } from "@/lib/foodOptionSetsAudit.server";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,8 @@ export async function POST(req) {
       },
       meta: { restaurantId: String(restaurantId) },
     });
+    // OS-3: ชุดตัวเลือกที่ผูกมากับการสร้างเมนู
+    await auditMenuOptionSetChanges({ ctx, req, menu: item, beforeGroups: [] });
 
     return NextResponse.json({ ok: true, item });
   } catch (e) {

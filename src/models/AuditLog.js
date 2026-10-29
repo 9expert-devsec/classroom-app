@@ -70,6 +70,8 @@ const AuditLogSchema = new mongoose.Schema(
         "food.option_set_attach",
         "food.option_set_detach",
         "food.option_set_promote",
+        // ✅ OS-3: เอากลุ่มที่ผูกชุดออกจากเมนูผ่านการบันทึกเมนู
+        "food.option_set_remove",
       ],
       default: "custom",
       index: true,

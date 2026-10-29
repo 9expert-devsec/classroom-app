@@ -3,6 +3,7 @@
 import { Pencil } from "lucide-react";
 import { MenuImage } from "../MenuBits";
 import { formatPrice, isRecommendedCategory, sortCategories } from "../menuUi";
+import { effectiveOf, priceOverridden } from "../linkedGroupModel";
 
 function Row({ label, children }) {
   return (
@@ -18,6 +19,41 @@ function OptionColumn({ title, children, empty }) {
     <div className="min-w-0 rounded-xl border border-admin-border p-3">
       <div className="mb-1 text-sm font-semibold text-brand-primaryDark">{title}</div>
       {empty ? <div className="text-xs text-admin-textMuted">—</div> : children}
+    </div>
+  );
+}
+
+/** OS-3: linked group — "จากชุด" chip, per-menu prices, "ซ่อน: …" */
+function LinkedGroupReview({ group: g }) {
+  const eff = effectiveOf(g);
+  const shown = g.choices.filter((c) => c.setActive && !c.hidden);
+  const hidden = g.choices.filter((c) => c.hidden);
+  return (
+    <div>
+      <div className="font-medium">
+        {g.name}{" "}
+        {g.detachFromSet ? (
+          <span className="rounded bg-admin-surfaceMuted px-1 text-[10px] font-normal text-admin-textMuted">
+            แยกเป็นของเมนูนี้เมื่อบันทึก
+          </span>
+        ) : (
+          <span className="rounded bg-blue-50 px-1 text-[10px] font-medium text-blue-700">จากชุด</span>
+        )}{" "}
+        <span className="font-normal text-admin-textMuted">
+          ({eff.required ? "บังคับ" : "ไม่บังคับ"} · {g.selectType === "multi" ? "เลือกได้หลายอย่าง" : "เลือก 1 อย่าง"})
+        </span>
+      </div>
+      <ul className="list-disc pl-4">
+        {shown.map((c) => (
+          <li key={c._uiKey}>
+            {c.name} ({Number(c.priceDelta) > 0 ? `+${Number(c.priceDelta)} บาท` : "ฟรี"})
+            {priceOverridden(c) ? <span className="text-amber-700"> (ปรับเฉพาะเมนู)</span> : null}
+          </li>
+        ))}
+      </ul>
+      {hidden.length > 0 && (
+        <div className="pl-4 text-admin-textMuted">ซ่อน: {hidden.map((c) => c.name).join(", ")}</div>
+      )}
     </div>
   );
 }
@@ -115,7 +151,10 @@ export default function StepReview({ form, categories, addons, drinks, onEditInf
             empty={!form.optionGroups.length}
           >
             <div className="space-y-2 text-xs">
-              {form.optionGroups.map((g) => (
+              {form.optionGroups.map((g) =>
+                g.linked ? (
+                  <LinkedGroupReview key={g._uiKey} group={g} />
+                ) : (
                 <div key={g._uiKey}>
                   <div className="font-medium">
                     {g.name || "—"}{" "}
@@ -131,7 +170,8 @@ export default function StepReview({ form, categories, addons, drinks, onEditInf
                     ))}
                   </ul>
                 </div>
-              ))}
+                ),
+              )}
             </div>
           </OptionColumn>
         </div>
