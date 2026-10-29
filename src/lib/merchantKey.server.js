@@ -9,7 +9,8 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
-function configuredKey() {
+// หน้าแอดมิน (ลิงก์ Merchant) ใช้ฝั่ง server เท่านั้น — ห้ามส่งเข้า bundle ฝั่ง client
+export function configuredKey() {
   return String(process.env.MERCHANT_PATH_KEY || "").trim();
 }
 

@@ -14,6 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { MerchantPickerButton } from "./_components/MerchantLinks";
 
 /* ---------- Modal เบาๆ ---------- */
 function Modal({ open, title, children, onClose }) {
@@ -238,13 +239,16 @@ export default function VendorsPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openNew}
-          className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          Add
-        </button>
+        <div className="flex items-center gap-2">
+          <MerchantPickerButton />
+          <button
+            type="button"
+            onClick={openNew}
+            className="rounded-xl bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Add
+          </button>
+        </div>
       </div>
 
       {/* Search */}

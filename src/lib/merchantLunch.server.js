@@ -37,20 +37,46 @@ export function normalizeECouponCode(input) {
  *   - ร้าน stock ที่ตั้ง fallback เป็น e-coupon ไว้
  *   - ร้าน stock ที่เคยออก e-coupon แทนไปแล้ว — ปิด fallback ทีหลังก็ยังใช้/ดูรายงานได้
  */
-async function eligibleFilter() {
+// กฎชุดเดียว: ผ่านทุกข้อ = ร้าน Merchant · ข้อแรกที่ไม่ผ่าน = เหตุผลที่หน้าแอดมินแสดง
+async function eligibilityRules() {
   const fallbackShopIds = await LunchOrder.distinct("restaurantId", {
     usesCouponStock: true,
     couponSource: "ecoupon",
   });
-  return {
-    couponEnabled: true,
-    isActive: { $ne: false },
-    $or: [
-      { usesCouponStock: { $ne: true } },
-      { stockFallbackToECoupon: true },
-      { _id: { $in: fallbackShopIds.filter(Boolean) } },
-    ],
-  };
+  return [
+    { reason: "ร้านถูกปิดใช้งาน", filter: { isActive: { $ne: false } } },
+    { reason: "ร้านยังไม่เปิดคูปอง", filter: { couponEnabled: true } },
+    {
+      reason: "ร้าน stock ที่ไม่ได้เปิดสร้างโค้ดเมื่อคูปองหมด",
+      filter: {
+        $or: [
+          { usesCouponStock: { $ne: true } },
+          { stockFallbackToECoupon: true },
+          { _id: { $in: fallbackShopIds.filter(Boolean) } },
+        ],
+      },
+    },
+  ];
+}
+
+async function eligibleFilter() {
+  return { $and: (await eligibilityRules()).map((r) => r.filter) };
+}
+
+/**
+ * หน้าแอดมิน: ร้านนี้อยู่ในหน้าเลือกร้านของ Merchant ไหม
+ *   -> { found: false } | { found: true, eligible: true } | { found: true, eligible: false, reason }
+ */
+export async function merchantEligibility(restaurantId) {
+  const id = String(restaurantId || "").trim();
+  if (!mongoose.Types.ObjectId.isValid(id)) return { found: false };
+  if (!(await Restaurant.exists({ _id: id }))) return { found: false };
+  for (const rule of await eligibilityRules()) {
+    if (!(await Restaurant.exists({ _id: id, ...rule.filter }))) {
+      return { found: true, eligible: false, reason: rule.reason };
+    }
+  }
+  return { found: true, eligible: true };
 }
 
 export async function listMerchantRestaurants() {

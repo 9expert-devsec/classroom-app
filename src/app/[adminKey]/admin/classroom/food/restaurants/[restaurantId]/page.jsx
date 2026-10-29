@@ -10,6 +10,7 @@ import TextInput from "@/components/ui/TextInput";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 
 import CouponSettingsButton from "./_components/CouponSettingsButton";
+import { MerchantShopButton } from "../_components/MerchantLinks";
 import RestaurantTabs from "./_components/RestaurantTabs";
 import MenuTab from "./_components/MenuTab";
 import SetsTab from "./_components/sets/SetsTab";
@@ -669,6 +670,16 @@ function RestaurantDetail({ params }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <MerchantShopButton
+            restaurantId={restaurantId}
+            restaurantName={restaurant?.name || ""}
+            refreshKey={[
+              restaurant?.isActive,
+              restaurant?.couponEnabled,
+              restaurant?.usesCouponStock,
+              restaurant?.stockFallbackToECoupon,
+            ].join("|")}
+          />
           {/* coupon settings live in a drawer; the pill shows the current coupon status */}
           <CouponSettingsButton
             restaurant={restaurant}

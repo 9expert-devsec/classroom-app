@@ -10,7 +10,7 @@ import LunchQrCode from "@/components/shared/LunchQrCode";
 import { Modal, hmBkk } from "@/components/admin/lunch/LunchModals";
 import { StatusPill } from "./lunchOrdersUi";
 
-async function copyText(text) {
+export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
     return true;
