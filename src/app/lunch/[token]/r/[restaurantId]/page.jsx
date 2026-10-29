@@ -1,6 +1,7 @@
 // src/app/lunch/[token]/r/[restaurantId]/page.jsx
 //
 // หน้า 2: เมนูของร้านที่เลือก
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { X, Ban } from "lucide-react";
@@ -18,6 +19,7 @@ import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
 import { Shell, NoticeScreen } from "../../_components/Shell";
 import ShellScroll from "../../_components/ShellScroll";
 import GateNotice from "../../_components/GateNotice";
+import FlowGuard from "../../_components/FlowGuard";
 import MenuClient from "./MenuClient";
 
 export const dynamic = "force-dynamic";
@@ -83,18 +85,20 @@ export default async function RestaurantMenuPage({ params, searchParams }) {
 
   return (
     <Shell>
-      <MenuClient
-        token={token}
-        restaurant={restaurant}
-        others={(session.restaurants || []).filter((r) => r.id !== restaurantId)}
-        shops={session.restaurants || []}
-        budget={session.budget}
-        windowInfo={session.window}
-        deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
-        categories={categories}
-        openSheetMenuId={String(searchParams?.sheet || "")}
-        menus={menus}
-      />
+      <FlowGuard token={token} renderId={randomUUID()}>
+        <MenuClient
+          token={token}
+          restaurant={restaurant}
+          others={(session.restaurants || []).filter((r) => r.id !== restaurantId)}
+          shops={session.restaurants || []}
+          budget={session.budget}
+          windowInfo={session.window}
+          deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+          categories={categories}
+          openSheetMenuId={String(searchParams?.sheet || "")}
+          menus={menus}
+        />
+      </FlowGuard>
     </Shell>
   );
 }

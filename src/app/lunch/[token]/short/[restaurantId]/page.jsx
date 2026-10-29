@@ -4,6 +4,7 @@
 //   ก่อนเส้นตาย: การ์ด "สั่งที่ร้านเอง" ในหน้าเมนู (?from=menu)
 //   หลังเส้นตาย (C1 แบบย่อ ถึง 15:00): ชื่อเล่น -> เลือกร้าน -> หน้านี้
 // ไม่มีเมนู: ชื่อเล่น + ร้าน + คูปอง -> ยืนยัน -> at_shop (API รับ at_shop ได้ถึงเวลาปิดจริง)
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 
 import dbConnect from "@/lib/mongoose";
@@ -11,6 +12,7 @@ import { loadLunchGate, LUNCH_GATE, deadlineLabel } from "@/lib/lunchGuards.serv
 
 import { Shell } from "../../_components/Shell";
 import GateNotice from "../../_components/GateNotice";
+import FlowGuard from "../../_components/FlowGuard";
 import ShortSummaryClient from "./ShortSummaryClient";
 
 export const dynamic = "force-dynamic";
@@ -39,17 +41,19 @@ export default async function ShortSummaryPage({ params, searchParams }) {
 
   return (
     <Shell>
-      <ShortSummaryClient
-        token={token}
-        restaurant={restaurant}
-        restaurants={session.restaurants || []}
-        sessionNickname={session.learner?.nickname || ""}
-        budget={session.budget}
-        windowInfo={session.window}
-        deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
-        from={String(searchParams?.from || "")}
-        confirmed={String(searchParams?.confirmed || "")}
-      />
+      <FlowGuard token={token} renderId={randomUUID()}>
+        <ShortSummaryClient
+          token={token}
+          restaurant={restaurant}
+          restaurants={session.restaurants || []}
+          sessionNickname={session.learner?.nickname || ""}
+          budget={session.budget}
+          windowInfo={session.window}
+          deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+          from={String(searchParams?.from || "")}
+          confirmed={String(searchParams?.confirmed || "")}
+        />
+      </FlowGuard>
     </Shell>
   );
 }

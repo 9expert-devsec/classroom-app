@@ -4,6 +4,7 @@
 // ถ้าสั่งไปแล้ว: ?done=1 (เพิ่ง submit) = หน้าขอบคุณ, ไม่มี = หน้าสแกนซ้ำแบบดูอย่างเดียว
 // C1: เลยเส้นตายแต่ยังไม่ถึง 15:00 = สั่งแบบย่อ (เลือกร้านแล้วไปหน้าสรุปแบบย่อ)
 //     ถึง 15:00 แล้ว = หน้าหมดเวลา ไม่ว่าสถานะใด
+import { randomUUID } from "node:crypto";
 import { X } from "lucide-react";
 
 import dbConnect from "@/lib/mongoose";
@@ -20,6 +21,8 @@ import { ExpiredScreen, CancelledQrScreen } from "./_components/GateNotice";
 import { finalCloseLabel } from "@/lib/lunchConfig";
 import ChooseRestaurantClient from "./ChooseRestaurantClient";
 import { ThankYouView, RescanView } from "./_components/PlacedViews";
+import FlowGuard from "./_components/FlowGuard";
+import CouponBackGuard from "./_components/CouponBackGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +60,7 @@ export default async function LunchPage({ params, searchParams }) {
     const dateLabel = thaiDateLabel(session.order?.dayYMD);
     return (
       <Shell>
+        <CouponBackGuard token={token} />
         <ShellScroll>
           {String(searchParams?.done || "") === "1" ? (
             <ThankYouView order={session.order} dateLabel={dateLabel} token={token} />
@@ -74,15 +78,17 @@ export default async function LunchPage({ params, searchParams }) {
 
   return (
     <Shell>
-      <ChooseRestaurantClient
-        token={token}
-        session={session}
-        headerLine={headerLine}
-        deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
-        notice={NOTICES[String(searchParams?.notice || "")] || ""}
-        short={gate === LUNCH_GATE.SHORT}
-        finalLabel={finalCloseLabel()}
-      />
+      <FlowGuard token={token} renderId={randomUUID()}>
+        <ChooseRestaurantClient
+          token={token}
+          session={session}
+          headerLine={headerLine}
+          deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+          notice={NOTICES[String(searchParams?.notice || "")] || ""}
+          short={gate === LUNCH_GATE.SHORT}
+          finalLabel={finalCloseLabel()}
+        />
+      </FlowGuard>
     </Shell>
   );
 }

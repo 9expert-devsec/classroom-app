@@ -2,6 +2,7 @@
 //
 // หน้ารายละเอียดเมนู: ตัวเลือก / หมายเหตุ / จำนวน แล้วเพิ่มลงตะกร้า
 // ?line=<lineKey>&from=sheet|cart = แก้บรรทัดเดิมในตะกร้า (โหมดแก้ไข)
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 
 import dbConnect from "@/lib/mongoose";
@@ -15,6 +16,7 @@ import { loadRestaurantMenu } from "@/lib/lunchMenu.server";
 
 import { Shell } from "../../../../_components/Shell";
 import GateNotice, { BackNotice } from "../../../../_components/GateNotice";
+import FlowGuard from "../../../../_components/FlowGuard";
 import MenuDetailClient from "./MenuDetailClient";
 
 export const dynamic = "force-dynamic";
@@ -67,18 +69,20 @@ export default async function MenuDetailPage({ params, searchParams }) {
 
   return (
     <Shell>
-      <MenuDetailClient
-        token={token}
-        restaurant={restaurant}
-        restaurants={session.restaurants || []}
-        budget={session.budget}
-        windowInfo={session.window}
-        deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
-        menu={menu}
-        menus={menus}
-        editLineKey={String(searchParams?.line || "")}
-        from={String(searchParams?.from || "")}
-      />
+      <FlowGuard token={token} renderId={randomUUID()}>
+        <MenuDetailClient
+          token={token}
+          restaurant={restaurant}
+          restaurants={session.restaurants || []}
+          budget={session.budget}
+          windowInfo={session.window}
+          deadlineLabel={deadlineLabel(session.window?.deadlineAt)}
+          menu={menu}
+          menus={menus}
+          editLineKey={String(searchParams?.line || "")}
+          from={String(searchParams?.from || "")}
+        />
+      </FlowGuard>
     </Shell>
   );
 }
