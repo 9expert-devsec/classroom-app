@@ -1,12 +1,14 @@
 "use client";
 
-import { CupSoda, LayoutGrid, PackagePlus, UtensilsCrossed } from "lucide-react";
+import { CupSoda, LayoutGrid, ListChecks, PackagePlus, UtensilsCrossed } from "lucide-react";
 
 const TAB_DEFS = [
   { key: "menus", label: "เมนูอาหาร", icon: UtensilsCrossed },
   { key: "sets", label: "ชุดอาหาร", icon: LayoutGrid },
   { key: "addons", label: "Add-on", icon: PackagePlus },
   { key: "drinks", label: "Drink", icon: CupSoda },
+  // OS-2: FoodOptionSet
+  { key: "optionsets", label: "ชุดตัวเลือก", icon: ListChecks },
 ];
 
 export default function RestaurantTabs({ tab, counts, onChange }) {

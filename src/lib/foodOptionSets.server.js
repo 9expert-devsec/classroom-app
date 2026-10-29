@@ -354,21 +354,51 @@ async function assertNameFree(restaurant, name, exceptId, session) {
 
 /* ---------------- reads ---------------- */
 
-export async function listOptionSets(restaurantId) {
+/**
+ * withUsage (OS-2): เพิ่ม overrideCount + menus[{ _id, name, hasOverride, overrides[{ sourceChoiceId, choiceName, priceDelta }] }]
+ *   override = ตัวเลือกในกลุ่มนั้นของเมนูที่มี overrides.priceDelta
+ */
+export async function listOptionSets(restaurantId, { withUsage = false } = {}) {
   const rid = assertId(restaurantId, "รหัสร้าน");
   const [sets, menus] = await Promise.all([
     FoodOptionSet.find({ restaurant: rid }).sort({ sortOrder: 1, name: 1 }).lean(),
-    FoodMenu.find({ restaurant: rid, "optionGroups.sourceSetId": { $ne: null } })
-      .select("optionGroups.sourceSetId")
+    // $elemMatch: "any group linked" ($ne on the array path would mean "no group unlinked")
+    FoodMenu.find({ restaurant: rid, optionGroups: { $elemMatch: { sourceSetId: { $ne: null } } } })
+      .select("name sortOrder optionGroups.sourceSetId optionGroups.choices")
+      .sort({ sortOrder: 1, name: 1 })
       .lean(),
   ]);
-  const count = new Map();
+  const usage = new Map();
   for (const m of menus) {
     for (const g of m.optionGroups || []) {
-      if (g.sourceSetId) count.set(String(g.sourceSetId), (count.get(String(g.sourceSetId)) || 0) + 1);
+      if (!g.sourceSetId) continue;
+      const key = String(g.sourceSetId);
+      const overrides = (g.choices || [])
+        .filter((c) => has(c.overrides, "priceDelta"))
+        .map((c) => ({
+          sourceChoiceId: String(c.sourceChoiceId || ""),
+          choiceName: c.name || "",
+          priceDelta: Number(c.overrides.priceDelta) || 0,
+        }));
+      if (!usage.has(key)) usage.set(key, []);
+      usage.get(key).push({
+        _id: String(m._id),
+        name: m.name || "",
+        hasOverride: overrides.length > 0,
+        overrides,
+      });
     }
   }
-  return sets.map((s) => ({ ...s, menuCount: count.get(String(s._id)) || 0 }));
+  return sets.map((s) => {
+    const used = usage.get(String(s._id)) || [];
+    return {
+      ...s,
+      menuCount: used.length,
+      ...(withUsage
+        ? { overrideCount: used.filter((u) => u.hasOverride).length, menus: used }
+        : {}),
+    };
+  });
 }
 
 export async function getOptionSet(setId) {
@@ -445,11 +475,25 @@ export async function updateOptionSet(setId, raw) {
   }
 }
 
-/** ผูกชุดกับหลายเมนู · เมนูที่ผูกอยู่แล้วข้าม · เมนูของร้านอื่น = ปฏิเสธทั้งคำขอ */
-export async function attachOptionSetToMenus(setId, menuIds) {
+/**
+ * ผูกชุดกับหลายเมนู · เมนูที่ผูกอยู่แล้วข้าม · เมนูของร้านอื่น = ปฏิเสธทั้งคำขอ
+ * OS-2: replace [{ menuId, groupId }] = ดึงกลุ่มของเมนูเอง (ชื่อซ้ำกับชุด) ออก แล้วใส่กลุ่มของชุดแทนที่ตำแหน่งเดิม
+ *       ใน transaction เดียวกัน · groupId ต้องเป็นกลุ่มของเมนูนั้นและยังไม่ผูกชุด
+ */
+export async function attachOptionSetToMenus(setId, menuIds, { replace = [] } = {}) {
   const ids = [...new Set((Array.isArray(menuIds) ? menuIds : []).map(clean))];
   if (!ids.length) throw new OptionSetError("กรุณาเลือกเมนูอย่างน้อย 1 รายการ", 400);
   const oids = ids.map((x) => assertId(x, "รหัสเมนู"));
+
+  const replaceByMenu = new Map();
+  for (const r of Array.isArray(replace) ? replace : []) {
+    const mid = clean(r?.menuId);
+    assertId(mid, "รหัสเมนู");
+    assertId(r?.groupId, "รหัสกลุ่มตัวเลือก");
+    if (!ids.includes(mid)) throw new OptionSetError("เมนูที่จะแทนที่กลุ่มต้องอยู่ในรายการที่เลือก", 400);
+    if (replaceByMenu.has(mid)) throw new OptionSetError("แทนที่กลุ่มได้เมนูละ 1 กลุ่ม", 400);
+    replaceByMenu.set(mid, clean(r.groupId));
+  }
 
   return inTransaction(async (session) => {
     const set = await loadSet(setId, session);
@@ -473,20 +517,35 @@ export async function attachOptionSetToMenus(setId, menuIds) {
 
     const attached = [];
     const skipped = [];
+    const replaced = [];
     for (const m of menus) {
       const groups = m.optionGroups || [];
+      const replaceId = replaceByMenu.get(String(m._id)) || "";
+      const target = replaceId ? groups.find((g) => sameId(g._id, replaceId)) : null;
+      if (replaceId && !target) {
+        throw new OptionSetError(`${m.name}: ไม่พบกลุ่มตัวเลือกที่จะแทนที่ในเมนูนี้`, 400);
+      }
+      if (target?.sourceSetId) {
+        throw new OptionSetError(`${m.name}: กลุ่ม "${target.name}" ผูกกับชุดตัวเลือกอยู่แล้ว แทนที่ไม่ได้`, 400);
+      }
       if (groups.some((g) => sameId(g.sourceSetId, set._id))) {
         skipped.push(String(m._id));
         continue;
       }
       const maxSort = groups.reduce((n, g) => Math.max(n, Number(g.sortOrder) || 0), -1);
-      const g = materializeGroup(set, null, { sortOrder: maxSort + 1 });
+      const g = materializeGroup(set, null, { sortOrder: target ? Number(target.sortOrder) || 0 : maxSort + 1 });
       const err = materializedError(g);
       if (err) throw new OptionSetError(`${m.name}: ${err}`, 422);
-      await FoodMenu.updateOne({ _id: m._id }, { $push: { optionGroups: g } }, { session });
+      if (target) {
+        const optionGroups = groups.map((x) => (sameId(x._id, target._id) ? g : x));
+        await FoodMenu.updateOne({ _id: m._id }, { $set: { optionGroups } }, { session });
+        replaced.push({ menuId: String(m._id), groupId: String(target._id), groupName: target.name || "" });
+      } else {
+        await FoodMenu.updateOne({ _id: m._id }, { $push: { optionGroups: g } }, { session });
+      }
       attached.push({ menuId: String(m._id), menuName: m.name || "", groupId: String(g._id) });
     }
-    return { set: { id: String(set._id), name: set.name }, attached, skipped };
+    return { set: { id: String(set._id), name: set.name }, attached, skipped, replaced };
   });
 }
 

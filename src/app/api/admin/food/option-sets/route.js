@@ -25,13 +25,14 @@ async function safeAudit(payload) {
 
 // OS-1: ชุดตัวเลือกของร้าน
 // GET /api/admin/food/option-sets?restaurant=<id>  (รับ restaurantId ด้วย)
+//   &withUsage=1 (OS-2): + overrideCount และ menus[{ _id, name, hasOverride, overrides }] ต่อชุด
 export async function GET(req) {
   try {
     await requirePerm(PERM.FOOD_READ);
     await dbConnect();
     const sp = new URL(req.url).searchParams;
     const restaurantId = sp.get("restaurant") || sp.get("restaurantId") || "";
-    const items = await listOptionSets(restaurantId);
+    const items = await listOptionSets(restaurantId, { withUsage: sp.get("withUsage") === "1" });
     return NextResponse.json({ ok: true, items });
   } catch (e) {
     return jsonError(e);

@@ -2,7 +2,7 @@
 import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-export const TABS = ["menus", "sets", "addons", "drinks"];
+export const TABS = ["menus", "sets", "addons", "drinks", "optionsets"];
 export const PAGE_SIZES = [12, 24, 48];
 export const SORTS = ["order", "name", "price", "count"]; // count: sets tab
 export const VIEWS = ["grid", "list"];

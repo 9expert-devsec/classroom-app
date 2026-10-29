@@ -22,6 +22,10 @@ import LibraryTab from "./_components/LibraryTab";
 import CategoryManagerModal from "./_components/CategoryManagerModal";
 import { useListParams } from "./_components/menuUi";
 import MenuWizard from "./_components/menu-wizard/MenuWizard";
+import OptionSetsTab from "./_components/option-sets/OptionSetsTab";
+import OptionSetFormModal from "./_components/option-sets/OptionSetFormModal";
+import OptionSetAttachModal from "./_components/option-sets/OptionSetAttachModal";
+import OptionSetDeleteDialog from "./_components/option-sets/OptionSetDeleteDialog";
 
 function cx(...a) {
   return a.filter(Boolean).join(" ");
@@ -136,6 +140,14 @@ function RestaurantDetail({ params }) {
   const [viewSetId, setViewSetId] = useState("");
   const [deletingSet, setDeletingSet] = useState(null);
   const [highlightSetId, setHighlightSetId] = useState("");
+
+  // OS-2 option sets: form { setId } ("" = create), attach / delete by id
+  const [optionSets, setOptionSets] = useState([]);
+  const [loadingOptionSets, setLoadingOptionSets] = useState(false);
+  const [osForm, setOsForm] = useState(null);
+  const [osAttachId, setOsAttachId] = useState("");
+  const [osDeleteId, setOsDeleteId] = useState("");
+  const [highlightOptionSetId, setHighlightOptionSetId] = useState("");
 
   // addon form
   const [editingAddonId, setEditingAddonId] = useState(null);
@@ -256,6 +268,23 @@ function RestaurantDetail({ params }) {
     }
   }
 
+  // per-set usage (linked menus + price overrides) comes from the server
+  async function fetchOptionSets() {
+    setLoadingOptionSets(true);
+    try {
+      const items = await loadList(
+        `/api/admin/food/option-sets?restaurant=${encodeURIComponent(restaurantId)}&withUsage=1`,
+      );
+      setOptionSets(items);
+    } catch (err) {
+      // keep the current list; never write an error body into state
+      console.error(err);
+      toast.error(err?.message || "โหลดชุดตัวเลือกไม่สำเร็จ");
+    } finally {
+      setLoadingOptionSets(false);
+    }
+  }
+
   async function fetchAddons() {
     setLoadingAddons(true);
     try {
@@ -309,6 +338,7 @@ function RestaurantDetail({ params }) {
     fetchRestaurant();
     fetchMenus();
     fetchSets();
+    fetchOptionSets();
     fetchAddons();
     fetchDrinks();
     fetchCategories();
@@ -427,6 +457,30 @@ function RestaurantDetail({ params }) {
     setDeletingSet(null);
     setViewSetId("");
     await fetchSets();
+  }
+
+  /* ---------------- option set actions (OS-2) ---------------- */
+  // a save / attach / delete can change menus (embedded groups), so both lists reload
+  async function refreshOptionSetsAndMenus() {
+    await Promise.all([fetchOptionSets(), fetchMenus()]);
+  }
+
+  async function handleOptionSetSaved(setId) {
+    setOsForm(null);
+    await refreshOptionSetsAndMenus();
+    setHighlightOptionSetId(setId);
+    setTimeout(() => setHighlightOptionSetId(""), 2500);
+  }
+
+  async function handleOptionSetDeleted() {
+    setOsForm(null);
+    setOsDeleteId("");
+    await refreshOptionSetsAndMenus();
+  }
+
+  async function handleOptionSetAttached() {
+    setOsAttachId("");
+    await refreshOptionSetsAndMenus();
   }
 
   /* ---------------- addon actions ---------------- */
@@ -630,7 +684,13 @@ function RestaurantDetail({ params }) {
     sets: sets.length,
     addons: addonsList.length,
     drinks: drinksList.length,
+    optionsets: optionSets.length,
   };
+  // live rows (with usage) so open modals see refreshed linked menus
+  const optionSetById = (id) => optionSets.find((s) => String(s._id) === id) || null;
+  const osFormSet = osForm?.setId ? optionSetById(osForm.setId) : null;
+  const osAttachSet = osAttachId ? optionSetById(osAttachId) : null;
+  const osDeleteSet = osDeleteId ? optionSetById(osDeleteId) : null;
 
   return (
     // ✅ P1b-fix: layout แม่ (<main>) เป็น overflow-hidden และส่ง slot ที่สูงคงที่มาให้
@@ -691,6 +751,11 @@ function RestaurantDetail({ params }) {
             <PrimaryButton onClick={openNewSet}>
               <Plus className="h-4 w-4" />
               เพิ่มชุดอาหาร
+            </PrimaryButton>
+          ) : listParams.tab === "optionsets" ? (
+            <PrimaryButton onClick={() => setOsForm({ setId: "" })}>
+              <Plus className="h-4 w-4" />
+              สร้างชุดตัวเลือก
             </PrimaryButton>
           ) : (
             <PrimaryButton onClick={openNewMenu}>
@@ -765,6 +830,19 @@ function RestaurantDetail({ params }) {
             onDelete={handleDeleteDrink}
           />
         )}
+        {listParams.tab === "optionsets" && (
+          <OptionSetsTab
+            optionSets={optionSets}
+            loading={loadingOptionSets}
+            params={listParams}
+            setParams={setListParams}
+            highlightId={highlightOptionSetId}
+            onNew={() => setOsForm({ setId: "" })}
+            onEdit={(s) => setOsForm({ setId: String(s._id) })}
+            onAttach={(s) => setOsAttachId(String(s._id))}
+            onDelete={(s) => setOsDeleteId(String(s._id))}
+          />
+        )}
       </div>
 
       {categoryManagerOpen && (
@@ -823,6 +901,36 @@ function RestaurantDetail({ params }) {
           menuCount={menusInSet(deletingSet, menuById).length}
           onClose={() => setDeletingSet(null)}
           onDeleted={handleSetDeleted}
+        />
+      )}
+
+      {/* OS-2: an edit form whose set disappeared (deleted elsewhere) closes itself */}
+      {osForm && (!osForm.setId || osFormSet) && (
+        <OptionSetFormModal
+          restaurantId={restaurantId}
+          set={osFormSet}
+          menus={menus}
+          categories={categories}
+          onClose={() => setOsForm(null)}
+          onSaved={handleOptionSetSaved}
+          onChanged={refreshOptionSetsAndMenus}
+          onDeleted={handleOptionSetDeleted}
+        />
+      )}
+      {osAttachSet && (
+        <OptionSetAttachModal
+          set={osAttachSet}
+          menus={menus}
+          categories={categories}
+          onClose={() => setOsAttachId("")}
+          onAttached={handleOptionSetAttached}
+        />
+      )}
+      {osDeleteSet && (
+        <OptionSetDeleteDialog
+          set={osDeleteSet}
+          onClose={() => setOsDeleteId("")}
+          onDeleted={handleOptionSetDeleted}
         />
       )}
 

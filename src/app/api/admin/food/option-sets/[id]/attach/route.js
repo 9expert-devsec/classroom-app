@@ -23,14 +23,17 @@ async function safeAudit(payload) {
   }
 }
 
-// POST /api/admin/food/option-sets/[id]/attach  body: { menuIds: [] }
+// POST /api/admin/food/option-sets/[id]/attach  body: { menuIds: [], replace?: [{ menuId, groupId }] }
 // เมนูที่ผูกอยู่แล้วข้าม · มีเมนูของร้านอื่น = 400 ทั้งคำขอ
+// replace (OS-2): ดึงกลุ่มของเมนูเองออกแล้วผูกชุดแทนใน transaction เดียวกัน
 export async function POST(req, { params }) {
   try {
     const ctx = await requirePerm(PERM.FOOD_WRITE);
     await dbConnect();
     const body = await req.json().catch(() => ({}));
-    const result = await attachOptionSetToMenus(String(params?.id || ""), body?.menuIds);
+    const result = await attachOptionSetToMenus(String(params?.id || ""), body?.menuIds, {
+      replace: body?.replace,
+    });
 
     if (result.attached.length) {
       await safeAudit({
@@ -40,7 +43,7 @@ export async function POST(req, { params }) {
         entityType: "FoodOptionSet",
         entityId: result.set.id,
         entityLabel: result.set.name,
-        meta: { attached: result.attached, skipped: result.skipped },
+        meta: { attached: result.attached, skipped: result.skipped, replaced: result.replaced },
       });
     }
 
