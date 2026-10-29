@@ -21,7 +21,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 
-import { ShopLogo, LAST_SHOP_KEY } from "../ShopPickerClient";
+import { ShopLogo } from "../ShopPickerClient";
 import { optionGroupsOf } from "@/lib/lunchOptionGroups";
 
 const NOT_FOUND_MSG = "Coupon not found. Check the code and try again.";
@@ -344,13 +344,8 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
   }, [api, restaurant.id]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(LAST_SHOP_KEY, restaurant.id);
-    } catch {
-      // ignore
-    }
     loadRecent();
-  }, [restaurant.id, loadRecent]);
+  }, [loadRecent]);
 
   // กลับ Screen 1 — marker (ถ้ามี) ถูกเก็บคืนโดย effect ด้านล่างเมื่อ view เป็น home
   const goHome = useCallback(() => {
@@ -445,10 +440,11 @@ export default function MerchantShopClient({ merchantKey, restaurant }) {
 
   async function confirm() {
     const c = result?.customer?.code;
-    if (!c || busy) return;
+    // ref ตั้งทันที (ไม่รอ re-render) — แตะซ้ำในเฟรมเดียวกันจึงไม่ยิง request ที่ 2
+    if (!c || redeemingRef.current) return;
+    redeemingRef.current = true;
     setBusy(true);
     setError("");
-    redeemingRef.current = true;
     try {
       const data = await api("/api/merchant/lunch/redeem", {
         method: "POST",
