@@ -8,6 +8,17 @@ const ChoiceSchema = new Schema({
   priceDelta: { type: Number, default: 0, min: 0 },
   sortOrder: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true },
+
+  // ✅ OS-1: ตัวเลือกที่มาจากชุด (FoodOptionSet) — null = ตัวเลือกของเมนูเอง
+  //    priceDelta / isActive ด้านบนเป็นค่าที่มีผลจริงเสมอ (isActive = ชุดเปิด && !hidden)
+  sourceChoiceId: { type: Schema.Types.ObjectId, default: null },
+  // ซ่อนตัวเลือกนี้เฉพาะเมนูนี้
+  hidden: { type: Boolean, default: false },
+  // key ที่ไม่มี = ใช้ค่าของชุด
+  overrides: {
+    type: new Schema({ priceDelta: { type: Number, min: 0 } }, { _id: false }),
+    default: undefined,
+  },
 });
 
 // กลุ่มตัวเลือกของเมนู เช่น "ระดับความเผ็ด" (single) / "เพิ่มท็อปปิ้ง" (multi)
@@ -17,6 +28,24 @@ const OptionGroupSchema = new Schema({
   selectType: { type: String, enum: ["single", "multi"], default: "single" },
   sortOrder: { type: Number, default: 0 },
   choices: { type: [ChoiceSchema], default: [] },
+
+  // ✅ OS-1 (additive ทั้งหมด): null = ไม่จำกัด
+  minSelect: { type: Number, default: null, min: 0 },
+  maxSelect: { type: Number, default: null, min: 1 },
+  // null = กลุ่มของเมนูเอง (แบบเดิม) · มีค่า = สำเนาของชุด ค่าทุกช่องด้านบนคือค่าที่มีผลจริง
+  sourceSetId: { type: Schema.Types.ObjectId, default: null },
+  // key ที่ไม่มี = ใช้ค่าของชุด
+  overrides: {
+    type: new Schema(
+      {
+        required: { type: Boolean },
+        minSelect: { type: Number, min: 0 },
+        maxSelect: { type: Number, min: 1 },
+      },
+      { _id: false },
+    ),
+    default: undefined,
+  },
 });
 
 const FoodMenuSchema = new Schema(

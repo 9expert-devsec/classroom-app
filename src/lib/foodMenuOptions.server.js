@@ -2,6 +2,8 @@
 // ตรวจและ normalize ฟิลด์ใหม่ของ FoodMenu (P1b) ใช้ร่วมกันระหว่าง
 // POST /api/admin/food/menu และ PUT /api/admin/food/menu/[id]
 import mongoose from "mongoose";
+// relative + นามสกุลเต็ม เพื่อให้ import ได้ทั้งใน Next และ Node ตรง ๆ (OS-1 ใช้จาก lib/foodOptionSets.server.js)
+import { normalizeLimit, groupLimitsError } from "./optionGroupRules.js";
 
 // R2 menu wizard: 500 (was 300)
 export const DESCRIPTION_MAX = 500;
@@ -74,7 +76,12 @@ export function normalizeOptionGroups(raw) {
     throw new FoodMenuFieldError("optionGroups ต้องเป็น array");
   }
 
-  return raw.map((g, gi) => {
+  return raw.map(normalizeOptionGroup);
+}
+
+// กลุ่มของเมนูเอง 1 กลุ่ม (gi = ลำดับในข้อความ error) — OS-1 เรียกตรงสำหรับกลุ่มที่ไม่ได้ผูกชุด
+export function normalizeOptionGroup(g, gi) {
+  {
     const name = clean(g?.name);
     if (!name) {
       throw new FoodMenuFieldError(`กรุณากรอกชื่อกลุ่มตัวเลือกลำดับที่ ${gi + 1}`);
@@ -114,15 +121,24 @@ export function normalizeOptionGroups(raw) {
       };
     });
 
+    // OS-1: null = ไม่จำกัด (client เดิมไม่ส่งมา -> null เหมือนเดิม)
+    const required = !!g?.required;
+    const minSelect = normalizeLimit(g?.minSelect, 0);
+    const maxSelect = normalizeLimit(g?.maxSelect, 1);
+    const limitsMsg = groupLimitsError({ name, selectType, required, minSelect, maxSelect });
+    if (limitsMsg) throw new FoodMenuFieldError(limitsMsg);
+
     return {
       ...keepId(g?._id),
       name,
-      required: !!g?.required,
+      required,
       selectType,
+      minSelect,
+      maxSelect,
       sortOrder: Number.isFinite(Number(g?.sortOrder)) ? Number(g.sortOrder) : gi,
       choices,
     };
-  });
+  }
 }
 
 // 1 เมนูอยู่ได้หลายหมวด แต่ต้องเป็นหมวดของร้านเดียวกันทั้งหมด

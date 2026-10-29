@@ -28,6 +28,7 @@ import { assignCode } from "@/lib/couponStock.server";
 import { notifyAfterSubmit } from "@/lib/lunchNotify.server";
 import { writeLunchAudit } from "@/lib/lunchAdmin.server";
 import { withCouponCodeRetry } from "@/lib/couponCodeRetry.server";
+import { selectionCountError } from "@/lib/optionGroupRules";
 
 /* ---------------- limits ---------------- */
 
@@ -155,6 +156,9 @@ export async function buildLines({ rawLines, restaurantId, daySet }) {
           at,
         );
       }
+      // OS-1: minSelect / maxSelect ของกลุ่ม (null = ไม่จำกัด ข้อมูลเดิมผ่านเหมือนเดิม)
+      const countErr = selectionCountError(group, ids.length);
+      if (countErr) fail(422, countErr.reason, countErr.message, at);
 
       for (const cid of ids) {
         const choice = activeChoices.find((ch) => String(ch._id) === cid);

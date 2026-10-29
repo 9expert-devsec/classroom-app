@@ -66,6 +66,10 @@ const AuditLogSchema = new mongoose.Schema(
         "lunch.view_qr",
         // ✅ R3: โยกไปร้านอื่น
         "lunch.reassign",
+        // ✅ OS-1: ชุดตัวเลือกเมนู (create/update/delete ใช้ action มาตรฐาน)
+        "food.option_set_attach",
+        "food.option_set_detach",
+        "food.option_set_promote",
       ],
       default: "custom",
       index: true,

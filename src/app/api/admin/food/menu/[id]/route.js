@@ -11,12 +11,12 @@ import { PERM } from "@/lib/acl";
 import { writeAuditLog } from "@/lib/auditLog.server";
 import {
   normalizeDescription,
-  normalizeOptionGroups,
   assertPriceRule,
   normalizePrice,
   normalizeSortOrder,
   resolveCategoryIds,
 } from "@/lib/foodMenuOptions.server";
+import { resolveMenuOptionGroups } from "@/lib/foodOptionSets.server";
 
 export const dynamic = "force-dynamic";
 
@@ -115,7 +115,12 @@ export async function PUT(req, { params }) {
     // _id ของกลุ่ม/ตัวเลือกที่ client ส่งกลับมาจะถูกคงไว้
     // มีเฉพาะรายการใหม่เท่านั้นที่ได้ _id ใหม่
     if (body?.optionGroups !== undefined) {
-      update.optionGroups = normalizeOptionGroups(body.optionGroups);
+      // OS-1: กลุ่มที่ผูกชุดสร้างใหม่จากชุด — payload ที่ไม่มี sourceSetId ไม่ทำให้หลุดผูก
+      update.optionGroups = await resolveMenuOptionGroups({
+        raw: body.optionGroups,
+        restaurantId: ownerRestaurantId,
+        existingGroups: before.optionGroups || [],
+      });
     }
 
     const item = await FoodMenu.findByIdAndUpdate(id, update, {
